@@ -489,9 +489,10 @@ void on_startup(GApplication* application, XMPtr app_data) {
         }
     }
 
+    const bool showProjectStartScreen = p.empty();
     app_data->control->openFileWithoutSavingTheCurrentDocument(
             std::move(p), app_data->attachMode, app_data->openAtPageNumber - 1,
-            [ctrl = app_data->control.get(), app = GTK_APPLICATION(application)](bool) {
+            [ctrl = app_data->control.get(), app = GTK_APPLICATION(application), showProjectStartScreen](bool) {
                 ctrl->getScheduler()->start();
 
                 checkForEmergencySave(ctrl);
@@ -500,6 +501,9 @@ void on_startup(GApplication* application, XMPtr app_data) {
                 // This fixes it, see #405
                 Util::execInUiThread([ctrl]() { ctrl->getWindow()->getXournal()->layoutPages(); });
                 gtk_application_add_window(app, ctrl->getGtkWindow());
+                if (showProjectStartScreen) {
+                    ctrl->getWindow()->showWelcomeScreen();
+                }
             });
 }
 

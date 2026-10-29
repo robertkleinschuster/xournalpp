@@ -3,6 +3,7 @@
 #include "control/Control.h"
 #include "gui/GladeSearchpath.h"
 #include "gui/MainWindow.h"
+#include "gui/sidebar/Sidebar.h"
 #include "util/Assert.h"
 #include "util/XojMsgBox.h"
 #include "util/i18n.h"
@@ -65,6 +66,18 @@ void Menubar::populate(const GladeSearchpath* gladeSearchPath, MainWindow* win) 
     menu = G_MENU_MODEL(gtk_builder_get_object(builder.get(), MENU_ID));
 
     Control* ctrl = win->getControl();
+    control = ctrl;
+    window = GTK_APPLICATION_WINDOW(win->getWindow());
+
+    projectExplorerAction.reset(g_simple_action_new("project-explorer", nullptr), xoj::util::adopt);
+    g_signal_connect(projectExplorerAction.get(), "activate",
+                     G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
+                         auto* self = static_cast<Menubar*>(data);
+                         self->control->getWindow()->setSidebarVisible(true);
+                         self->control->getSidebar()->selectProjectExplorer();
+                     }),
+                     this);
+    g_action_map_add_action(G_ACTION_MAP(window), G_ACTION(projectExplorerAction.get()));
 
     recentDocumentsSubmenu = std::make_unique<RecentDocumentsSubmenu>(ctrl, GTK_APPLICATION_WINDOW(win->getWindow()));
     toolbarSelectionSubmenu =

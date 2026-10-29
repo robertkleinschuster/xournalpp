@@ -25,14 +25,6 @@ format=staves
 name=Graph
 format=graph
 
-[predefinedDotted]
-name=Dotted
-format=dotted
-
-[predefinedIsoDotted]
-name=Isometric Dotted
-format=isodotted
-
 [predefinedIsoGraph]
 name=Isometric Graph
 format=isograph

@@ -77,6 +77,7 @@ public:
      * Todo: this should be private
      */
     void setSelectedTab(size_t tab);
+    void selectProjectExplorer();
 
 public:
     // DocumentListener interface

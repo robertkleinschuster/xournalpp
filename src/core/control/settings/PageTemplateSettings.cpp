@@ -13,7 +13,7 @@ PageTemplateSettings::PageTemplateSettings():
         pageWidth(595.275591),
         pageHeight(841.889764),
         backgroundColor(Colors::white) {
-    backgroundType.format = PageTypeFormat::Lined;
+    backgroundType.format = PageTypeFormat::Graph;
 }
 
 PageTemplateSettings::~PageTemplateSettings() = default;
