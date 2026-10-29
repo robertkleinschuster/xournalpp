@@ -20,6 +20,7 @@
 #include "gui/FloatingToolbox.h"                        // for FloatingToolbox
 #include "gui/GladeGui.h"                               // for GladeGui
 #include "gui/PdfFloatingToolbox.h"                     // for PdfFloatingToolbox
+#include "gui/RecentDocumentsOverlay.h"                  // for createRecentDocumentsOverlay
 #include "gui/SearchBar.h"                              // for SearchBar
 #include "gui/inputdevices/InputEvents.h"               // for INPUT_DEVICE_TOUC...
 #include "gui/menus/menubar/Menubar.h"                  // for Menubar
@@ -319,63 +320,32 @@ void MainWindow::initXournalWidget() {
 
     setGtkTouchscreenScrollingForDeviceMapping();
 
-    documentStack = gtk_stack_new();
-    gtk_widget_set_hexpand(documentStack, true);
-    gtk_widget_set_vexpand(documentStack, true);
-    gtk_box_append(GTK_BOX(get("boxContents")), documentStack);
-    gtk_stack_add_named(GTK_STACK(documentStack), winXournal, "document");
-
-    auto* welcome = gtk_box_new(GTK_ORIENTATION_VERTICAL, 14);
-    gtk_widget_set_halign(welcome, GTK_ALIGN_CENTER);
-    gtk_widget_set_valign(welcome, GTK_ALIGN_CENTER);
-    auto* title = gtk_label_new(nullptr);
-    gtk_label_set_markup(GTK_LABEL(title), _("<big><b>Welcome to Xournal++ Fork</b></big>"));
-    gtk_box_pack_start(GTK_BOX(welcome), title, false, false, 8);
-    auto* recentHint = gtk_label_new(_("Your recent documents and project files are in the Projects sidebar."));
-    gtk_label_set_line_wrap(GTK_LABEL(recentHint), true);
-    gtk_widget_set_halign(recentHint, GTK_ALIGN_CENTER);
-    gtk_box_pack_start(GTK_BOX(welcome), recentHint, false, false, 4);
-
-    auto addWelcomeButton = [this, welcome](const char* label, GCallback callback) {
-        auto* button = gtk_button_new_with_label(label);
-        gtk_widget_set_size_request(button, 240, -1);
-        g_signal_connect(button, "clicked", callback, this->control);
-        gtk_box_pack_start(GTK_BOX(welcome), button, false, false, 0);
-    };
-    addWelcomeButton(_("New document"), G_CALLBACK(+[](GtkButton*, gpointer data) {
-                          static_cast<Control*>(data)->newFile();
-                      }));
-    addWelcomeButton(_("Open Repository..."), G_CALLBACK(+[](GtkButton*, gpointer data) {
-                          auto* control = static_cast<Control*>(data);
-                          control->getWindow()->setSidebarVisible(true);
-                          control->getSidebar()->openProjectFolder();
-                      }));
-    addWelcomeButton(_("Open document..."), G_CALLBACK(+[](GtkButton*, gpointer data) {
-                          static_cast<Control*>(data)->askToOpenFile();
-                      }));
-    addWelcomeButton(_("Annotate a PDF..."), G_CALLBACK(+[](GtkButton*, gpointer data) {
-                          static_cast<Control*>(data)->askToAnnotatePdf();
-                      }));
-    gtk_stack_add_named(GTK_STACK(documentStack), welcome, "welcome");
-    gtk_stack_set_visible_child_name(GTK_STACK(documentStack), "document");
+    documentOverlay = gtk_overlay_new();
+    gtk_widget_set_hexpand(documentOverlay, true);
+    gtk_widget_set_vexpand(documentOverlay, true);
+    gtk_container_add(GTK_CONTAINER(documentOverlay), winXournal);
+    startOverlay = createRecentDocumentsOverlay(control);
+    gtk_overlay_add_overlay(GTK_OVERLAY(documentOverlay), startOverlay);
+    gtk_box_append(GTK_BOX(get("boxContents")), documentOverlay);
 
     scrollHandling = std::make_unique<ScrollHandling>(GTK_SCROLLED_WINDOW(winXournal));
 
     this->xournal = std::make_unique<XournalView>(winXournal, control, scrollHandling.get());
 
     control->getZoomControl()->initZoomHandler(this->window, winXournal, xournal.get(), control);
-    gtk_widget_show_all(documentStack);
+    gtk_widget_show_all(documentOverlay);
+    gtk_widget_hide(startOverlay);
 }
 
-void MainWindow::showWelcomeScreen() {
-    if (documentStack) {
-        gtk_stack_set_visible_child_name(GTK_STACK(documentStack), "welcome");
+void MainWindow::showStartOverlay() {
+    if (startOverlay) {
+        gtk_widget_show(startOverlay);
     }
 }
 
-void MainWindow::showDocumentScreen() {
-    if (documentStack) {
-        gtk_stack_set_visible_child_name(GTK_STACK(documentStack), "document");
+void MainWindow::hideStartOverlay() {
+    if (startOverlay) {
+        gtk_widget_hide(startOverlay);
     }
 }
 

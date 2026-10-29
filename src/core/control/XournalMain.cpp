@@ -506,7 +506,7 @@ void on_startup(GApplication* application, XMPtr app_data) {
                 Util::execInUiThread([ctrl]() { ctrl->getWindow()->getXournal()->layoutPages(); });
                 gtk_application_add_window(app, ctrl->getGtkWindow());
                 if (showProjectStartScreen && !app_data->openFileRequested) {
-                    ctrl->getWindow()->showWelcomeScreen();
+                    ctrl->getWindow()->showStartOverlay();
                     ctrl->getWindow()->setSidebarVisible(true);
                     ctrl->getSidebar()->selectProjectExplorer();
                 }

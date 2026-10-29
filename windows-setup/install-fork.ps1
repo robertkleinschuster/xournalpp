@@ -16,6 +16,12 @@ if (-not $install.StartsWith($programs, [System.StringComparison]::OrdinalIgnore
     throw "Install directory must be below '$programs'."
 }
 
+$runningFork = Get-Process -Name xournalpp, xournalpp-wrapper -ErrorAction SilentlyContinue |
+    Where-Object { $_.Path -and $_.Path.StartsWith($install, [System.StringComparison]::OrdinalIgnoreCase) }
+if ($runningFork) {
+    throw 'Close the running Xournal++ Fork and retry the installation so locked files are not left partially updated.'
+}
+
 New-Item -ItemType Directory -Path $install -Force | Out-Null
 Get-ChildItem -LiteralPath $portable -Force | Copy-Item -Destination $install -Recurse -Force
 

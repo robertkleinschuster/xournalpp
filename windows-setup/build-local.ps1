@@ -1,6 +1,7 @@
 param(
     [string]$MsysRoot = 'C:\msys64',
-    [string]$InstallDirectory = (Join-Path $env:LOCALAPPDATA 'Programs\Xournal++ Fork')
+    [string]$InstallDirectory = (Join-Path $env:LOCALAPPDATA 'Programs\Xournal++ Fork'),
+    [switch]$SkipInstall
 )
 
 $ErrorActionPreference = 'Stop'
@@ -27,5 +28,9 @@ $packageCommand = "cd '$buildMsys' && ../windows-setup/package.sh"
 & $bash --login -c $packageCommand
 if ($LASTEXITCODE -ne 0) { throw 'Portable package build failed' }
 
-& (Join-Path $PSScriptRoot 'install-fork.ps1') -BuildDirectory $build -InstallDirectory $InstallDirectory
-if ($LASTEXITCODE -ne 0) { throw 'Fork installation failed' }
+if (-not $SkipInstall) {
+    & (Join-Path $PSScriptRoot 'install-fork.ps1') -BuildDirectory $build -InstallDirectory $InstallDirectory
+    if ($LASTEXITCODE -ne 0) { throw 'Fork installation failed' }
+} else {
+    Write-Output "Package created at $(Join-Path $build 'xournalpp-setup.exe'); installation skipped."
+}
