@@ -196,18 +196,23 @@ void TouchInputHandler::zoomEnd() {
 }
 
 void TouchInputHandler::onBlock() {
+    resetTouchSequence();
+}
+
+void TouchInputHandler::onUnblock() { resetTouchSequence(); }
+
+void TouchInputHandler::resetTouchSequence() {
     if (this->zooming) {
         zoomEnd();
     }
-}
-
-void TouchInputHandler::onUnblock() {
     this->invalidActive.clear();
     this->primarySequence = nullptr;
     this->secondarySequence = nullptr;
 
     this->startZoomDistance = 0.0;
     this->lastZoomScrollCenter = {};
+    this->startZoomReady = false;
+    this->canBlockZoom = false;
 
     priLastAbs = {-1.0, -1.0};
     secLastAbs = {-1.0, -1.0};

@@ -243,6 +243,8 @@ void InputContext::focusWidget() {
     }
 }
 
+void InputContext::resetTouchSequence() { this->touchHandler->resetTouchSequence(); }
+
 void InputContext::blockDevice(InputContext::DeviceType deviceType) {
     if (geometryToolInputHandler) {
         geometryToolInputHandler->blockDevice(deviceType);

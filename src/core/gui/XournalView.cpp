@@ -362,6 +362,12 @@ void XournalView::onSettingsChanged() {
 // send the focus back to the appropriate widget
 void XournalView::requestFocus() { gtk_widget_grab_focus(this->widget); }
 
+void XournalView::resetTouchInputSequence() {
+    if (auto* input = GTK_XOURNAL(this->widget)->input; input) {
+        input->resetTouchSequence();
+    }
+}
+
 auto XournalView::searchTextOnPage(const std::string& text, size_t pageNumber, size_t index, size_t* occurrences,
                                    XojPdfRectangle* matchRect) -> bool {
     if (pageNumber == npos || pageNumber >= this->viewPages.size()) {

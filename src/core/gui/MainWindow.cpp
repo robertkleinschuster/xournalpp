@@ -89,6 +89,14 @@ MainWindow::MainWindow(GladeSearchpath* gladeSearchPath, Control* control, GtkAp
     // Window handler
     g_signal_connect(this->window, "delete-event", xoj::util::wrap_for_g_callback_v<deleteEventCallback>,
                      this->control);
+    g_signal_connect(this->window, "notify::is-active",
+                     G_CALLBACK(+[](GObject* object, GParamSpec*, gpointer self) {
+                         auto* win = static_cast<MainWindow*>(self);
+                         if (!gtk_window_is_active(GTK_WINDOW(object)) && win->xournal) {
+                             win->xournal->resetTouchInputSequence();
+                         }
+                     }),
+                     this);
 #if GTK_MAJOR_VERSION == 3
     g_signal_connect(this->window, "notify::is-maximized", xoj::util::wrap_for_g_callback_v<windowMaximizedCallback>,
                      this);

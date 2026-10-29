@@ -107,6 +107,7 @@ public:
     void resetGeometryToolInputHandler();
 
     void focusWidget();
+    void resetTouchSequence();
     void blockDevice(DeviceType deviceType);
     void unblockDevice(DeviceType deviceType);
     bool isBlocked(DeviceType deviceType);

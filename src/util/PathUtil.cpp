@@ -22,7 +22,8 @@
 #include "util/safe_casts.h"  // for as_signed
 #include "util/utf8_view.h"   // for utf8_view
 
-#include "config.h"  // for PROJECT_NAME
+#include "config-dev.h"  // for APPLICATION_ID
+#include "config.h"      // for PROJECT_NAME
 
 #ifdef _WIN32
 #include <Windows.h>
@@ -38,10 +39,10 @@
 
 #ifdef GHC_FILESYSTEM
 // Fix of ghc::filesystem bug (path::operator/=() won't support string_views)
-constexpr auto const* CONFIG_FOLDER_NAME = "xournalpp";
+constexpr auto const* CONFIG_FOLDER_NAME = "xournalpp-fork";
 #else
 using namespace std::string_view_literals;
-constexpr auto CONFIG_FOLDER_NAME = "xournalpp"sv;
+constexpr auto CONFIG_FOLDER_NAME = "xournalpp-fork"sv;
 #endif
 
 #ifdef _WIN32

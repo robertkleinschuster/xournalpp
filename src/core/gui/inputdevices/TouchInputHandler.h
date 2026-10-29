@@ -58,4 +58,7 @@ public:
     bool handleImpl(InputEvent const& event) override;
     void onBlock() override;
     void onUnblock() override;
+
+    /// Clear active touch sequences when the application loses its input focus.
+    void resetTouchSequence();
 };

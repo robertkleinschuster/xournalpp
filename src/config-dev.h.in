@@ -12,6 +12,11 @@
 #pragma once
 
 /**
+ * Distinct identity for this personal fork, so it can run beside upstream.
+ */
+#define APPLICATION_ID "com.github.robertkleinschuster.xournalppfork"
+
+/**
  * Toolbar config file name
  */
 #define TOOLBAR_CONFIG "@DEV_TOOLBAR_CONFIG@"

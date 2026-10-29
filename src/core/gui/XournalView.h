@@ -67,6 +67,7 @@ public:
     void layerChanged(size_t page);
 
     void requestFocus();
+    void resetTouchInputSequence();
 
     void forceUpdatePagenumbers();
 
