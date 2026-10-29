@@ -146,7 +146,7 @@ auto runGit(const fs::path& folder, std::initializer_list<std::string> args) -> 
 
 }  // namespace
 
-class ProjectExplorerSidebar final: public AbstractSidebarPage {
+class ProjectExplorerSidebar final: public AbstractSidebarPage, public ProjectExplorerSidebarActions {
 public:
     explicit ProjectExplorerSidebar(Control* control): AbstractSidebarPage(control) {
         root = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
@@ -238,23 +238,20 @@ public:
             }
         }
         updateProjectButtons();
+        registerListener(control);
         refreshRecent();
     }
 
     ~ProjectExplorerSidebar() override { g_object_unref(root); }
 
-    void enableSidebar() override {
-        if (folder.empty() && !projectRoot.empty()) {
-            setFolder(projectRoot);
-        }
-        refresh();
-    }
+    void enableSidebar() override { refresh(); }
     void disableSidebar() override {}
     void layout() override {}
     std::string getName() override { return _("Projects"); }
     std::string getIconName() override { return "folder-open-symbolic"; }
     bool hasData() override { return true; }
     GtkWidget* getWidget() override { return root; }
+    void openProjectFolder() override { chooseFolder(); }
     void documentChanged(DocumentChangeType) override {
         const auto documentPath = control->getDocument()->getFilepath();
         if (!projectRoot.empty() && !documentPath.empty() &&
@@ -364,6 +361,10 @@ private:
             showMessage(_("The selected folder could not be opened."));
             return;
         }
+        if (!projectRoot.empty() && !Util::isChildOrEquivalent(absolute, projectRoot)) {
+            showMessage(_("Folders outside the open project cannot be browsed."));
+            return;
+        }
         this->folder = std::move(absolute);
         gtk_entry_set_text(folderEntry, utf8(this->folder).c_str());
         refreshFiles();
@@ -406,7 +407,10 @@ private:
     void chooseFolder() {
         auto* chooser = gtk_file_chooser_native_new(_("Choose project folder"), parent,
                                                    GTK_FILE_CHOOSER_ACTION_SELECT_FOLDER, _("Open"), _("Cancel"));
-        if (auto uri = Util::toUri(projectRoot.empty() ? fs::path(g_get_home_dir()) : folder)) {
+        const auto initialFolder = folder.empty() ?
+                                           (projectRoot.empty() ? fs::path(g_get_home_dir()) : projectRoot) :
+                                           folder;
+        if (auto uri = Util::toUri(initialFolder)) {
             gtk_file_chooser_set_current_folder_uri(GTK_FILE_CHOOSER(chooser), uri->c_str());
         }
         g_signal_connect(chooser, "response", G_CALLBACK(+[](GtkNativeDialog* dialog, gint response, gpointer data) {
@@ -466,8 +470,10 @@ private:
         auto byName = [](const auto& a, const auto& b) { return a.path().filename() < b.path().filename(); };
         std::sort(directories.begin(), directories.end(), byName);
         std::sort(files.begin(), files.end(), byName);
-        if (folder.has_parent_path() && folder != folder.root_path()) {
-            gtk_list_box_insert(fileList, createRow(folder.parent_path(), "..", true, false), -1);
+        const auto parent = folder.parent_path();
+        if (folder.has_parent_path() && folder != folder.root_path() &&
+            (projectRoot.empty() || Util::isChildOrEquivalent(parent, projectRoot))) {
+            gtk_list_box_insert(fileList, createRow(parent, "..", true, false), -1);
         }
         for (const auto& entry: directories) {
             gtk_list_box_insert(fileList, createRow(entry.path(), utf8(entry.path().filename()), true, false), -1);

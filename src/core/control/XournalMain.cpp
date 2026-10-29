@@ -32,6 +32,7 @@
 #include "gui/GladeSearchpath.h"             // for GladeSearchpath
 #include "gui/MainWindow.h"                  // for MainWindow
 #include "gui/XournalView.h"                 // for XournalView
+#include "gui/sidebar/Sidebar.h"             // for Sidebar
 #include "model/Document.h"                  // for Document
 #include "undo/EmergencySaveRestore.h"       // for EmergencySaveRestore
 #include "undo/UndoRedoHandler.h"            // for UndoRedoHandler
@@ -303,6 +304,7 @@ struct XournalMainPrivate {
     gboolean disableAudio = false;
     gboolean attachMode = false;
     gchar* exportPdfBackend{};
+    bool openFileRequested{};
     std::unique_ptr<GladeSearchpath> gladePath;
     std::unique_ptr<Control> control;
     std::unique_ptr<MainWindow> win;
@@ -397,6 +399,7 @@ void on_open_files(GApplication* application, gpointer f, gint numFiles, gchar* 
     if (numFiles <= 0) {
         return;
     }
+    app_data->openFileRequested = true;
     auto* files = (GFile**)f;
     if (numFiles != 1) {
         const std::string msg = _("Sorry, Xournal++ can only open one file at once.\n"
@@ -492,7 +495,8 @@ void on_startup(GApplication* application, XMPtr app_data) {
     const bool showProjectStartScreen = p.empty();
     app_data->control->openFileWithoutSavingTheCurrentDocument(
             std::move(p), app_data->attachMode, app_data->openAtPageNumber - 1,
-            [ctrl = app_data->control.get(), app = GTK_APPLICATION(application), showProjectStartScreen](bool) {
+            [ctrl = app_data->control.get(), app = GTK_APPLICATION(application), app_data,
+             showProjectStartScreen](bool) {
                 ctrl->getScheduler()->start();
 
                 checkForEmergencySave(ctrl);
@@ -501,8 +505,10 @@ void on_startup(GApplication* application, XMPtr app_data) {
                 // This fixes it, see #405
                 Util::execInUiThread([ctrl]() { ctrl->getWindow()->getXournal()->layoutPages(); });
                 gtk_application_add_window(app, ctrl->getGtkWindow());
-                if (showProjectStartScreen) {
+                if (showProjectStartScreen && !app_data->openFileRequested) {
                     ctrl->getWindow()->showWelcomeScreen();
+                    ctrl->getWindow()->setSidebarVisible(true);
+                    ctrl->getSidebar()->selectProjectExplorer();
                 }
             });
 }

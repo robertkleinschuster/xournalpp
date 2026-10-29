@@ -79,6 +79,16 @@ void Menubar::populate(const GladeSearchpath* gladeSearchPath, MainWindow* win) 
                      this);
     g_action_map_add_action(G_ACTION_MAP(window), G_ACTION(projectExplorerAction.get()));
 
+    openRepositoryAction.reset(g_simple_action_new("open-repository", nullptr), xoj::util::adopt);
+    g_signal_connect(openRepositoryAction.get(), "activate",
+                     G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
+                         auto* self = static_cast<Menubar*>(data);
+                         self->control->getWindow()->setSidebarVisible(true);
+                         self->control->getSidebar()->openProjectFolder();
+                     }),
+                     this);
+    g_action_map_add_action(G_ACTION_MAP(window), G_ACTION(openRepositoryAction.get()));
+
     recentDocumentsSubmenu = std::make_unique<RecentDocumentsSubmenu>(ctrl, GTK_APPLICATION_WINDOW(win->getWindow()));
     toolbarSelectionSubmenu =
             std::make_unique<ToolbarSelectionSubmenu>(win, ctrl->getSettings(), win->getToolMenuHandler());

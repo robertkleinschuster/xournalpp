@@ -37,7 +37,9 @@ Sidebar::Sidebar(GladeGui* gui, Control* control): control(control) {
 }
 
 void Sidebar::initTabs(GtkWidget* sidebarContents) {
-    addTab(createProjectExplorerSidebar(this->control));
+    auto projectExplorer = createProjectExplorerSidebar(this->control);
+    projectExplorerActions = dynamic_cast<ProjectExplorerSidebarActions*>(projectExplorer.get());
+    addTab(std::move(projectExplorer));
     addTab(std::make_unique<SidebarIndexPage>(this->control));
     addTab(std::make_unique<SidebarPreviewPages>(this->control));
     addTab(std::make_unique<SidebarPreviewLayers>(this->control, false));
@@ -119,6 +121,13 @@ void Sidebar::setSelectedTab(size_t tab) {
 void Sidebar::selectProjectExplorer() {
     if (!tabs.empty()) {
         setSelectedTab(0);
+    }
+}
+
+void Sidebar::openProjectFolder() {
+    if (projectExplorerActions) {
+        selectProjectExplorer();
+        projectExplorerActions->openProjectFolder();
     }
 }
 

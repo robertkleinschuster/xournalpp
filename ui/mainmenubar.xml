@@ -15,6 +15,10 @@
      <attribute name="accel">&lt;Ctrl&gt;o</attribute>
     </item>
     <item>
+     <attribute name="label" translatable="yes">Open Repository...</attribute>
+     <attribute name="action">win.open-repository</attribute>
+    </item>
+    <item>
      <attribute name="label" translatable="yes">Project Explorer</attribute>
      <attribute name="action">win.project-explorer</attribute>
     </item>

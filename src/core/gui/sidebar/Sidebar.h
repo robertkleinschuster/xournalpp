@@ -24,6 +24,7 @@ class AbstractSidebarPage;
 class Control;
 class GladeGui;
 class SidebarTabButton;
+class ProjectExplorerSidebarActions;
 
 class Sidebar: public DocumentListener {
 public:
@@ -78,6 +79,7 @@ public:
      */
     void setSelectedTab(size_t tab);
     void selectProjectExplorer();
+    void openProjectFolder();
 
 public:
     // DocumentListener interface
@@ -127,6 +129,7 @@ private:
      * The sidebarContents widget
      */
     GtkWidget* sidebarContents = nullptr;
+    ProjectExplorerSidebarActions* projectExplorerActions = nullptr;
 };
 
 class SidebarTabButton {

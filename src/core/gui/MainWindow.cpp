@@ -320,6 +320,8 @@ void MainWindow::initXournalWidget() {
     setGtkTouchscreenScrollingForDeviceMapping();
 
     documentStack = gtk_stack_new();
+    gtk_widget_set_hexpand(documentStack, true);
+    gtk_widget_set_vexpand(documentStack, true);
     gtk_box_append(GTK_BOX(get("boxContents")), documentStack);
     gtk_stack_add_named(GTK_STACK(documentStack), winXournal, "document");
 
@@ -343,10 +345,15 @@ void MainWindow::initXournalWidget() {
     addWelcomeButton(_("New document"), G_CALLBACK(+[](GtkButton*, gpointer data) {
                           static_cast<Control*>(data)->newFile();
                       }));
-    addWelcomeButton(_("Open document…"), G_CALLBACK(+[](GtkButton*, gpointer data) {
+    addWelcomeButton(_("Open Repository..."), G_CALLBACK(+[](GtkButton*, gpointer data) {
+                          auto* control = static_cast<Control*>(data);
+                          control->getWindow()->setSidebarVisible(true);
+                          control->getSidebar()->openProjectFolder();
+                      }));
+    addWelcomeButton(_("Open document..."), G_CALLBACK(+[](GtkButton*, gpointer data) {
                           static_cast<Control*>(data)->askToOpenFile();
                       }));
-    addWelcomeButton(_("Annotate a PDF…"), G_CALLBACK(+[](GtkButton*, gpointer data) {
+    addWelcomeButton(_("Annotate a PDF..."), G_CALLBACK(+[](GtkButton*, gpointer data) {
                           static_cast<Control*>(data)->askToAnnotatePdf();
                       }));
     gtk_stack_add_named(GTK_STACK(documentStack), welcome, "welcome");
@@ -357,7 +364,7 @@ void MainWindow::initXournalWidget() {
     this->xournal = std::make_unique<XournalView>(winXournal, control, scrollHandling.get());
 
     control->getZoomControl()->initZoomHandler(this->window, winXournal, xournal.get(), control);
-    gtk_widget_show_all(winXournal);
+    gtk_widget_show_all(documentStack);
 }
 
 void MainWindow::showWelcomeScreen() {
