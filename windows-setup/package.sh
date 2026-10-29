@@ -114,7 +114,23 @@ cp "$prefix"/lib/libqpdf* "$setup_dir"/lib
 
 echo "create installer"
 version=$(cat "$build_dir/VERSION" | sed '1!d')
-"/c/Program Files (x86)/NSIS/Bin/makensis.exe" -NOCD       \
+makensis=$(command -v makensis.exe || command -v makensis || true)
+if [ -z "$makensis" ]; then
+    for candidate in \
+        "/c/Program Files (x86)/NSIS/makensis.exe" \
+        "/c/Program Files (x86)/NSIS/Bin/makensis.exe"; do
+        if [ -x "$candidate" ]; then
+            makensis="$candidate"
+            break
+        fi
+    done
+fi
+if [ -z "$makensis" ]; then
+    echo "NSIS makensis.exe was not found on PATH or in the standard installation directories" >&2
+    exit 1
+fi
+
+"$makensis" -NOCD       \
     -DXOURNALPP_VERSION="$version"                         \
     -DSETUP_DIR="$setup_dir"                               \
     -DOUTPUT_INSTALLER_FILE="$build_dir/$installer_name"   \
