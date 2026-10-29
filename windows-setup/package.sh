@@ -117,6 +117,7 @@ version=$(cat "$build_dir/VERSION" | sed '1!d')
 makensis=$(command -v makensis.exe || command -v makensis || true)
 if [ -z "$makensis" ]; then
     for candidate in \
+        "$prefix/bin/makensis.exe" \
         "/c/Program Files (x86)/NSIS/makensis.exe" \
         "/c/Program Files (x86)/NSIS/Bin/makensis.exe"; do
         if [ -x "$candidate" ]; then
