@@ -27,6 +27,27 @@ Insert single pages or ranges from another PDF into the current document.
   - Render the inserted pages as image backgrounds. Simple, but loses vectors, text selection and search.
 - Needs a page picker dialog (thumbnails, ranges) and a target position.
 
+### Read-only PDF viewing, editing on request
+
+Make Xournal++ usable as a plain PDF viewer. Today opening a PDF immediately creates and saves `<name>.xopp`
+(`AnnotationFiles::createDocumentFileForPdf()`, called from `Control::openFileWithoutSavingTheCurrentDocument()`),
+and the annotated PDF is exported whenever a saved document is closed or saved explicitly.
+
+- Open PDFs read-only by default: no `.xopp` is created, drawing and editing tools are disabled, navigation, zoom,
+  search, text selection and copying keep working.
+- Show an info bar above the page, like Office's protected view: "Read-only. [Enable editing]". Enabling editing
+  creates the `.xopp` next to the PDF (default save name, as today) and switches to normal editing.
+- Export the annotated PDF only once the document actually has changes, not for an untouched `.xopp`.
+- Allow opening the original source PDF read-only even when its `.xopp` exists, e.g. from the project explorer
+  (nested source entry: "Open read-only" next to "Open" for the document), and possibly the exported PDF as well.
+- To decide:
+  - How read-only is enforced. Xournal++ has no read-only mode yet: disable the editing actions (`ActionDatabase`)
+    and block drawing input (`InputContext`), or a dedicated view mode.
+  - Interplay with the "autoload .xopp for PDF" setting: opening a PDF that has a `.xopp` should still open the
+    `.xopp` for editing, unless the read-only view was explicitly chosen.
+  - Whether the info bar also appears for `.xopp` documents in some cases (e.g. files from the exported PDF).
+  - Behaviour on touch: the bar must be easy to hit with a finger.
+
 ## Ideas put on hold
 
 Discussed during development and deliberately not done yet.
