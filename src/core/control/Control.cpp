@@ -305,6 +305,9 @@ void Control::initWindow(MainWindow* win, bool disableAudio) {
                     try {
                         self->audioController = std::make_unique<AudioController>(self->settings, self);
                     } catch (const std::exception& e) {
+                        // Hide the audio tools again; the menu entries stay, but report that audio is disabled
+                        self->audioEnabled = false;
+                        self->win->reloadToolbars();
                         XojMsgBox::showErrorToUser(
                                 self->getGtkWindow(),
                                 FC(_F("Initialization of audio devices failed. You can disable audio support in "
