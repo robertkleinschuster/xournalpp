@@ -17,25 +17,56 @@ constexpr guint SAVE_DELAY_MS = 3000;
 constexpr guint RETRY_DELAY_MS = 2000;
 }  // namespace
 
+namespace {
+/// Whether any window of this application has the focus, e.g. a dialog opened from the main window
+auto applicationHasFocus() -> bool {
+    GList* windows = gtk_window_list_toplevels();
+    bool active = false;
+    for (GList* item = windows; item && !active; item = item->next) {
+        active = gtk_window_is_active(GTK_WINDOW(item->data));
+    }
+    g_list_free(windows);
+    return active;
+}
+}  // namespace
+
 DocumentAutoSaver::DocumentAutoSaver(Control* control): control(control) {
     control->getUndoRedoHandler()->addUndoRedoListener(this);
-    focusHandler = g_signal_connect(control->getGtkWindow(), "notify::is-active",
-                                    G_CALLBACK(+[](GObject* window, GParamSpec*, gpointer data) {
-                                        if (!gtk_window_is_active(GTK_WINDOW(window))) {
-                                            static_cast<DocumentAutoSaver*>(data)->trySave();
+    window = control->getGtkWindow();
+    // The window is destroyed before the Control (and this object) on shutdown
+    g_object_add_weak_pointer(G_OBJECT(window), reinterpret_cast<gpointer*>(&window));
+    focusHandler = g_signal_connect(window, "notify::is-active", G_CALLBACK(+[](GObject*, GParamSpec*, gpointer data) {
+                                        auto* self = static_cast<DocumentAutoSaver*>(data);
+                                        // Decide once focus has settled: switching to one of our own dialogs (like
+                                        // "Save changes?" when quitting) must not trigger a save
+                                        if (!self->focusCheck) {
+                                            self->focusCheck = g_idle_add(+[](gpointer data) -> gboolean {
+                                                auto* self = static_cast<DocumentAutoSaver*>(data);
+                                                self->focusCheck = 0;
+                                                if (!applicationHasFocus()) {
+                                                    self->trySave();
+                                                }
+                                                return G_SOURCE_REMOVE;
+                                            }, self);
                                         }
                                     }),
                                     this);
 }
 
 DocumentAutoSaver::~DocumentAutoSaver() {
-    if (timer) {
-        g_source_remove(timer);
+    for (guint source: {timer, focusCheck}) {
+        if (source) {
+            g_source_remove(source);
+        }
     }
-    if (focusHandler) {
-        g_signal_handler_disconnect(control->getGtkWindow(), focusHandler);
+    if (window) {
+        g_signal_handler_disconnect(window, focusHandler);
+        g_object_remove_weak_pointer(G_OBJECT(window), reinterpret_cast<gpointer*>(&window));
     }
-    control->getUndoRedoHandler()->removeUndoRedoListener(this);
+    // The Control deletes its UndoRedoHandler before the sidebar that owns this object
+    if (auto* undoRedo = control->getUndoRedoHandler()) {
+        undoRedo->removeUndoRedoListener(this);
+    }
 }
 
 void DocumentAutoSaver::undoRedoChanged() {

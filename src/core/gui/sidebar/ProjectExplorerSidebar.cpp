@@ -330,6 +330,10 @@ public:
 
         gtk_widget_show_all(root);
         gtk_widget_hide(syncButton);
+        // Reset to nullptr by GLib when the widgets are destroyed, see the destructor
+        g_object_add_weak_pointer(G_OBJECT(syncButton), reinterpret_cast<gpointer*>(&syncButton));
+        g_object_add_weak_pointer(G_OBJECT(tree), reinterpret_cast<gpointer*>(&tree));
+        g_object_add_weak_pointer(G_OBJECT(searchEntry), reinterpret_cast<gpointer*>(&searchEntry));
 
         loadState();
         registerListener(control);
@@ -366,10 +370,20 @@ public:
             }
         }
         clearMonitors();
-        g_signal_handlers_disconnect_by_data(syncButton, this);
-        g_signal_handlers_disconnect_by_data(gtk_tree_view_get_selection(tree), this);
-        g_signal_handlers_disconnect_by_data(tree, this);
-        g_signal_handlers_disconnect_by_data(searchEntry, this);
+        // On shutdown the main window destroys these widgets before the sidebar is deleted
+        if (syncButton) {
+            g_signal_handlers_disconnect_by_data(syncButton, this);
+            g_object_remove_weak_pointer(G_OBJECT(syncButton), reinterpret_cast<gpointer*>(&syncButton));
+        }
+        if (tree) {
+            g_signal_handlers_disconnect_by_data(gtk_tree_view_get_selection(tree), this);
+            g_signal_handlers_disconnect_by_data(tree, this);
+            g_object_remove_weak_pointer(G_OBJECT(tree), reinterpret_cast<gpointer*>(&tree));
+        }
+        if (searchEntry) {
+            g_signal_handlers_disconnect_by_data(searchEntry, this);
+            g_object_remove_weak_pointer(G_OBJECT(searchEntry), reinterpret_cast<gpointer*>(&searchEntry));
+        }
         g_object_unref(longPress);
         g_object_unref(root);
         for (auto* icon: {folderIcon, folderOpenIcon, imageIcon, fileIcon, xournalIcon, pdfIcon}) {

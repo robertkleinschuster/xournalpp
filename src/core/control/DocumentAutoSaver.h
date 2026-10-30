@@ -12,7 +12,7 @@
 #include <memory>
 #include <vector>
 
-#include <glib.h>
+#include <gtk/gtk.h>
 
 #include "undo/UndoRedoHandler.h"
 
@@ -48,7 +48,10 @@ private:
     void startSave();
 
     Control* control;
+    /// Main window, reset to nullptr by GLib once it is destroyed
+    GtkWindow* window = nullptr;
     guint timer = 0;
+    guint focusCheck = 0;
     gulong focusHandler = 0;
     bool saving = false;
     /// Callbacks of saveNow() waiting for the running save
