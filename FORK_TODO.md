@@ -48,6 +48,20 @@ and the annotated PDF is exported whenever a saved document is closed or saved e
   - Whether the info bar also appears for `.xopp` documents in some cases (e.g. files from the exported PDF).
   - Behaviour on touch: the bar must be easy to hit with a finger.
 
+### todo.txt support
+
+Support task lists in the [todo.txt format](https://github.com/todotxt/todo.txt) (one task per line, `x` for done,
+`(A)` priorities, `+project` and `@context` tags, `due:` dates) in the project folder.
+
+- Show `todo.txt` files in the project explorer with their own icon (today only `.xopp`, PDFs and images get one).
+- To decide:
+  - Scope: open and edit the list in a simple view inside Xournal++ (check off, add, edit, sort by priority/due
+    date), or only show it in the explorer and open it in the system's default editor.
+  - Where the list lives: one `todo.txt` at the project root, or one per folder (e.g. per course).
+  - Whether tasks can link to documents (e.g. a `file:` tag that opens the `.xopp`), and whether open tasks or
+    due dates are shown in the explorer.
+  - Git: the file is synced like any other file by the existing sync button; no extra Git UI.
+
 ## Ideas put on hold
 
 Discussed during development and deliberately not done yet.
