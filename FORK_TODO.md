@@ -31,9 +31,6 @@ Insert single pages or ranges from another PDF into the current document.
 
 Discussed during development and deliberately not done yet.
 
-- **Upstream contributions**: the touch fixes (taps on buttons on Windows, forgetting touches that ended without an
-  end event — xournalpp/xournalpp#5289, applying touch motion once per frame) and the save/export speedups are not
-  fork specific and could be proposed upstream.
 - **Momentum scrolling** in Xournal's own touch handling (GTK's kinetic scrolling is disabled because of side effects).
 - **Zoom start threshold**: `touchZoomStartThreshold` is 0, so two-finger panning always zooms slightly; a default
   around 5–8 % might feel calmer.
