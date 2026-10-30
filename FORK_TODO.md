@@ -53,8 +53,6 @@ and the annotated PDF is exported whenever a saved document is closed or saved e
 Discussed during development and deliberately not done yet.
 
 - **Momentum scrolling** in Xournal's own touch handling (GTK's kinetic scrolling is disabled because of side effects).
-- **Zoom start threshold**: `touchZoomStartThreshold` is 0, so two-finger panning always zooms slightly; a default
-  around 5–8 % might feel calmer.
 - **Two-finger tap to undo**, **zoom snapping** to 100 % / page width at the end of a pinch.
 - **Explorer refresh after saving**: Xournal briefly creates and deletes `<name>.xopp~` while saving, which makes
   the project explorer rebuild its tree; rebuilding only when the visible entries changed would avoid that.
