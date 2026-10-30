@@ -409,10 +409,15 @@ public:
     }
 
     void enableSidebar() override {
-        refresh(true);
+        // Rebuilding the whole tree is expensive and also happens whenever a document is opened, so only do it
+        // when coming back from another tab
+        if (refreshOnEnable) {
+            refreshOnEnable = false;
+            refresh(true);
+        }
         refreshGit();
     }
-    void disableSidebar() override {}
+    void disableSidebar() override { refreshOnEnable = true; }
     void layout() override {}
     std::string getName() override { return _("Project Explorer"); }
     std::string getIconName() override { return "folder-open-symbolic"; }
@@ -1906,6 +1911,8 @@ private:
     guint saveSource = 0;
     std::map<std::string, GFileMonitor*> monitors;
     guint refreshSource = 0;
+    /// Whether another sidebar tab was shown since the tree was built (the file monitors keep it current otherwise)
+    bool refreshOnEnable = false;
     guint scrollSource = 0;
     double pendingScroll = 0;
 };
