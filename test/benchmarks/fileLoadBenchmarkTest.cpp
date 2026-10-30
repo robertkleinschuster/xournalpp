@@ -21,6 +21,7 @@
 #include "model/Document.h"
 #include "model/PageRef.h"
 #include "model/XojPage.h"
+#include "util/OutputStream.h"
 #include "util/PathUtil.h"
 
 #include "filesystem.h"
@@ -91,3 +92,58 @@ TEST(FileLoadBenchmark, benchmarkManyPages) {
     // Clean up test file
     fs::remove(tmp_path);
 }
+
+static void benchSaveFile(const fs::path& filename, int iterations) {
+    auto doc = LoadHandler{}.loadDocument(filename);
+    ASSERT_TRUE(doc);
+    const auto target = Util::getTmpDirSubfolder() / u8"save-benchmark.xopp";
+    gint64 prepare = 0;
+    gint64 write = 0;
+    for (int i = 0; i < iterations; ++i) {
+        SaveHandler handler;
+        const auto start = g_get_monotonic_time();
+        handler.prepareSave(doc.get(), target);
+        const auto prepared = g_get_monotonic_time();
+        handler.saveTo(target);
+        const auto stop = g_get_monotonic_time();
+        prepare += prepared - start;
+        write += stop - prepared;
+    }
+    std::cout << "Saved " << filename << ' ' << iterations << " times: prepareSave " << prepare / 1000
+              << "ms, saveTo " << write / 1000 << "ms (" << fs::file_size(target) << " bytes).\n";
+    fs::remove(target);
+}
+
+TEST(FileSaveBenchmark, benchmarkHandwrittenText) {
+    benchSaveFile(GET_TESTFILE(u8"benchmark/handwritten-text.xopp"), 10);
+}
+
+namespace {
+/// Discards all output, to measure the XML formatting without compression and disk access
+class NullOutputStream: public OutputStream {
+public:
+    void write(const char*, size_t len) override { bytes += len; }
+    void close() override {}
+    size_t bytes = 0;
+};
+}  // namespace
+
+TEST(FileSaveBenchmark, benchmarkHandwrittenTextFormattingOnly) {
+    auto doc = LoadHandler{}.loadDocument(GET_TESTFILE(u8"benchmark/handwritten-text.xopp"));
+    ASSERT_TRUE(doc);
+    const auto target = Util::getTmpDirSubfolder() / u8"save-benchmark.xopp";
+    gint64 total = 0;
+    size_t bytes = 0;
+    for (int i = 0; i < 10; ++i) {
+        SaveHandler handler;
+        handler.prepareSave(doc.get(), target);
+        NullOutputStream out;
+        const auto start = g_get_monotonic_time();
+        handler.saveTo(&out, target);
+        total += g_get_monotonic_time() - start;
+        bytes = out.bytes;
+    }
+    std::cout << "Formatted handwritten-text 10 times in " << total / 1000 << "ms (" << bytes
+              << " uncompressed bytes).\n";
+}
+
