@@ -1,6 +1,7 @@
 #include "util/Util.h"
 
 #include <array>    // for array
+#include <charconv>  // for to_chars
 #include <cstdlib>  // for system
 #include <string>   // for allocator, string
 #include <utility>  // for move
@@ -52,13 +53,25 @@ void Util::cairo_set_dash_from_vector(cairo_t* cr, const std::vector<double>& da
     cairo_set_dash(cr, dashes.data(), static_cast<int>(dashes.size()), offset);
 }
 
+void Util::writeDouble(OutputStream* out, double value) {
+    std::array<char, G_ASCII_DTOSTR_BUF_SIZE> buffer{};
+#if defined(__cpp_lib_to_chars) && __cpp_lib_to_chars >= 201611L
+    // Specified to produce the same output as printf("%.8g") in the C locale
+    const auto [end, error] =
+            std::to_chars(buffer.data(), buffer.data() + buffer.size(), value, std::chars_format::general, 8);
+    if (error == std::errc()) {
+        out->write(buffer.data(), static_cast<size_t>(end - buffer.data()));
+        return;
+    }
+#endif
+    g_ascii_formatd(buffer.data(), G_ASCII_DTOSTR_BUF_SIZE, Util::PRECISION_FORMAT_STRING, value);
+    out->write(buffer.data());
+}
+
 void Util::writeCoordinateString(OutputStream* out, double xVal, double yVal) {
-    std::array<char, G_ASCII_DTOSTR_BUF_SIZE> coordString{};
-    g_ascii_formatd(coordString.data(), G_ASCII_DTOSTR_BUF_SIZE, Util::PRECISION_FORMAT_STRING, xVal);
-    out->write(coordString.data());
+    writeDouble(out, xVal);
     out->write(" ");
-    g_ascii_formatd(coordString.data(), G_ASCII_DTOSTR_BUF_SIZE, Util::PRECISION_FORMAT_STRING, yVal);
-    out->write(coordString.data());
+    writeDouble(out, yVal);
 }
 
 void Util::systemWithMessage(const char* command) {

@@ -84,6 +84,13 @@ extern void writeCoordinateString(OutputStream* out, double xVal, double yVal);
 
 constexpr const gchar* PRECISION_FORMAT_STRING = "%.8g";
 
+/**
+ * Writes value formatted like g_ascii_formatd() with PRECISION_FORMAT_STRING (C locale, "%.8g").
+ * Fork: uses std::to_chars where available, which is many times faster than the printf-based glib function and
+ * dominated the time spent saving documents with handwriting.
+ */
+extern void writeDouble(OutputStream* out, double value);
+
 constexpr const auto DPI_NORMALIZATION_FACTOR = 72.0;
 
 /**
