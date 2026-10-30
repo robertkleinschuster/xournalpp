@@ -25,6 +25,7 @@
 #include "undo/UndoRedoHandler.h"
 #include "util/PathUtil.h"
 #include "util/Util.h"
+#include "util/XojMsgBox.h"
 #include "util/i18n.h"
 
 namespace fs = std::filesystem;
@@ -253,7 +254,8 @@ public:
         g_signal_connect(searchEntry, "activate", G_CALLBACK(+[](GtkEntry*, gpointer data) {
                              static_cast<ProjectExplorerSidebar*>(data)->openFirstDocument();
                          }), this);
-        g_signal_connect(searchEntry, "key-press-event", G_CALLBACK(+[](GtkWidget*, GdkEventKey* event, gpointer data) -> gboolean {
+        g_signal_connect(searchEntry, "key-press-event",
+                         G_CALLBACK(+[](GtkWidget*, GdkEventKey* event, gpointer data) -> gboolean {
                              if (event->keyval != GDK_KEY_Down) {
                                  return FALSE;
                              }
@@ -536,8 +538,12 @@ private:
             if (path.extension() != ".xopp") {
                 continue;
             }
-            auto source = path;
-            source.replace_extension(".pdf");
+            // The PDF the document annotates (still right after renaming the document), or by name for older ones
+            auto source = AnnotationFiles::recordedSourcePdf(path);
+            if (source.empty() || source.parent_path() != dir) {
+                source = path;
+                source.replace_extension(".pdf");
+            }
             const auto exported = AnnotationFiles::exportPathForFile(path, *control->getSettings());
             for (const auto& candidate: {NestedFile{source, pdfIcon, _("Source PDF")},
                                          NestedFile{exported, annotatedPdfIcon, _("Exported PDF with annotations")}}) {
@@ -557,7 +563,8 @@ private:
             if (auto children = nested.find(utf8(path)); children != nested.end()) {
                 for (const auto& child: children->second) {
                     const auto childName = utf8(child.path.filename());
-                    auto childIter = appendNode(&fileIter, child.path, childName, KIND_NESTED, escape(childName), false);
+                    auto childIter =
+                            appendNode(&fileIter, child.path, childName, KIND_NESTED, escape(childName), false);
                     gtk_tree_store_set(store, &childIter, COL_ICON, child.icon, COL_TOOLTIP,
                                        escape(child.tooltip).c_str(), -1);
                 }
@@ -587,7 +594,8 @@ private:
                 rootName = utf8(projectRoot);
             }
             auto rootIter =
-                    appendNode(nullptr, projectRoot, rootName, KIND_DIRECTORY, "<b>" + escape(rootName) + "</b>", !searching);
+                    appendNode(nullptr, projectRoot, rootName, KIND_DIRECTORY, "<b>" + escape(rootName) + "</b>",
+                               !searching);
             if (searching) {
                 fillSearchResults(&rootIter);
                 gtk_tree_view_expand_all(tree);
@@ -840,7 +848,8 @@ private:
             }
             return;
         }
-        if (gitBusy && !done) {
+        // Background refreshes wait while another refresh or a sync is running; a sync refreshes itself (with done)
+        if ((gitBusy || syncing) && !done) {
             gitRefreshPending = true;
             return;
         }
@@ -854,8 +863,13 @@ private:
             }
             std::error_code error;
             const auto top = fs::weakly_canonical(pathFromUtf8(trim(result.output).c_str()), error);
-            ProjectGit::run(top, withPathspec({"status", "--porcelain=v1", "-z", "--branch", "--untracked-files=all"}), lifetime,
-                            [this, root, top, done](auto status) {
+            // Only the project folder (cwd and pathspec "."), which may be part of a larger repository. Porcelain
+            // paths are still relative to the repository root. --no-optional-locks keeps status from taking the
+            // index lock, which would make a concurrent commit fail.
+            ProjectGit::run(root,
+                            withPathspec({"--no-optional-locks", "status", "--porcelain=v1", "-z", "--branch",
+                                          "--untracked-files=all"}),
+                            lifetime, [this, root, top, done](auto status) {
                                 if (root == projectRoot && status.success) {
                                     gitToplevel = top;
                                     gitStatus = ProjectGit::parseStatus(status.output, top);
@@ -883,11 +897,19 @@ private:
 
     /// Fetches remote changes without any credential prompt, to show incoming commits
     void fetchRemote() {
-        if (!gitRepo || syncing || !gitStatus.hasUpstream) {
+        if (!gitRepo || syncing || fetchRunning || !gitStatus.hasUpstream) {
             return;
         }
+        fetchRunning = true;
         ProjectGit::run(gitToplevel, {"-c", "credential.interactive=false", "fetch", "--quiet"}, lifetime,
-                        [this](auto) { refreshGit(); });
+                        [this](auto) {
+                            fetchRunning = false;
+                            if (std::exchange(syncAfterFetch, false)) {
+                                beginSync();
+                            } else {
+                                refreshGit();
+                            }
+                        });
     }
 
     void startSync() {
@@ -896,6 +918,15 @@ private:
         }
         syncing = true;
         updateSyncButton();
+        // A running fetch holds ref locks the pull needs; continue when it is done
+        if (fetchRunning) {
+            syncAfterFetch = true;
+            return;
+        }
+        beginSync();
+    }
+
+    void beginSync() {
         // Changes in the open document have to be on disk to be committed
         const auto documentPath = control->getDocument()->getFilepath();
         if (!documentPath.empty() && Util::isChildOrEquivalent(documentPath, gitToplevel) &&
@@ -936,7 +967,8 @@ private:
                 syncPull();
                 return;
             }
-            ProjectGit::run(gitToplevel, withPathspec({"add", "-A"}), lifetime, [this](auto added) {
+            // Only the project folder: other changes in a larger repository are not part of this project
+            ProjectGit::run(projectRoot, withPathspec({"add", "-A"}), lifetime, [this](auto added) {
                 if (!added.success) {
                     finishSync(_("Your changes could not be committed."), added.error);
                     return;
@@ -989,12 +1021,29 @@ private:
     void reloadIfChanged(const fs::path& documentPath, fs::file_time_type before) {
         std::error_code error;
         if (documentPath.empty() || control->getDocument()->getFilepath() != documentPath ||
-            control->getUndoRedoHandler()->isChanged() || fs::last_write_time(documentPath, error) == before ||
-            error) {
+            fs::last_write_time(documentPath, error) == before || error) {
             return;
         }
-        const auto page = static_cast<int>(control->getCurrentPageNo());
-        control->openFileWithoutSavingTheCurrentDocument(documentPath, false, page, [](bool) {});
+        auto reload = [this, documentPath] {
+            const auto page = static_cast<int>(control->getCurrentPageNo());
+            control->openFileWithoutSavingTheCurrentDocument(documentPath, false, page, [](bool) {});
+        };
+        if (!control->getUndoRedoHandler()->isChanged()) {
+            reload();
+            return;
+        }
+        // Edited during the sync: saving now would silently overwrite the version just pulled
+        enum { RELOAD = 1, KEEP };
+        XojMsgBox::askQuestion(
+                parent, _("The open document was updated by the sync while you were editing it."),
+                _("Reload it to get the updated version (your changes since the sync are discarded), or keep your "
+                  "version (it replaces the updated one when you save)."),
+                {{_("Reload"), RELOAD}, {_("Keep my version"), KEEP}},
+                [reload, alive = std::weak_ptr<void>(lifetime)](int response) {
+                    if (!alive.expired() && response == RELOAD) {
+                        reload();
+                    }
+                });
     }
 
     void syncPush() {
@@ -1049,9 +1098,10 @@ private:
                          G_CALLBACK(+[](GFileMonitor*, GFile* file, GFile*, GFileMonitorEvent event, gpointer data) {
                              auto* self = static_cast<ProjectExplorerSidebar*>(data);
                              gchar* name = g_file_get_basename(file);
-                             const bool gitDirectory = name && std::strcmp(name, ".git") == 0;
+                             // Neither .git nor the backups Xournal++ writes while saving are shown in the tree
+                             const bool ignored = name && (std::strcmp(name, ".git") == 0 || isXournalBackup(name));
                              g_free(name);
-                             if (gitDirectory) {
+                             if (ignored) {
                                  return;
                              }
                              switch (event) {
@@ -1180,7 +1230,8 @@ private:
         for (bool valid = gtk_tree_model_iter_children(self->model(), &child, iter); valid;
              valid = gtk_tree_model_iter_next(self->model(), &child)) {
             // Folders and documents with nested PDFs
-            if (gtk_tree_model_iter_has_child(self->model(), &child) && self->expandedPaths.count(self->pathAt(&child))) {
+            if (gtk_tree_model_iter_has_child(self->model(), &child) &&
+                self->expandedPaths.count(self->pathAt(&child))) {
                 toExpand.push_back(gtk_tree_model_get_path(self->model(), &child));
             }
         }
@@ -1633,6 +1684,8 @@ private:
         }
         // Build an empty document with the default page template and write it like a normal save
         Document document(control);
+        // The export name is derived from the document's file name
+        document.setFilepath(path);
         control->addDefaultPage(std::nullopt, &document);
         SaveHandler handler;
         handler.prepareSave(&document, path);
@@ -1827,6 +1880,8 @@ private:
     bool gitBusy = false;
     bool gitRefreshPending = false;
     bool syncing = false;
+    bool fetchRunning = false;
+    bool syncAfterFetch = false;
     fs::path gitToplevel;
     ProjectGit::Status gitStatus;
     std::map<std::string, ProjectGit::FileState> directoryStates;

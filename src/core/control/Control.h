@@ -507,6 +507,8 @@ private:
     SearchBar* searchBar = nullptr;
 
     std::function<void(std::function<void()>)> beforeCloseHook;
+    /// Fork: completes close() once beforeCloseHook is done
+    void finishCloseAfterHook(std::function<void(bool)> callback, bool allowDestroy, bool allowCancel);
     std::function<void(bool)> userSavedHook;
 
     ToolHandler* toolHandler;

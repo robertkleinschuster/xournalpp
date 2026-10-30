@@ -120,6 +120,13 @@ struct ActionProperties<Action::SAVE> {
     // Fork: an explicit save also exports the annotated PDF
     static void callback(GSimpleAction*, GVariant*, Control* ctrl) {
         const bool changed = ctrl->getUndoRedoHandler()->isChanged();
+        const auto path = ctrl->getDocument()->getFilepath();
+        std::error_code error;
+        if (!changed && !path.empty() && fs::exists(path, error)) {
+            // Nothing to save: rewriting the file would only make its export look outdated
+            ctrl->notifyUserSaved(true, false);
+            return;
+        }
         ctrl->save([ctrl, changed](bool saved) { ctrl->notifyUserSaved(saved, changed); });
     }
 };

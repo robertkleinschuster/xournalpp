@@ -37,6 +37,13 @@ std::filesystem::path exportPathForFile(const std::filesystem::path& xopp, const
 /// The export file name recorded in a .xopp file (the "fork-export" attribute), or empty
 std::string recordedExportFilename(const std::filesystem::path& xopp);
 
+/// The PDF a .xopp file annotates (its first PDF background), or empty
+std::filesystem::path recordedSourcePdf(const std::filesystem::path& xopp);
+
+/// The .xopp document in the same folder that annotates pdf, if any, found by its recorded background
+/// (so it is found even after the document was renamed)
+std::optional<std::filesystem::path> documentForSource(const std::filesystem::path& pdf);
+
 /// The export file name to record when saving doc to target: the one already recorded there, or a new one
 std::string exportFilenameForSave(const Document& doc, const std::filesystem::path& target, const Settings& settings);
 

@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <fstream>
 
+#include <config-test.h>
 #include <gtest/gtest.h>
 
 #include "control/AnnotationFiles.h"
@@ -100,4 +101,33 @@ TEST_F(AnnotationFilesTest, documentWithRecordedExportNameStillLoads) {
 TEST_F(AnnotationFilesTest, sourceAndUnrelatedPdfsAreNoExports) {
     EXPECT_FALSE(AnnotationFiles::documentForExport(dir / "Blatt1.pdf", *settings));
     EXPECT_FALSE(AnnotationFiles::documentForExport(dir / "Skript.pdf", *settings));
+}
+
+TEST_F(AnnotationFilesTest, untrustedRecordedExportNamesAreRejected) {
+    // An edited or shared document must not make the export overwrite other files
+    for (const auto* value: {"Notes.xopp", "thesis.docx", "..", "sub/dir.pdf", "C:/other.pdf"}) {
+        std::ofstream(dir / "Edited.xopp") << "<?xml version=\"1.0\"?>\n<xournal fork-export=\"" << value << "\">";
+        EXPECT_EQ(AnnotationFiles::recordedExportFilename(dir / "Edited.xopp"), "") << value;
+    }
+    std::ofstream(dir / "Edited.xopp") << "<?xml version=\"1.0\"?>\n<xournal fork-export=\"Fine &amp; ok.pdf\">";
+    EXPECT_EQ(AnnotationFiles::recordedExportFilename(dir / "Edited.xopp"), "Fine & ok.pdf");
+}
+
+TEST_F(AnnotationFilesTest, renamedDocumentIsFoundByItsSourcePdf) {
+    fs::copy_file(GET_TESTFILE(u8"packaged_xopp/pdfBackground/old.xopp.bg.pdf"), dir / "Lecture.pdf");
+    DocumentHandler handler;
+    Document doc(&handler);
+    ASSERT_TRUE(doc.readPdf(dir / "Lecture.pdf", true, false));
+    const auto xopp = dir / "Renamed notes.xopp";
+    doc.setFilepath(xopp);
+    SaveHandler saver;
+    saver.prepareSave(&doc, xopp);
+    saver.saveTo(xopp);
+    ASSERT_TRUE(saver.getErrorMessage().empty()) << saver.getErrorMessage();
+
+    EXPECT_EQ(AnnotationFiles::recordedSourcePdf(xopp).filename(), "Lecture.pdf");
+    const auto found = AnnotationFiles::documentForSource(dir / "Lecture.pdf");
+    ASSERT_TRUE(found);
+    EXPECT_EQ(fs::path(*found).filename(), xopp.filename());
+    EXPECT_FALSE(AnnotationFiles::documentForSource(dir / "Skript.pdf"));
 }

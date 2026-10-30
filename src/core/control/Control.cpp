@@ -1801,6 +1801,13 @@ void Control::openFileWithoutSavingTheCurrentDocument(fs::path filepath, bool at
                 this->openXoppFile(std::move(*xopp), scrollToPage, std::move(callback));
                 return;
             }
+            // Fork: also find the document by the PDF it annotates, so it is found after being renamed
+            if (this->settings->isAutoloadPdfXoj()) {
+                if (auto xopp = AnnotationFiles::documentForSource(filepath)) {
+                    this->openXoppFile(std::move(*xopp), scrollToPage, std::move(callback));
+                    return;
+                }
+            }
         }
         if (!attachToDocument && this->settings->isAutoloadPdfXoj()) {
             const std::vector<std::string> exts = {".xopp", ".xoj", ".pdf.xopp", ".pdf.xoj"};
@@ -2263,39 +2270,56 @@ void Control::close(std::function<void(bool)> callback, const bool allowDestroy,
             buttons.emplace_back(_("Cancel"), CANCEL);
         }
         XojMsgBox::askQuestion(getGtkWindow(), message, std::string(), std::move(buttons),
-                               [ctrl = this, saveAs, allowDestroy, callback = std::move(callback)](int response) {
+                               [ctrl = this, saveAs, allowDestroy, allowCancel,
+                                callback = std::move(callback)](int response) mutable {
+                                   if (response == SAVE) {
+                                       ctrl->saveImpl(saveAs, [ctrl, allowDestroy, allowCancel,
+                                                               callback = std::move(callback)](bool saved) mutable {
+                                           if (saved && ctrl->beforeCloseHook) {
+                                               ctrl->beforeCloseHook([=]() mutable {
+                                                   ctrl->finishCloseAfterHook(std::move(callback), allowDestroy,
+                                                                              allowCancel);
+                                               });
+                                               return;
+                                           }
+                                           if (saved && allowDestroy) {
+                                               ctrl->closeDocument();
+                                           }
+                                           callback(saved);
+                                       });
+                                       return;
+                                   }
                                    auto execAfter = [allowDestroy, ctrl, cb = std::move(callback)](bool saved) {
                                        if (saved && allowDestroy) {
                                            ctrl->closeDocument();
                                        }
                                        cb(saved);
                                    };
-                                   if (response == SAVE) {
-                                       ctrl->saveImpl(saveAs, [ctrl, execAfter = std::move(execAfter)](bool saved) {
-                                           if (saved && ctrl->beforeCloseHook) {
-                                               ctrl->beforeCloseHook([execAfter] { execAfter(true); });
-                                           } else {
-                                               execAfter(saved);
-                                           }
-                                       });
-                                       return;
-                                   }
                                    bool safeToClose = response == DISCARD;
                                    execAfter(safeToClose);
                                });
+    } else if (beforeCloseHook && !forceClose) {
+        beforeCloseHook([ctrl = this, allowDestroy, allowCancel, callback = std::move(callback)]() mutable {
+            ctrl->finishCloseAfterHook(std::move(callback), allowDestroy, allowCancel);
+        });
     } else {
-        auto proceed = [ctrl = this, allowDestroy, callback = std::move(callback)] {
-            if (allowDestroy) {
-                ctrl->closeDocument();
-            }
-            callback(true);
-        };
-        if (beforeCloseHook && !forceClose) {
-            beforeCloseHook(std::move(proceed));
-        } else {
-            proceed();
+        if (allowDestroy) {
+            this->closeDocument();
         }
+        callback(true);
     }
+}
+
+void Control::finishCloseAfterHook(std::function<void(bool)> callback, bool allowDestroy, bool allowCancel) {
+    if (undoRedo->isChanged()) {
+        // The document was edited while the hook ran (e.g. during the PDF export): ask again instead of losing it
+        close(std::move(callback), allowDestroy, allowCancel);
+        return;
+    }
+    if (allowDestroy) {
+        closeDocument();
+    }
+    callback(true);
 }
 
 void Control::closeDocument() {

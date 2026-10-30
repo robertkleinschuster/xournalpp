@@ -1,5 +1,7 @@
 #include "AnnotationFiles.h"
 
+#include <cstring>
+#include <fstream>
 #include <memory>
 #include <string_view>
 #include <utility>
@@ -38,18 +40,24 @@ public:
 
     void run() override {
         PdfExportJob::run();
-        // PdfExportJob only reports back on errors
-        callAfterRun();
+        // PdfExportJob only reports back on errors (and only while there is a window), so report success here.
+        // Calling callAfterRun() twice would run afterRun() twice.
+        if (this->errorMsg.empty() || !control->getWindow()) {
+            callAfterRun();
+        }
     }
 
     void afterRun() override {
         PdfExportJob::afterRun();  // shows an error, if any
+        if (!done) {
+            return;
+        }
         // Continue after the blocking job has unblocked the UI, which is queued just like this callback
         g_idle_add(+[](gpointer data) -> gboolean {
             std::unique_ptr<std::function<void()>> callback(static_cast<std::function<void()>*>(data));
             (*callback)();
             return G_SOURCE_REMOVE;
-        }, new std::function<void()>(std::move(done)));
+        }, new std::function<void()>(std::exchange(done, {})));
     }
 
 private:
@@ -74,7 +82,8 @@ auto pathFromUtf8(const std::string& value) -> fs::path {
 /// Export path following the export name setting
 auto exportPathFromSetting(const Document& doc, const fs::path& xopp, const Settings& settings) -> fs::path {
     auto target = xopp.parent_path() /
-                  doc.createSaveFilename(Document::PDF, settings.getDefaultSaveName(), settings.getDefaultPdfExportName());
+                  doc.createSaveFilename(Document::PDF, settings.getDefaultSaveName(),
+                                         settings.getDefaultPdfExportName());
     target += ".pdf";
     return target;
 }
@@ -85,6 +94,20 @@ auto safeTarget(fs::path target, const fs::path& xopp, const fs::path& source) -
         return {};
     }
     return target;
+}
+
+/// Whether files can be created in dir; checked by actually creating (and removing) a probe file
+auto isWritableDirectory(const fs::path& dir) -> bool {
+    const auto probe = dir / ".xournalpp-write-test";
+    {
+        std::ofstream file(probe, std::ios::binary | std::ios::trunc);
+        if (!file) {
+            return false;
+        }
+    }
+    std::error_code error;
+    fs::remove(probe, error);
+    return true;
 }
 
 auto unescapeXml(std::string_view value) -> std::string {
@@ -110,44 +133,101 @@ auto unescapeXml(std::string_view value) -> std::string {
 
 }  // namespace
 
-auto AnnotationFiles::recordedExportFilename(const fs::path& xopp) -> std::string {
+namespace {
+/**
+ * Reads an attribute of the first element starting with tagStart from the beginning of a .xopp file, without loading
+ * the document. Only the first maxBytes (decompressed) are searched.
+ */
+auto readXoppAttribute(const fs::path& xopp, std::string_view tagStart, std::string_view attribute, size_t maxBytes)
+        -> std::string {
     std::error_code error;
     if (!fs::is_regular_file(xopp, error)) {
         return {};
     }
-    // The attribute is on the root element at the very beginning; no need to load the document
     std::string header;
+    size_t tagPos = std::string::npos;
     try {
         xoj::util::GzInputStream input(xopp);
         char buffer[4096];
         int read = 0;
-        while (header.size() < 16384 && (read = input.read(buffer, sizeof(buffer))) > 0) {
+        while (header.size() < maxBytes && (read = input.read(buffer, sizeof(buffer))) > 0) {
             header.append(buffer, static_cast<size_t>(read));
-            if (header.find('>', header.find("<xournal")) != std::string::npos) {
+            tagPos = header.find(tagStart);
+            if (tagPos != std::string::npos && header.find('>', tagPos) != std::string::npos) {
                 break;
             }
         }
     } catch (const std::exception&) {
         return {};
     }
-    const auto tagStart = header.find("<xournal");
-    const auto tagEnd = header.find('>', tagStart);
-    if (tagStart == std::string::npos || tagEnd == std::string::npos) {
+    tagPos = header.find(tagStart);
+    const auto tagEnd = tagPos == std::string::npos ? std::string::npos : header.find('>', tagPos);
+    if (tagEnd == std::string::npos) {
         return {};
     }
-    const std::string_view tag(header.data() + tagStart, tagEnd - tagStart);
-    constexpr std::string_view attribute = " fork-export=\"";
-    const auto valueStart = tag.find(attribute);
+    const std::string_view tag(header.data() + tagPos, tagEnd - tagPos);
+    const std::string prefix = " " + std::string(attribute) + "=\"";
+    const auto valueStart = tag.find(prefix);
     if (valueStart == std::string_view::npos) {
         return {};
     }
-    const auto valueEnd = tag.find('"', valueStart + attribute.size());
+    const auto valueEnd = tag.find('"', valueStart + prefix.size());
     if (valueEnd == std::string_view::npos) {
         return {};
     }
-    auto name = unescapeXml(tag.substr(valueStart + attribute.size(), valueEnd - valueStart - attribute.size()));
-    // Only a plain file name next to the document is accepted
-    return pathFromUtf8(name).filename() == pathFromUtf8(name) ? name : std::string();
+    return unescapeXml(tag.substr(valueStart + prefix.size(), valueEnd - valueStart - prefix.size()));
+}
+
+auto sameFileName(const fs::path& a, const fs::path& b) -> bool {
+#ifdef _WIN32
+    gchar* foldedA = g_utf8_casefold(utf8(a.filename()).c_str(), -1);
+    gchar* foldedB = g_utf8_casefold(utf8(b.filename()).c_str(), -1);
+    const bool same = std::strcmp(foldedA, foldedB) == 0;
+    g_free(foldedA);
+    g_free(foldedB);
+    return same;
+#else
+    return a.filename() == b.filename();
+#endif
+}
+}  // namespace
+
+auto AnnotationFiles::recordedSourcePdf(const fs::path& xopp) -> fs::path {
+    // The first PDF background names the file, relative to the document or absolute. The preview image comes first.
+    const auto name = readXoppAttribute(xopp, "<background type=\"pdf\"", "filename", 1024 * 1024);
+    if (name.empty()) {
+        return {};
+    }
+    const auto path = pathFromUtf8(name);
+    return path.is_absolute() ? path : xopp.parent_path() / path;
+}
+
+auto AnnotationFiles::documentForSource(const fs::path& pdf) -> std::optional<fs::path> {
+    std::error_code error;
+    for (fs::directory_iterator it(pdf.parent_path(), error), end; !error && it != end; it.increment(error)) {
+        if (!isXopp(it->path())) {
+            continue;
+        }
+        // Only documents next to their PDF, as created when annotating; compare names to not depend on drive letters
+        const auto source = recordedSourcePdf(it->path());
+        if (!source.empty() && sameFileName(source, pdf) && samePath(source.parent_path(), pdf.parent_path())) {
+            return it->path();
+        }
+    }
+    return std::nullopt;
+}
+
+auto AnnotationFiles::recordedExportFilename(const fs::path& xopp) -> std::string {
+    // The attribute is on the root element at the very beginning
+    auto name = readXoppAttribute(xopp, "<xournal", "fork-export", 16384);
+    if (name.empty()) {
+        return {};
+    }
+    // The value comes from a file that may have been shared or edited by hand: only accept a plain .pdf file name
+    // next to the document, so an export can never overwrite another kind of file
+    const auto path = pathFromUtf8(name);
+    const bool plainPdfName = path.filename() == path && name != "." && name != ".." && Util::hasPdfFileExt(path);
+    return plainPdfName ? name : std::string();
 }
 
 auto AnnotationFiles::exportPath(const Document& doc, const Settings& settings) -> fs::path {
@@ -165,16 +245,21 @@ auto AnnotationFiles::exportPathForFile(const fs::path& xopp, const Settings& se
     DocumentHandler handler;
     Document doc(&handler);
     doc.setFilepath(xopp);
-    // Without loading the file the source PDF is unknown; never point at the PDF the document annotates
-    auto source = xopp;
-    source.replace_extension(".pdf");
+    // Never point at the PDF the document annotates: the recorded background, or by name for older documents
+    auto source = recordedSourcePdf(xopp);
+    if (source.empty()) {
+        source = xopp;
+        source.replace_extension(".pdf");
+    }
     return safeTarget(exportPath(doc, settings), xopp, source);
 }
 
 auto AnnotationFiles::exportFilenameForSave(const Document& doc, const fs::path& target, const Settings& settings)
         -> std::string {
     if (auto recorded = recordedExportFilename(target); !recorded.empty()) {
-        return recorded;
+        if (!safeTarget(target.parent_path() / pathFromUtf8(recorded), target, doc.getPdfFilepath()).empty()) {
+            return recorded;
+        }
     }
     const auto path = safeTarget(exportPathFromSetting(doc, target, settings), target, doc.getPdfFilepath());
     return path.empty() ? std::string() : utf8(path.filename());
@@ -195,12 +280,14 @@ void AnnotationFiles::createDocumentFileForPdf(Control* control) {
     doc->lock_shared();
     const auto pdf = doc->getPdfFilepath();
     const bool hasFile = !doc->getFilepath().empty();
-    auto target = pdf.parent_path() / doc->createSaveFilename(Document::XOPP, control->getSettings()->getDefaultSaveName());
+    auto target = pdf.parent_path() /
+                  doc->createSaveFilename(Document::XOPP, control->getSettings()->getDefaultSaveName());
     doc->unlock_shared();
     target += ".xopp";
 
     std::error_code error;
-    if (pdf.empty() || hasFile || fs::exists(target, error)) {
+    if (pdf.empty() || hasFile || fs::exists(target, error) || !isWritableDirectory(target.parent_path())) {
+        // E.g. a PDF on a read-only share or in a temporary folder: keep asking for a location on first save
         return;
     }
     doc->lock();
@@ -260,7 +347,19 @@ void AnnotationExporter::exportIfOutdated(std::function<void()> done) {
         done();
         return;
     }
-    auto* job = new AutoPdfExportJob(control, target, std::move(done));
-    control->getScheduler()->addJob(job, JOB_PRIORITY_NONE);
-    job->unref();
+    // Start the export once the main loop is idle: when called from a save callback, the save job still blocks the UI
+    // and its unblock is already queued. Creating the export job (which blocks the UI itself) now would make that
+    // unblock re-enable editing while the export reads the document.
+    struct Pending {
+        Control* control;
+        fs::path target;
+        std::function<void()> done;
+    };
+    g_idle_add(+[](gpointer data) -> gboolean {
+        std::unique_ptr<Pending> pending(static_cast<Pending*>(data));
+        auto* job = new AutoPdfExportJob(pending->control, pending->target, std::move(pending->done));
+        pending->control->getScheduler()->addJob(job, JOB_PRIORITY_NONE);
+        job->unref();
+        return G_SOURCE_REMOVE;
+    }, new Pending{control, target, std::move(done)});
 }
