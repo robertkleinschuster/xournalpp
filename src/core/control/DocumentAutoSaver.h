@@ -1,7 +1,7 @@
 /*
  * Xournal++
  *
- * Saves the open document to its own file automatically, like an IDE
+ * Saves the open document to its own file at moments that do not interrupt the user, like an IDE
  *
  * @license GNU GPLv2 or later
  */
@@ -14,20 +14,18 @@
 
 #include <gtk/gtk.h>
 
-#include "undo/UndoRedoHandler.h"
-
 class Control;
 
 /**
- * Saves the current document to its file a few seconds after the last change and when the main window loses focus.
- * Only documents that already have a .xopp file are saved; untitled documents keep asking for a location as before.
- *
- * Unlike the built-in autosave, which writes a hidden recovery copy, this updates the document file itself.
+ * Saves the current document to its file before another document is opened (saveNow()) and when the user switches to
+ * another application. It never saves while the user is working in the window: saving blocks the UI briefly, which
+ * would disturb drawing. Only documents that already have a .xopp file are saved; untitled documents keep asking for
+ * a location as before. The built-in autosave (a hidden recovery copy) stays responsible for crash protection.
  */
-class DocumentAutoSaver final: public UndoRedoListener {
+class DocumentAutoSaver final {
 public:
     explicit DocumentAutoSaver(Control* control);
-    ~DocumentAutoSaver() override;
+    ~DocumentAutoSaver();
 
     DocumentAutoSaver(const DocumentAutoSaver&) = delete;
     DocumentAutoSaver& operator=(const DocumentAutoSaver&) = delete;
@@ -35,22 +33,17 @@ public:
     /// Saves pending changes, then calls done. Calls done right away if there is nothing to save.
     void saveNow(std::function<void()> done);
 
-    void undoRedoChanged() override;
-    void undoRedoPageChanged(PageRef page) override;
-
 private:
     /// Whether the document has unsaved changes and a file it can be saved to without asking
     bool hasChangesToSave() const;
-    /// Saving ends text editing and clears the selection, so wait while the user is working with them
+    /// Saving ends text editing and clears the selection, so leave the document alone while they are in use
     bool isUserBusy() const;
-    void schedule(guint delayMs);
-    void trySave();
+    void saveInBackground();
     void startSave();
 
     Control* control;
     /// Main window, reset to nullptr by GLib once it is destroyed
     GtkWindow* window = nullptr;
-    guint timer = 0;
     guint focusCheck = 0;
     gulong focusHandler = 0;
     bool saving = false;

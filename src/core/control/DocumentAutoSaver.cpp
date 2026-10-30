@@ -2,20 +2,11 @@
 
 #include <utility>
 
-#include <gtk/gtk.h>
-
 #include "control/Control.h"
 #include "gui/MainWindow.h"
 #include "gui/XournalView.h"
 #include "model/Document.h"
-#include "util/PathUtil.h"
-
-namespace {
-/// Time without changes after which the document is saved
-constexpr guint SAVE_DELAY_MS = 3000;
-/// Time to wait before trying again while the user is editing text or a selection
-constexpr guint RETRY_DELAY_MS = 2000;
-}  // namespace
+#include "undo/UndoRedoHandler.h"
 
 namespace {
 /// Whether any window of this application has the focus, e.g. a dialog opened from the main window
@@ -31,7 +22,6 @@ auto applicationHasFocus() -> bool {
 }  // namespace
 
 DocumentAutoSaver::DocumentAutoSaver(Control* control): control(control) {
-    control->getUndoRedoHandler()->addUndoRedoListener(this);
     window = control->getGtkWindow();
     // The window is destroyed before the Control (and this object) on shutdown
     g_object_add_weak_pointer(G_OBJECT(window), reinterpret_cast<gpointer*>(&window));
@@ -44,7 +34,7 @@ DocumentAutoSaver::DocumentAutoSaver(Control* control): control(control) {
                                                 auto* self = static_cast<DocumentAutoSaver*>(data);
                                                 self->focusCheck = 0;
                                                 if (!applicationHasFocus()) {
-                                                    self->trySave();
+                                                    self->saveInBackground();
                                                 }
                                                 return G_SOURCE_REMOVE;
                                             }, self);
@@ -54,31 +44,18 @@ DocumentAutoSaver::DocumentAutoSaver(Control* control): control(control) {
 }
 
 DocumentAutoSaver::~DocumentAutoSaver() {
-    for (guint source: {timer, focusCheck}) {
-        if (source) {
-            g_source_remove(source);
-        }
+    if (focusCheck) {
+        g_source_remove(focusCheck);
     }
     if (window) {
         g_signal_handler_disconnect(window, focusHandler);
         g_object_remove_weak_pointer(G_OBJECT(window), reinterpret_cast<gpointer*>(&window));
     }
-    // The Control deletes its UndoRedoHandler before the sidebar that owns this object
-    if (auto* undoRedo = control->getUndoRedoHandler()) {
-        undoRedo->removeUndoRedoListener(this);
-    }
 }
-
-void DocumentAutoSaver::undoRedoChanged() {
-    if (hasChangesToSave()) {
-        schedule(SAVE_DELAY_MS);
-    }
-}
-
-void DocumentAutoSaver::undoRedoPageChanged(PageRef) {}
 
 auto DocumentAutoSaver::hasChangesToSave() const -> bool {
-    if (!control->getUndoRedoHandler()->isChanged()) {
+    auto* undoRedo = control->getUndoRedoHandler();
+    if (!undoRedo || !undoRedo->isChanged()) {
         return false;
     }
     Document* doc = control->getDocument();
@@ -97,27 +74,10 @@ auto DocumentAutoSaver::isUserBusy() const -> bool {
     return win && win->getXournal() && win->getXournal()->getSelection();
 }
 
-void DocumentAutoSaver::schedule(guint delayMs) {
-    if (timer) {
-        g_source_remove(timer);
+void DocumentAutoSaver::saveInBackground() {
+    if (!saving && hasChangesToSave() && !isUserBusy()) {
+        startSave();
     }
-    timer = g_timeout_add(delayMs, +[](gpointer data) -> gboolean {
-        auto* self = static_cast<DocumentAutoSaver*>(data);
-        self->timer = 0;
-        self->trySave();
-        return G_SOURCE_REMOVE;
-    }, this);
-}
-
-void DocumentAutoSaver::trySave() {
-    if (saving || !hasChangesToSave()) {
-        return;
-    }
-    if (isUserBusy()) {
-        schedule(RETRY_DELAY_MS);
-        return;
-    }
-    startSave();
 }
 
 void DocumentAutoSaver::startSave() {
@@ -135,10 +95,6 @@ void DocumentAutoSaver::startSave() {
 }
 
 void DocumentAutoSaver::saveNow(std::function<void()> done) {
-    if (timer) {
-        g_source_remove(timer);
-        timer = 0;
-    }
     if (saving) {
         waiting.push_back(std::move(done));
         return;
