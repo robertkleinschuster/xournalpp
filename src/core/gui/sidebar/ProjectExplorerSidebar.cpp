@@ -235,6 +235,16 @@ class ProjectExplorerSidebar final: public AbstractSidebarPage, public ProjectEx
 public:
     explicit ProjectExplorerSidebar(Control* control): AbstractSidebarPage(control) {
         parent = GTK_WINDOW(control->getGtkWindow());
+        if (parent) {
+            focusWindow = parent;
+            g_object_add_weak_pointer(G_OBJECT(focusWindow), reinterpret_cast<gpointer*>(&focusWindow));
+            auto onActive = +[](GObject* window, GParamSpec*, gpointer data) {
+                if (gtk_window_is_active(GTK_WINDOW(window))) {
+                    static_cast<ProjectExplorerSidebar*>(data)->checkForMissedChanges();
+                }
+            };
+            g_signal_connect(focusWindow, "notify::is-active", G_CALLBACK(onActive), this);
+        }
         // The explorer lives as long as the main window, so it owns the IDE-like saving of documents
         autoSaver = std::make_unique<DocumentAutoSaver>(control);
         annotationExporter = std::make_unique<AnnotationExporter>(control);
@@ -388,6 +398,10 @@ public:
         }
         clearMonitors();
         // On shutdown the main window destroys these widgets before the sidebar is deleted
+        if (focusWindow) {
+            g_signal_handlers_disconnect_by_data(focusWindow, this);
+            g_object_remove_weak_pointer(G_OBJECT(focusWindow), reinterpret_cast<gpointer*>(&focusWindow));
+        }
         if (syncButton) {
             g_signal_handlers_disconnect_by_data(syncButton, this);
             g_object_remove_weak_pointer(G_OBJECT(syncButton), reinterpret_cast<gpointer*>(&syncButton));
@@ -1111,6 +1125,8 @@ private:
                              const bool ignored = name && (std::strcmp(name, ".git") == 0 || isXournalBackup(name));
                              g_free(name);
                              if (ignored) {
+                                 // Still changes the folder's modification time: do not take it for a missed change
+                                 self->rememberFolderTime(file);
                                  return;
                              }
                              switch (event) {
@@ -1130,6 +1146,40 @@ private:
                              }
                          }), this);
         monitors.emplace(key, monitor);
+        std::error_code error;
+        folderTimes[key] = fs::last_write_time(dir, error);
+    }
+
+    void rememberFolderTime(GFile* changed) {
+        GFile* folder = g_file_get_parent(changed);
+        if (!folder) {
+            return;
+        }
+        gchar* path = g_file_get_path(folder);
+        g_object_unref(folder);
+        if (path) {
+            if (auto found = folderTimes.find(path); found != folderTimes.end()) {
+                std::error_code error;
+                found->second = fs::last_write_time(pathFromUtf8(path), error);
+            }
+            g_free(path);
+        }
+    }
+
+    /// File monitors can miss changes, e.g. on network or cloud folders: when the window is activated again, refresh
+    /// if a shown folder was modified meanwhile. Comparing the folder times is cheap, unlike rebuilding the tree.
+    void checkForMissedChanges() {
+        if (projectRoot.empty()) {
+            return;
+        }
+        for (const auto& [key, time]: folderTimes) {
+            std::error_code error;
+            if (fs::last_write_time(pathFromUtf8(key.c_str()), error) != time || error) {
+                scheduleRefresh();
+                break;
+            }
+        }
+        scheduleGitRefresh();  // e.g. commits made outside
     }
 
     void clearMonitors() {
@@ -1139,6 +1189,7 @@ private:
             g_object_unref(monitor);
         }
         monitors.clear();
+        folderTimes.clear();
     }
 
     // --- Selection and navigation ---
@@ -1920,6 +1971,8 @@ private:
     GIcon* annotatedPdfIcon{};
     guint saveSource = 0;
     std::map<std::string, GFileMonitor*> monitors;
+    std::map<std::string, fs::file_time_type> folderTimes;  ///< modification times of the watched folders
+    GtkWindow* focusWindow{};                                ///< weak pointer, see checkForMissedChanges()
     guint refreshSource = 0;
     /// Whether another sidebar tab was shown since the tree was built (the file monitors keep it current otherwise)
     bool refreshOnEnable = false;
