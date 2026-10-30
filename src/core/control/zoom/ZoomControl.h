@@ -12,6 +12,7 @@
 #pragma once
 
 #include <cstddef>  // for size_t
+#include <memory>   // for unique_ptr
 #include <vector>   // for vector
 
 #include <gdk/gdk.h>  // for GdkEvent, GdkEventScroll, GdkEve...
@@ -29,13 +30,14 @@ constexpr auto DEFAULT_ZOOM_STEP_SCROLL{0.01};
 enum ZoomDirection : bool { ZOOM_OUT = false, ZOOM_IN = true };
 
 class XournalView;
+class TouchpadGestures;
 class Control;
 class ZoomListener;
 
 class ZoomControl: public DocumentListener {
 public:
-    ZoomControl() = default;
-    ~ZoomControl() override = default;
+    ZoomControl();
+    ~ZoomControl() override;
 
     /**
      * Zoom one step
@@ -53,6 +55,17 @@ public:
      * @param zoomCenter position of zoom focus
      */
     void zoomScroll(ZoomDirection direction, xoj::util::Point<double> zoomCenter);
+
+    /**
+     * Fork: zoom smoothly by a (fractional) number of scroll zoom steps; positive values zoom in
+     */
+    void zoomScrollBy(double steps, xoj::util::Point<double> zoomCenter);
+
+    /**
+     * Fork: scroll the document by smooth scroll deltas (wheel notch units) with a fixed speed and axis locking.
+     * Returns true if the event was handled.
+     */
+    bool scrollBy(double dx, double dy, guint32 time);
 
     /**
      * Zoom so that the page fits the current size of the window
@@ -200,6 +213,25 @@ private:
     friend bool onWindowSizeChangedEvent(GtkWidget* widget, GdkEvent* event, ZoomControl* zoom);
     friend bool onScrolledwindowMainScrollEvent(GtkWidget* widget, GdkEventScroll* event, ZoomControl* zoom);
     friend bool onTouchpadPinchEvent(GtkWidget* widget, GdkEventTouchpadPinch* event, ZoomControl* zoom);
+
+    /// Fork: one frame of the gliding scroll zoom; returns whether to continue
+    bool scrollZoomStep(gint64 frameTime);
+
+    /// Fork: two-finger touchpad gestures like on the touchscreen (Windows)
+    std::unique_ptr<TouchpadGestures> touchpadGestures;
+
+    // Fork: gliding zoom for Ctrl + scroll (see zoomScrollBy)
+    guint scrollZoomTick = 0;
+    double scrollZoomTarget = 1.0;
+    double scrollZoomApplied = 1.0;
+    gint64 scrollZoomLastFrame = 0;
+
+    // Fork: axis locking for smooth scrolling (see scrollBy)
+    enum class ScrollAxis { UNDECIDED, VERTICAL, HORIZONTAL, FREE };
+    ScrollAxis scrollAxis = ScrollAxis::UNDECIDED;
+    guint32 scrollLastTime = 0;
+    double scrollGestureX = 0;
+    double scrollGestureY = 0;
 
 private:
     XournalView* view = nullptr;

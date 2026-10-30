@@ -1,6 +1,7 @@
 #include "ZoomControl.h"
 
-#include <algorithm>  // for find, max
+#include <algorithm>  // for find, max, clamp
+#include <utility>    // for swap
 #include <cmath>      // for isfinite
 
 #include <glib-object.h>  // for G_CALLBACK, g_signal_connect
@@ -14,6 +15,7 @@
 #include "gui/MainWindow.h"
 #include "gui/PageView.h"               // for XojPageView
 #include "gui/XournalView.h"            // for XournalView
+#include "control/zoom/TouchpadGestures.h"  // for TouchpadGestures
 #include "gui/scroll/ScrollHandling.h"  // for ScrollHandling
 #include "util/Assert.h"                // for xoj_assert
 #include "util/Util.h"                  // for execInUiThread
@@ -21,6 +23,9 @@
 #include "util/glib_casts.h"            // for wrap_for_g_callback
 
 using xoj::util::Rectangle;
+
+ZoomControl::ZoomControl() = default;
+ZoomControl::~ZoomControl() = default;
 
 auto onScrolledwindowMainScrollEvent(GtkWidget* widget, GdkEventScroll* event, ZoomControl* zoom) -> bool {
     auto state =
@@ -31,19 +36,44 @@ auto onScrolledwindowMainScrollEvent(GtkWidget* widget, GdkEventScroll* event, Z
         return true;
     }
 
+    // Fork: wheel events Windows synthesizes for a two-finger touchpad gesture, which is handled from the fingers
+    if (event->direction == GDK_SCROLL_SMOOTH && zoom->touchpadGestures) {
+        const bool zoomStep = state & GDK_CONTROL_MASK;
+        if (zoom->touchpadGestures->consumeSynthesizedScroll(zoomStep ? 0.0 : event->delta_x,
+                                                             zoomStep ? 0.0 : event->delta_y)) {
+            return true;
+        }
+    }
+
     if (state & GDK_CONTROL_MASK) {
-        auto direction =
-                (event->direction == GDK_SCROLL_UP || (event->direction == GDK_SCROLL_SMOOTH && event->delta_y < 0)) ?
-                        ZOOM_IN :
-                        ZOOM_OUT;
         xoj::util::Point<double> center;
         gdk_event_get_coords((GdkEvent*)event, &center.x, &center.y);
+        if (event->direction == GDK_SCROLL_SMOOTH) {
+            // Fork: zoom proportionally to the scrolled amount (one wheel notch = one zoom step), so fine-grained
+            // devices do not zoom a full step per event; a purely horizontal scroll does not zoom at all
+            if (event->delta_y != 0.0) {
+                zoom->zoomScrollBy(-event->delta_y, center);
+            }
+            return true;
+        }
+        auto direction = event->direction == GDK_SCROLL_UP ? ZOOM_IN : ZOOM_OUT;
         zoom->zoomScroll(direction, center);
         return true;
     }
 
     // TODO(unknown): Disabling scroll here is maybe a bit hacky find a better way
-    return zoom->isZoomPresentationMode();
+    if (zoom->isZoomPresentationMode()) {
+        return true;
+    }
+    if (event->direction == GDK_SCROLL_SMOOTH) {
+        double dx = event->delta_x;
+        double dy = event->delta_y;
+        if ((state & GDK_SHIFT_MASK) && dx == 0.0) {
+            std::swap(dx, dy);  // Shift + wheel scrolls horizontally
+        }
+        return zoom->scrollBy(dx, dy, event->time);
+    }
+    return false;
 }
 
 auto onTouchpadPinchEvent(GtkWidget* widget, GdkEventTouchpadPinch* event, ZoomControl* zoom) -> bool {
@@ -118,6 +148,93 @@ void ZoomControl::zoomScroll(ZoomDirection direction, xoj::util::Point<double> z
     startZoomSequence(zoomCenter);
     this->zoomSequenceChange(newZoom, false);
     endZoomSequence();
+}
+
+void ZoomControl::zoomScrollBy(double steps, xoj::util::Point<double> zoomCenter) {
+    if (this->zoomPresentationMode) {
+        return;
+    }
+    if (this->isZoomFitMode()) {
+        this->setZoomFitMode(false);
+    }
+    // Fork: Windows reports touchpad pinching as bursts of Ctrl + wheel steps. Glide towards the target zoom on the
+    // frame clock instead of jumping per step, keeping the zoom center of the burst.
+    if (!scrollZoomTick) {
+        startZoomSequence(zoomCenter);
+        scrollZoomTarget = this->zoom;
+        scrollZoomApplied = this->zoom;
+        scrollZoomLastFrame = 0;
+        scrollZoomTick = gtk_widget_add_tick_callback(
+                view->getWidget(),
+                +[](GtkWidget*, GdkFrameClock* clock, gpointer data) -> gboolean {
+                    return static_cast<ZoomControl*>(data)->scrollZoomStep(gdk_frame_clock_get_frame_time(clock));
+                },
+                this, nullptr);
+    }
+    scrollZoomTarget = std::clamp(scrollZoomTarget * std::pow(1.0 + this->zoomStepScroll, steps), zoomMin, zoomMax);
+}
+
+auto ZoomControl::scrollZoomStep(gint64 frameTime) -> bool {
+    // Someone else changed the zoom meanwhile (e.g. zoom to fit): stop gliding
+    if (this->zoom != scrollZoomApplied) {
+        scrollZoomTick = 0;
+        endZoomSequence();
+        return G_SOURCE_REMOVE;
+    }
+    // Move a fixed share of the remaining (logarithmic) distance per time, independent of the frame rate
+    constexpr double TIME_CONSTANT_US = 30'000.0;
+    const double elapsed = scrollZoomLastFrame ? static_cast<double>(frameTime - scrollZoomLastFrame) : 16'000.0;
+    scrollZoomLastFrame = frameTime;
+    const double share = 1.0 - std::exp(-elapsed / TIME_CONSTANT_US);
+    const double remaining = std::log(scrollZoomTarget / this->zoom);
+    const bool done = std::abs(remaining) < 0.001;
+    const double next = done ? scrollZoomTarget : this->zoom * std::exp(remaining * share);
+    zoomSequenceChange(next, false);
+    scrollZoomApplied = this->zoom;
+    if (done) {
+        scrollZoomTick = 0;
+        endZoomSequence();
+        return G_SOURCE_REMOVE;
+    }
+    return G_SOURCE_CONTINUE;
+}
+
+auto ZoomControl::scrollBy(double dx, double dy, guint32 time) -> bool {
+    // Fork: scroll a fixed distance per wheel unit (35 px per notch at 100 % display scale), instead of
+    // GTK's distance that grows with the window size. Precision touchpads deliver fine fractions of a notch.
+    // A new gesture starts after a short pause; it is locked to its main axis once that is clear, so slightly
+    // diagonal two-finger swipes do not drift sideways.
+    constexpr guint32 GESTURE_GAP_MS = 150;
+    constexpr double AXIS_DECISION_UNITS = 0.25;
+    if (time - scrollLastTime > GESTURE_GAP_MS) {
+        scrollAxis = ScrollAxis::UNDECIDED;
+        scrollGestureX = 0;
+        scrollGestureY = 0;
+    }
+    scrollLastTime = time;
+    if (scrollAxis == ScrollAxis::UNDECIDED) {
+        scrollGestureX += std::abs(dx);
+        scrollGestureY += std::abs(dy);
+        if (scrollGestureX + scrollGestureY >= AXIS_DECISION_UNITS) {
+            scrollAxis = scrollGestureY >= 2 * scrollGestureX ? ScrollAxis::VERTICAL :
+                         scrollGestureX >= 2 * scrollGestureY ? ScrollAxis::HORIZONTAL :
+                                                                ScrollAxis::FREE;
+        }
+    }
+    if (scrollAxis == ScrollAxis::VERTICAL) {
+        dx = 0;
+    } else if (scrollAxis == ScrollAxis::HORIZONTAL) {
+        dy = 0;
+    }
+
+    double resolution = gdk_screen_get_resolution(gtk_widget_get_screen(view->getWidget()));
+    if (resolution <= 0) {
+        resolution = 96.0;
+    }
+    // About 1.5 times the finger movement on precision touchpads, which report roughly 2 units per cm
+    const double pixelsPerUnit = 35.0 * resolution / 96.0;
+    view->getLayout()->scrollRelative(dx * pixelsPerUnit, dy * pixelsPerUnit);
+    return true;
 }
 
 void ZoomControl::startZoomSequence() {
@@ -218,6 +335,7 @@ void ZoomControl::initZoomHandler(GtkWidget* window, GtkWidget* widget, XournalV
     gtk_widget_add_events(widget, GDK_TOUCHPAD_GESTURE_MASK);
     g_signal_connect(widget, "scroll-event", xoj::util::wrap_for_g_callback_v<onScrolledwindowMainScrollEvent>, this);
     g_signal_connect(widget, "event", xoj::util::wrap_for_g_callback_v<onTouchpadPinchEvent>, this);
+    this->touchpadGestures = std::make_unique<TouchpadGestures>(this, v, window);
     g_signal_connect(v->getScrollHandling()->getHorizontal(), "notify::page-size",
                      G_CALLBACK(+[](GObject*, GParamSpec*, gpointer self) {
                          static_cast<ZoomControl*>(self)->updateZoomFitValue();

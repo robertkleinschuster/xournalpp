@@ -17,4 +17,8 @@ target_link_libraries(xournalpp-core
         PUBLIC xoj::defaults xoj::external_modules
         )
 target_include_directories(xournalpp-core PUBLIC ${xournalpp_include_dirs})
+if (WIN32)
+    # Fork: two-finger touchpad gestures from raw touchpad input (control/zoom/TouchpadGestures.cpp)
+    target_link_libraries(xournalpp-core PUBLIC hid)
+endif ()
 add_library(xoj::core ALIAS xournalpp-core)
