@@ -65,5 +65,8 @@ public:
     void exportIfOutdated(std::function<void()> done);
 
 private:
+    /// Whether the current document's exported PDF exists
+    bool hasExport() const;
+
     Control* control;
 };

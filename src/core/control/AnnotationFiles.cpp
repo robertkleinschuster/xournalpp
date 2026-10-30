@@ -211,7 +211,22 @@ void AnnotationFiles::createDocumentFileForPdf(Control* control) {
 
 AnnotationExporter::AnnotationExporter(Control* control): control(control) {
     control->setBeforeCloseHook([this](std::function<void()> proceed) { exportIfOutdated(std::move(proceed)); });
-    control->setUserSavedHook([this] { exportIfOutdated([] {}); });
+    control->setUserSavedHook([this](bool changed) {
+        // Saving rewrites the document even without changes; a full export would then only cost time
+        if (!changed && hasExport()) {
+            return;
+        }
+        exportIfOutdated([] {});
+    });
+}
+
+auto AnnotationExporter::hasExport() const -> bool {
+    Document* doc = control->getDocument();
+    doc->lock_shared();
+    const auto target = AnnotationFiles::exportPath(*doc, *control->getSettings());
+    doc->unlock_shared();
+    std::error_code error;
+    return !target.empty() && fs::exists(target, error);
 }
 
 AnnotationExporter::~AnnotationExporter() {

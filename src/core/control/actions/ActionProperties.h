@@ -14,6 +14,7 @@
 #include "control/ScrollHandler.h"
 #include "control/ToolEnums.h"
 #include "control/UndoRedoController.h"
+#include "undo/UndoRedoHandler.h"
 #include "control/layer/LayerController.h"
 #include "control/settings/Settings.h"
 #include "control/zoom/ZoomControl.h"
@@ -118,14 +119,16 @@ template <>
 struct ActionProperties<Action::SAVE> {
     // Fork: an explicit save also exports the annotated PDF
     static void callback(GSimpleAction*, GVariant*, Control* ctrl) {
-        ctrl->save([ctrl](bool saved) { ctrl->notifyUserSaved(saved); });
+        const bool changed = ctrl->getUndoRedoHandler()->isChanged();
+        ctrl->save([ctrl, changed](bool saved) { ctrl->notifyUserSaved(saved, changed); });
     }
 };
 
 template <>
 struct ActionProperties<Action::SAVE_AS> {
     static void callback(GSimpleAction*, GVariant*, Control* ctrl) {
-        ctrl->saveAs([ctrl](bool saved) { ctrl->notifyUserSaved(saved); });
+        // A new file always needs its own export
+        ctrl->saveAs([ctrl](bool saved) { ctrl->notifyUserSaved(saved, true); });
     }
 };
 

@@ -2199,11 +2199,11 @@ void Control::setBeforeCloseHook(std::function<void(std::function<void()>)> hook
     beforeCloseHook = std::move(hook);
 }
 
-void Control::setUserSavedHook(std::function<void()> hook) { userSavedHook = std::move(hook); }
+void Control::setUserSavedHook(std::function<void(bool)> hook) { userSavedHook = std::move(hook); }
 
-void Control::notifyUserSaved(bool saved) {
+void Control::notifyUserSaved(bool saved, bool changed) {
     if (saved && userSavedHook) {
-        userSavedHook();
+        userSavedHook(changed);
     }
 }
 
