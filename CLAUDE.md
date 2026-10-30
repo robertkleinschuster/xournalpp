@@ -33,6 +33,14 @@ ctest --test-dir build -R <regex>                       # via ctest (gtest_disco
 
 `clang-format` (config in `.clang-format`) is enforced by CI on changed lines of upstream PRs; run it on files you touch. `.clang-tidy` exists for lint (`-Dxournalpp_LINT=ON`).
 
+clang-format is installed in MSYS2 (`mingw-w64-ucrt-x86_64-clang-tools-extra`). Format only the fork's changed lines, never generated files such as `enums/generated/*`:
+
+```sh
+python3 -I /c/msys64/ucrt64/bin/git-clang-format --binary /c/msys64/ucrt64/bin/clang-format.exe 1a7c9aa59 -- src test
+```
+
+`1a7c9aa59` is the upstream commit the fork branched from.
+
 ## Architecture
 
 - `src/util/` (`xoj::util`): GTK/GLib-independent helpers — paths (`PathUtil.cpp`, which also holds the fork's config folder name), RAII wrappers for GLib/GTK ref-counted objects (`util/raii/`), serialization, logging.
