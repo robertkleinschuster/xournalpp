@@ -94,6 +94,7 @@ public:
         registerListener(control);
         updateButtons();
         refreshFiles();
+        gtk_widget_show_all(root);
     }
 
     ~ProjectExplorerSidebar() override { g_object_unref(root); }
