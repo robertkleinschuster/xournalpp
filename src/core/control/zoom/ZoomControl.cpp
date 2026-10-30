@@ -160,7 +160,11 @@ void ZoomControl::zoomScrollBy(double steps, xoj::util::Point<double> zoomCenter
     // Fork: Windows reports touchpad pinching as bursts of Ctrl + wheel steps. Glide towards the target zoom on the
     // frame clock instead of jumping per step, keeping the zoom center of the burst.
     if (!scrollZoomTick) {
+        if (isZoomSequenceActive()) {
+            return;  // another gesture (e.g. a pinch on the touchscreen) is zooming
+        }
         startZoomSequence(zoomCenter);
+        scrollZoomSequence = this->zoomSequenceGeneration;
         scrollZoomTarget = this->zoom;
         scrollZoomApplied = this->zoom;
         scrollZoomLastFrame = 0;
@@ -176,9 +180,12 @@ void ZoomControl::zoomScrollBy(double steps, xoj::util::Point<double> zoomCenter
 
 auto ZoomControl::scrollZoomStep(gint64 frameTime) -> bool {
     // Someone else changed the zoom meanwhile (e.g. zoom to fit): stop gliding
-    if (this->zoom != scrollZoomApplied) {
+    if (this->zoom != scrollZoomApplied || scrollZoomSequence != this->zoomSequenceGeneration) {
         scrollZoomTick = 0;
-        endZoomSequence();
+        // Only end the sequence if it is still the one started here, not one of a gesture that took over
+        if (scrollZoomSequence == this->zoomSequenceGeneration && isZoomSequenceActive()) {
+            endZoomSequence();
+        }
         return G_SOURCE_REMOVE;
     }
     // Move a fixed share of the remaining (logarithmic) distance per time, independent of the frame rate
@@ -243,6 +250,7 @@ void ZoomControl::startZoomSequence() {
 }
 
 void ZoomControl::startZoomSequence(xoj::util::Point<double> zoomCenter) {
+    this->zoomSequenceGeneration++;  // Fork: lets the gliding scroll zoom tell whether the sequence is still its own
     // * set zoom center and zoom startlevel
     this->zoomWidgetPos = zoomCenter;  // widget space coordinates of the zoomCenter!
     this->zoomSequenceStart = this->zoom;

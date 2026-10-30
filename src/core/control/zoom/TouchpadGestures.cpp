@@ -57,6 +57,13 @@ constexpr gint64 MOMENTUM_MAX_REST_US = 120'000;
 /// After the fingers are lifted, Windows keeps sending synthesized scroll events (inertia) with short gaps
 constexpr gint64 INERTIA_GAP_US = 200'000;
 constexpr gint64 INERTIA_MAX_US = 2'500'000;
+/// Touchpads report resting fingers as well; without reports for this long the lift report was lost (e.g. the touchpad was
+/// unplugged or the computer suspended), so the gesture is over
+constexpr gint64 CONTACTS_STALE_US = 300'000;
+/// Longest frame step for the momentum, so it does not jump after the window was hidden
+constexpr double MAX_INERTIA_STEP_S = 0.05;
+/// Closer fingers are a misread, they would make the zoom ratio meaningless
+constexpr double MIN_DISTANCE_MM = 1.0;
 
 using Contacts = std::map<ULONG, Point<double>>;  ///< finger id -> position in millimetres
 
@@ -115,8 +122,9 @@ public:
     }
 
     ~RawTouchpadReader() {
-        // Wait until the window exists (normally at once), then end its message loop
-        for (int i = 0; i < 1000 && !window.load() && !failed.load(); i++) {
+        // Wait until the window exists (normally at once), then end its message loop. The thread always ends up with a
+        // window or failed, so this cannot wait forever, while giving up early would leave join() waiting.
+        while (!window.load() && !failed.load()) {
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
         if (HWND hwnd = window.load()) {
@@ -272,9 +280,12 @@ private:
             }
             ULONG x = 0;
             ULONG y = 0;
-            HidP_GetUsageValue(HidP_Input, PAGE_GENERIC, slot.link, USAGE_X, &x, data, report, length);
-            HidP_GetUsageValue(HidP_Input, PAGE_GENERIC, slot.link, USAGE_Y, &y, data, report, length);
-            if (tip) {
+            const bool position =
+                    HidP_GetUsageValue(HidP_Input, PAGE_GENERIC, slot.link, USAGE_X, &x, data, report, length) ==
+                            HIDP_STATUS_SUCCESS &&
+                    HidP_GetUsageValue(HidP_Input, PAGE_GENERIC, slot.link, USAGE_Y, &y, data, report, length) ==
+                            HIDP_STATUS_SUCCESS;
+            if (tip && position) {
                 device.frame[id] = {x * slot.xMm, y * slot.yMm};
             }
         }
@@ -312,6 +323,7 @@ struct TouchpadGestures::Impl {
 
     // The current two-finger gesture
     bool tracking = false;
+    gint64 contactsAt = 0;  ///< when two fingers were last reported
     bool zooming = false;
     double startDistance = 0;
     double distance = 0;
@@ -373,7 +385,13 @@ struct TouchpadGestures::Impl {
                 pendingIdle = 0;
             }
         }
-        finishGesture();
+        // No finishGesture(): the document view may already be destroyed when quitting
+        if (tickId && toplevel) {
+            gtk_widget_remove_tick_callback(toplevel, tickId);
+        }
+        tickId = 0;
+        tracking = false;
+        zooming = false;
         stopInertia();
         if (toplevel) {
             g_signal_handler_disconnect(toplevel, activeHandler);
@@ -426,16 +444,17 @@ struct TouchpadGestures::Impl {
     }
 
     void updateGesture(const Contacts& contacts) {
-        if (contacts.size() != 2 || !isActive()) {
+        if (contacts.size() != 2 || !isActive() || zoom->isZoomPresentationMode()) {
             finishGesture();
             return;
         }
+        contactsAt = g_get_monotonic_time();
         const auto& a = contacts.begin()->second;
         const auto& b = std::next(contacts.begin())->second;
         distance = std::hypot(a.x - b.x, a.y - b.y);
         const Point<double> current = (a + b) / 2.0;
         if (!tracking) {
-            if (distance <= 0 || !pointerOverDocument(pointer)) {
+            if (distance < MIN_DISTANCE_MM || !pointerOverDocument(pointer)) {
                 return;
             }
             stopInertia();  // touching the touchpad again catches the gliding document
@@ -488,7 +507,7 @@ struct TouchpadGestures::Impl {
         const Point<double> move = (centroid - appliedCentroid) * factor;
         appliedCentroid = centroid;
 
-        if (!zooming && std::abs(distance - startDistance) >= ZOOM_THRESHOLD_MM) {
+        if (!zooming && std::abs(distance - startDistance) >= ZOOM_THRESHOLD_MM && distance >= MIN_DISTANCE_MM) {
             // Zoom relative to the distance from here on, so the zoom does not jump by the threshold
             zooming = true;
             startDistance = distance;
@@ -565,8 +584,8 @@ struct TouchpadGestures::Impl {
     }
 
     auto inertiaStep(gint64 frameTime) -> gboolean {
-        const double seconds =
-                inertiaLastFrame ? static_cast<double>(frameTime - inertiaLastFrame) / 1e6 : 1.0 / 60.0;
+        const double elapsed = inertiaLastFrame ? static_cast<double>(frameTime - inertiaLastFrame) / 1e6 : 1.0 / 60.0;
+        const double seconds = std::min(elapsed, MAX_INERTIA_STEP_S);
         inertiaLastFrame = frameTime;
         const Point<double> move = velocity * seconds;
         view->getLayout()->scrollRelative(-move.x, -move.y);
@@ -588,6 +607,9 @@ struct TouchpadGestures::Impl {
 
     auto consumeSynthesizedScroll(double dy) -> bool {
         const gint64 now = g_get_monotonic_time();
+        if (tracking && now - contactsAt > CONTACTS_STALE_US) {
+            finishGesture();
+        }
         if (tracking) {
             // Learn the scroll direction: Windows scrolls down (positive) when the fingers move down unless the
             // touchpad is set to move the content with the fingers

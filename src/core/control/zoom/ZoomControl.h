@@ -225,6 +225,8 @@ private:
     double scrollZoomTarget = 1.0;
     double scrollZoomApplied = 1.0;
     gint64 scrollZoomLastFrame = 0;
+    unsigned scrollZoomSequence = 0;
+    unsigned zoomSequenceGeneration = 0;
 
     // Fork: axis locking for smooth scrolling (see scrollBy)
     enum class ScrollAxis { UNDECIDED, VERTICAL, HORIZONTAL, FREE };
