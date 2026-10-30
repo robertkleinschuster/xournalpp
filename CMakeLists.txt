@@ -386,7 +386,7 @@ install(DIRECTORY ui
 # use the SVGs. Icons with their own 24x24 variant are kept.
 find_program(RSVG_CONVERT rsvg-convert)
 if (RSVG_CONVERT)
-    file(GLOB ICON_SVGS RELATIVE "${PROJECT_SOURCE_DIR}/ui" "${PROJECT_SOURCE_DIR}/ui/icons*/hicolor/scalable/actions/*.svg")
+    file(GLOB ICON_SVGS CONFIGURE_DEPENDS RELATIVE "${PROJECT_SOURCE_DIR}/ui" "${PROJECT_SOURCE_DIR}/ui/icons*/hicolor/scalable/actions/*.svg")
     set(ICON_PNGS "")
     foreach (svg ${ICON_SVGS})
         string(REPLACE "/scalable/" "/24x24/" png "${svg}")
@@ -403,12 +403,14 @@ if (RSVG_CONVERT)
                 DEPENDS "${PROJECT_SOURCE_DIR}/ui/${svg}"
                 VERBATIM)
         list(APPEND ICON_PNGS "${PROJECT_BINARY_DIR}/ui-icons/${png}")
+        # Install exactly the generated files, so a PNG left over from a removed SVG cannot override another theme
+        get_filename_component(pngInstallDir "${png}" DIRECTORY)
+        install(FILES "${PROJECT_BINARY_DIR}/ui-icons/${png}"
+                DESTINATION "share/xournalpp/ui/${pngInstallDir}"
+                COMPONENT xournalpp
+                )
     endforeach ()
     add_custom_target(icon-pngs ALL DEPENDS ${ICON_PNGS})
-    install(DIRECTORY "${PROJECT_BINARY_DIR}/ui-icons/"
-            DESTINATION "share/xournalpp/ui"
-            COMPONENT xournalpp
-            )
 endif ()
 install(DIRECTORY plugins
         DESTINATION "share/xournalpp"
