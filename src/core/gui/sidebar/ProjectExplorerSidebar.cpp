@@ -2,7 +2,6 @@
 
 #include <cstring>
 #include <filesystem>
-#include <fstream>
 #include <functional>
 #include <map>
 #include <memory>
@@ -12,6 +11,7 @@
 #include <vector>
 
 #include "control/Control.h"
+#include "gui/GladeSearchpath.h"
 #include "gui/MainWindow.h"
 #include "gui/sidebar/AbstractSidebarPage.h"
 #include "model/Document.h"
@@ -29,6 +29,7 @@ enum Kind : gint { KIND_DIRECTORY, KIND_DOCUMENT, KIND_FILE, KIND_PLACEHOLDER };
 constexpr size_t MAX_SEARCH_RESULTS = 1000;
 constexpr int MAX_SEARCH_DEPTH = 16;
 constexpr guint REFRESH_DELAY_MS = 250;
+constexpr guint SAVE_DELAY_MS = 500;
 
 auto utf8(const fs::path& path) -> std::string {
     auto value = path.u8string();
@@ -76,18 +77,29 @@ auto kindFor(const fs::path& path, bool directory) -> Kind {
     return Util::hasXournalFileExt(path) || Util::hasPdfFileExt(path) ? KIND_DOCUMENT : KIND_FILE;
 }
 
-auto iconFor(const fs::path& path, Kind kind) -> const char* {
-    if (kind == KIND_DIRECTORY) {
-        return "folder-symbolic";
-    }
-    if (kind == KIND_DOCUMENT) {
-        return "x-office-document-symbolic";
-    }
+auto isImage(const fs::path& path) -> bool {
     auto ext = casefold(utf8(path.extension()));
-    if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".gif" || ext == ".svg" || ext == ".bmp") {
-        return "image-x-generic-symbolic";
+    return ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".gif" || ext == ".svg" || ext == ".bmp";
+}
+
+/// Loads an icon shipped in ui/pixmaps, falling back to a themed icon if the file is missing.
+auto loadPixmapIcon(Control* control, const char* file, const char* fallback) -> GIcon* {
+    const auto path = control->getGladeSearchPath()->findFile("pixmaps", file);
+    if (path.empty()) {
+        return g_themed_icon_new(fallback);
     }
-    return "text-x-generic-symbolic";
+    GFile* gfile = g_file_new_for_path(utf8(path).c_str());
+    GIcon* icon = g_file_icon_new(gfile);
+    g_object_unref(gfile);
+    return icon;
+}
+
+/// Key file group for a project, independent of characters in its path
+auto projectGroup(const fs::path& project) -> std::string {
+    gchar* hash = g_compute_checksum_for_string(G_CHECKSUM_SHA1, utf8(project).c_str(), -1);
+    std::string group = std::string("project-") + hash;
+    g_free(hash);
+    return group;
 }
 
 /// Returns the name with the first match of the (casefolded) needle in bold, or nullopt if it does not match.
@@ -186,7 +198,14 @@ public:
                          }), this);
         gtk_box_pack_start(GTK_BOX(root), GTK_WIDGET(searchEntry), false, false, 0);
 
-        store = gtk_tree_store_new(COL_COUNT, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_INT,
+        folderIcon = g_themed_icon_new("folder-symbolic");
+        folderOpenIcon = g_themed_icon_new("folder-open-symbolic");
+        imageIcon = g_themed_icon_new("image-x-generic-symbolic");
+        fileIcon = g_themed_icon_new("text-x-generic-symbolic");
+        xournalIcon = loadPixmapIcon(control, "project-explorer-xopp.svg", "x-office-document-symbolic");
+        pdfIcon = loadPixmapIcon(control, "project-explorer-pdf.svg", "x-office-document-symbolic");
+
+        store = gtk_tree_store_new(COL_COUNT, G_TYPE_ICON, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_INT,
                                    G_TYPE_BOOLEAN);
         gtk_tree_sortable_set_sort_func(GTK_TREE_SORTABLE(store), COL_NAME, compareRows, nullptr, nullptr);
         gtk_tree_sortable_set_sort_column_id(GTK_TREE_SORTABLE(store), COL_NAME, GTK_SORT_ASCENDING);
@@ -202,7 +221,7 @@ public:
         auto* iconRenderer = gtk_cell_renderer_pixbuf_new();
         g_object_set(iconRenderer, "stock-size", GTK_ICON_SIZE_MENU, "xpad", 4, "ypad", 3, nullptr);
         gtk_tree_view_column_pack_start(column, iconRenderer, false);
-        gtk_tree_view_column_add_attribute(column, iconRenderer, "icon-name", COL_ICON);
+        gtk_tree_view_column_add_attribute(column, iconRenderer, "gicon", COL_ICON);
         gtk_tree_view_column_add_attribute(column, iconRenderer, "sensitive", COL_SENSITIVE);
         auto* textRenderer = gtk_cell_renderer_text_new();
         g_object_set(textRenderer, "ellipsize", PANGO_ELLIPSIZE_END, "ypad", 3, nullptr);
@@ -216,6 +235,17 @@ public:
         g_signal_connect(tree, "row-collapsed", G_CALLBACK(onRowCollapsed), this);
         g_signal_connect(tree, "row-activated", G_CALLBACK(onRowActivated), this);
         g_signal_connect(tree, "button-press-event", G_CALLBACK(onButtonPress), this);
+        g_signal_connect(gtk_tree_view_get_selection(tree), "changed",
+                         G_CALLBACK(+[](GtkTreeSelection*, gpointer data) {
+                             auto* self = static_cast<ProjectExplorerSidebar*>(data);
+                             if (self->updatingTree) {
+                                 return;
+                             }
+                             if (auto selected = self->selectedPath(); !selected.empty()) {
+                                 self->selectedFile = selected;
+                                 self->scheduleSave();
+                             }
+                         }), this);
 
         longPress = gtk_gesture_long_press_new(GTK_WIDGET(tree));
         gtk_gesture_single_set_touch_only(GTK_GESTURE_SINGLE(longPress), true);
@@ -242,21 +272,19 @@ public:
 
         gtk_widget_show_all(root);
 
-        const auto savedProject = Util::getConfigFile("last-project.txt");
-        if (auto saved = Util::readString(savedProject, false); saved && !saved->empty()) {
-            std::error_code error;
-            if (auto savedPath = fs::weakly_canonical(pathFromUtf8(saved->c_str()), error);
-                !error && fs::is_directory(savedPath, error)) {
-                projectRoot = savedPath;
-            } else {
-                fs::remove(savedProject, error);
-            }
-        }
+        loadState();
         registerListener(control);
         buildTree();
+        if (!selectedFile.empty()) {
+            reveal(pathFromUtf8(selectedFile.c_str()), true);
+        }
     }
 
     ~ProjectExplorerSidebar() override {
+        if (saveSource) {
+            g_source_remove(saveSource);
+            saveState();
+        }
         if (refreshSource) {
             g_source_remove(refreshSource);
         }
@@ -264,10 +292,14 @@ public:
             g_source_remove(scrollSource);
         }
         clearMonitors();
+        g_signal_handlers_disconnect_by_data(gtk_tree_view_get_selection(tree), this);
         g_signal_handlers_disconnect_by_data(tree, this);
         g_signal_handlers_disconnect_by_data(searchEntry, this);
         g_object_unref(longPress);
         g_object_unref(root);
+        for (auto* icon: {folderIcon, folderOpenIcon, imageIcon, fileIcon, xournalIcon, pdfIcon}) {
+            g_object_unref(icon);
+        }
     }
 
     void enableSidebar() override { refresh(true); }
@@ -279,13 +311,29 @@ public:
     GtkWidget* getWidget() override { return root; }
     void openProjectFolder() override { chooseFolder(); }
 
+    auto lastDocument() const -> fs::path override {
+        if (lastDocumentFile.empty() || projectRoot.empty()) {
+            return {};
+        }
+        const auto path = pathFromUtf8(lastDocumentFile.c_str());
+        std::error_code error;
+        return fs::is_regular_file(path, error) && Util::isChildOrEquivalent(path, projectRoot) ? path : fs::path();
+    }
+
     void documentChanged(DocumentChangeType type) override {
-        if (type != DOCUMENT_CHANGE_COMPLETE || projectRoot.empty() || searching) {
+        if (type != DOCUMENT_CHANGE_COMPLETE || projectRoot.empty()) {
             return;
         }
         const auto documentPath = control->getDocument()->getFilepath();
-        if (!documentPath.empty()) {
-            reveal(documentPath, true);
+        std::error_code error;
+        const auto absolute = documentPath.empty() ? fs::path() : fs::weakly_canonical(documentPath, error);
+        if (absolute.empty() || error || !Util::isChildOrEquivalent(absolute, projectRoot)) {
+            return;
+        }
+        lastDocumentFile = utf8(absolute);
+        saveState();
+        if (!searching) {
+            reveal(absolute, true);
         }
     }
 
@@ -293,6 +341,19 @@ private:
     // --- Tree model helpers ---
 
     auto model() const -> GtkTreeModel* { return GTK_TREE_MODEL(store); }
+
+    auto iconFor(const fs::path& path, Kind kind) const -> GIcon* {
+        if (kind == KIND_DIRECTORY) {
+            return folderIcon;
+        }
+        if (Util::hasXournalFileExt(path)) {
+            return xournalIcon;
+        }
+        if (Util::hasPdfFileExt(path)) {
+            return pdfIcon;
+        }
+        return isImage(path) ? imageIcon : fileIcon;
+    }
 
     auto kindAt(GtkTreeIter* iter) const -> gint {
         gint kind = KIND_PLACEHOLDER;
@@ -601,11 +662,13 @@ private:
     }
 
     static void onRowExpanded(GtkTreeView*, GtkTreeIter* iter, GtkTreePath*, ProjectExplorerSidebar* self) {
-        gtk_tree_store_set(self->store, iter, COL_ICON, "folder-open-symbolic", -1);
+        gtk_tree_store_set(self->store, iter, COL_ICON, self->folderOpenIcon, -1);
         if (self->searching) {
             return;
         }
-        self->expandedPaths.insert(self->pathAt(iter));
+        if (self->expandedPaths.insert(self->pathAt(iter)).second) {
+            self->scheduleSave();
+        }
         // Restore previously expanded subdirectories
         std::vector<GtkTreePath*> toExpand;
         GtkTreeIter child;
@@ -622,9 +685,9 @@ private:
     }
 
     static void onRowCollapsed(GtkTreeView*, GtkTreeIter* iter, GtkTreePath*, ProjectExplorerSidebar* self) {
-        gtk_tree_store_set(self->store, iter, COL_ICON, "folder-symbolic", -1);
-        if (!self->searching && !self->updatingTree) {
-            self->expandedPaths.erase(self->pathAt(iter));
+        gtk_tree_store_set(self->store, iter, COL_ICON, self->folderIcon, -1);
+        if (!self->searching && !self->updatingTree && self->expandedPaths.erase(self->pathAt(iter))) {
+            self->scheduleSave();
         }
     }
 
@@ -724,6 +787,7 @@ private:
 
     void collapseAll() {
         expandedPaths.clear();
+        scheduleSave();
         gtk_tree_view_collapse_all(tree);
         GtkTreeIter rootIter;
         if (gtk_tree_model_get_iter_first(model(), &rootIter)) {
@@ -751,28 +815,126 @@ private:
             return;
         }
         if (absolute != projectRoot) {
-            expandedPaths.clear();
+            projectRoot = absolute;
+            loadProjectState();
         }
-        projectRoot = absolute;
         if (persist) {
-            const auto config = Util::getConfigFile("last-project.txt");
-            std::ofstream output(config, std::ios::binary | std::ios::trunc);
-            const auto saved = utf8(projectRoot);
-            output.write(saved.data(), static_cast<std::streamsize>(saved.size()));
+            saveState();
         }
         resetSearchAndBuild();
         const auto documentPath = control->getDocument()->getFilepath();
-        if (!documentPath.empty()) {
+        if (!documentPath.empty() && Util::isChildOrEquivalent(documentPath, projectRoot)) {
             reveal(documentPath, true);
+        } else if (!selectedFile.empty()) {
+            reveal(pathFromUtf8(selectedFile.c_str()), true);
         }
     }
 
     void closeProject() {
+        saveState();
         projectRoot.clear();
-        expandedPaths.clear();
-        std::error_code error;
-        fs::remove(Util::getConfigFile("last-project.txt"), error);
+        loadProjectState();
+        saveState();
         resetSearchAndBuild();
+    }
+
+    // --- Persistent state (project-explorer.ini in the config folder) ---
+
+    auto stateFile() const -> std::string { return utf8(Util::getConfigFile("project-explorer.ini")); }
+
+    auto loadKeyFile() const -> GKeyFile* {
+        GKeyFile* keyFile = g_key_file_new();
+        g_key_file_load_from_file(keyFile, stateFile().c_str(), G_KEY_FILE_KEEP_COMMENTS, nullptr);
+        return keyFile;
+    }
+
+    auto readString(GKeyFile* keyFile, const std::string& group, const char* key) const -> std::string {
+        gchar* value = g_key_file_get_string(keyFile, group.c_str(), key, nullptr);
+        std::string result = value ? value : "";
+        g_free(value);
+        return result;
+    }
+
+    void loadState() {
+        GKeyFile* keyFile = loadKeyFile();
+        auto project = readString(keyFile, "General", "project");
+        g_key_file_free(keyFile);
+
+        // Migrate the project folder from the previous single-line state file
+        const auto legacyFile = Util::getConfigFile("last-project.txt");
+        std::error_code error;
+        if (project.empty()) {
+            if (auto legacy = Util::readString(legacyFile, false)) {
+                project = *legacy;
+            }
+        }
+        fs::remove(legacyFile, error);
+
+        if (!project.empty()) {
+            auto path = fs::weakly_canonical(pathFromUtf8(project.c_str()), error);
+            if (!error && fs::is_directory(path, error)) {
+                projectRoot = path;
+            }
+        }
+        loadProjectState();
+    }
+
+    /// Restores expanded folders, selection and last document of the current project.
+    void loadProjectState() {
+        expandedPaths.clear();
+        selectedFile.clear();
+        lastDocumentFile.clear();
+        if (projectRoot.empty()) {
+            return;
+        }
+        GKeyFile* keyFile = loadKeyFile();
+        const auto group = projectGroup(projectRoot);
+        gsize count = 0;
+        if (gchar** expanded = g_key_file_get_string_list(keyFile, group.c_str(), "expanded", &count, nullptr)) {
+            for (gsize i = 0; i < count; i++) {
+                expandedPaths.insert(expanded[i]);
+            }
+            g_strfreev(expanded);
+        }
+        selectedFile = readString(keyFile, group, "selected");
+        lastDocumentFile = readString(keyFile, group, "document");
+        g_key_file_free(keyFile);
+    }
+
+    void saveState() {
+        GKeyFile* keyFile = loadKeyFile();
+        if (projectRoot.empty()) {
+            g_key_file_remove_key(keyFile, "General", "project", nullptr);
+        } else {
+            const auto group = projectGroup(projectRoot);
+            g_key_file_set_string(keyFile, "General", "project", utf8(projectRoot).c_str());
+            g_key_file_set_string(keyFile, group.c_str(), "root", utf8(projectRoot).c_str());
+            std::vector<const gchar*> expanded;
+            for (const auto& path: expandedPaths) {
+                expanded.push_back(path.c_str());
+            }
+            g_key_file_set_string_list(keyFile, group.c_str(), "expanded", expanded.data(), expanded.size());
+            g_key_file_set_string(keyFile, group.c_str(), "selected", selectedFile.c_str());
+            g_key_file_set_string(keyFile, group.c_str(), "document", lastDocumentFile.c_str());
+        }
+        GError* error = nullptr;
+        if (!g_key_file_save_to_file(keyFile, stateFile().c_str(), &error)) {
+            g_warning("Could not save project explorer state: %s", error->message);
+            g_error_free(error);
+        }
+        g_key_file_free(keyFile);
+    }
+
+    void scheduleSave() {
+        if (saveSource || projectRoot.empty()) {
+            return;
+        }
+        saveSource = g_timeout_add(SAVE_DELAY_MS, +[](gpointer data) -> gboolean {
+            auto* self = static_cast<ProjectExplorerSidebar*>(data);
+            self->saveSource = 0;
+            self->saveState();
+            return G_SOURCE_REMOVE;
+        }, this);
     }
 
     void resetSearchAndBuild() {
@@ -825,6 +987,15 @@ private:
     bool searching = false;
     bool updatingTree = false;
     std::set<std::string> expandedPaths;
+    std::string selectedFile;
+    std::string lastDocumentFile;
+    GIcon* folderIcon{};
+    GIcon* folderOpenIcon{};
+    GIcon* imageIcon{};
+    GIcon* fileIcon{};
+    GIcon* xournalIcon{};
+    GIcon* pdfIcon{};
+    guint saveSource = 0;
     std::map<std::string, GFileMonitor*> monitors;
     guint refreshSource = 0;
     guint scrollSource = 0;

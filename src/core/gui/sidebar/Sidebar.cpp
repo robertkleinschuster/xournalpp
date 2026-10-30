@@ -131,6 +131,10 @@ void Sidebar::openProjectFolder() {
     }
 }
 
+auto Sidebar::getProjectExplorerLastDocument() const -> std::filesystem::path {
+    return projectExplorerActions ? projectExplorerActions->lastDocument() : std::filesystem::path();
+}
+
 void Sidebar::updateVisibleTabs() {
     size_t i = 0;
     size_t selected = npos;

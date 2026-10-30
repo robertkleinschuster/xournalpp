@@ -11,8 +11,9 @@
 
 #pragma once
 
-#include <cstddef>  // for size_t
-#include <memory>   // for unique_ptr
+#include <cstddef>     // for size_t
+#include <filesystem>  // for path
+#include <memory>      // for unique_ptr
 #include <vector>   // for vector
 
 #include <gtk/gtk.h>  // for GtkWidget, Gtk...
@@ -80,6 +81,8 @@ public:
     void setSelectedTab(size_t tab);
     void selectProjectExplorer();
     void openProjectFolder();
+    /// The document last opened from the project explorer's folder, or empty
+    std::filesystem::path getProjectExplorerLastDocument() const;
 
 public:
     // DocumentListener interface
