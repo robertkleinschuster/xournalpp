@@ -35,8 +35,9 @@ ClipboardHandler::ClipboardHandler(ClipboardListener* listener, GtkWidget* widge
 
     this->listener->clipboardCutCopyEnabled(false);
 
-    gtk_clipboard_request_contents(clipboard, gdk_atom_intern_static_string("TARGETS"),
-                                   reinterpret_cast<GtkClipboardReceivedFunc>(receivedClipboardContents), this);
+    // Fork: asking for the clipboard targets blocks the startup for several 100 ms on Windows. Paste asks again anyway
+    // and does nothing on an empty clipboard, so keep it enabled until the clipboard changes for the first time.
+    this->listener->clipboardPasteEnabled(true);
 }
 
 ClipboardHandler::~ClipboardHandler() { g_signal_handler_disconnect(this->clipboard, this->handlerId); }
