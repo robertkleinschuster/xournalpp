@@ -5017,12 +5017,12 @@ msgid "Rename"
 msgstr "Umbenennen"
 
 #: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
-msgid "source"
-msgstr "Quelle"
+msgid "Source PDF"
+msgstr "Quell-PDF"
 
 #: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
-msgid "export"
-msgstr "Export"
+msgid "Exported PDF with annotations"
+msgstr "Exportiertes PDF mit Notizen"
 
 #: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
 msgid "Open in PDF Viewer"

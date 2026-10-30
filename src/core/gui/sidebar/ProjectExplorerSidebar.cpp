@@ -31,7 +31,17 @@ namespace fs = std::filesystem;
 
 namespace {
 
-enum Column : gint { COL_ICON, COL_NAME, COL_MARKUP, COL_PATH, COL_KIND, COL_SENSITIVE, COL_FOREGROUND, COL_COUNT };
+enum Column : gint {
+    COL_ICON,
+    COL_NAME,
+    COL_MARKUP,
+    COL_PATH,
+    COL_KIND,
+    COL_SENSITIVE,
+    COL_FOREGROUND,
+    COL_TOOLTIP,
+    COL_COUNT
+};
 /// KIND_NESTED: source or exported PDF shown below its .xopp document
 enum Kind : gint { KIND_DIRECTORY, KIND_DOCUMENT, KIND_FILE, KIND_PLACEHOLDER, KIND_NESTED };
 
@@ -263,9 +273,10 @@ public:
         fileIcon = g_themed_icon_new("text-x-generic-symbolic");
         xournalIcon = loadPixmapIcon(control, "project-explorer-xopp.svg", "x-office-document-symbolic");
         pdfIcon = loadPixmapIcon(control, "project-explorer-pdf.svg", "x-office-document-symbolic");
+        annotatedPdfIcon = loadPixmapIcon(control, "project-explorer-pdf-annotated.svg", "x-office-document-symbolic");
 
         store = gtk_tree_store_new(COL_COUNT, G_TYPE_ICON, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_INT,
-                                   G_TYPE_BOOLEAN, G_TYPE_STRING);
+                                   G_TYPE_BOOLEAN, G_TYPE_STRING, G_TYPE_STRING);
         gtk_tree_sortable_set_sort_func(GTK_TREE_SORTABLE(store), COL_NAME, compareRows, nullptr, nullptr);
         gtk_tree_sortable_set_sort_column_id(GTK_TREE_SORTABLE(store), COL_NAME, GTK_SORT_ASCENDING);
 
@@ -275,6 +286,7 @@ public:
         gtk_tree_view_set_enable_search(tree, false);
         gtk_tree_view_set_activate_on_single_click(tree, true);
         gtk_tree_view_set_show_expanders(tree, true);
+        gtk_tree_view_set_tooltip_column(tree, COL_TOOLTIP);
 
         auto* column = gtk_tree_view_column_new();
         auto* iconRenderer = gtk_cell_renderer_pixbuf_new();
@@ -389,7 +401,7 @@ public:
         }
         g_object_unref(longPress);
         g_object_unref(root);
-        for (auto* icon: {folderIcon, folderOpenIcon, imageIcon, fileIcon, xournalIcon, pdfIcon}) {
+        for (auto* icon: {folderIcon, folderOpenIcon, imageIcon, fileIcon, xournalIcon, pdfIcon, annotatedPdfIcon}) {
             g_object_unref(icon);
         }
     }
@@ -512,7 +524,13 @@ private:
             appendNode(iter, path, name, KIND_DIRECTORY, escape(name), true);
         }
         // Nest the source PDF and the exported PDF below their .xopp document, like file nesting in IDEs
-        std::map<std::string, std::vector<std::pair<fs::path, const char*>>> nested;
+        // The icon tells them apart: plain PDF for the source, PDF with handwriting for the export
+        struct NestedFile {
+            fs::path path;
+            GIcon* icon;
+            const char* tooltip;
+        };
+        std::map<std::string, std::vector<NestedFile>> nested;
         std::set<std::string> nestedFiles;
         for (const auto& path: files) {
             if (path.extension() != ".xopp") {
@@ -521,11 +539,12 @@ private:
             auto source = path;
             source.replace_extension(".pdf");
             const auto exported = AnnotationFiles::exportPathForFile(path, *control->getSettings());
-            for (const auto& [candidate, role]: {std::pair{source, _("source")}, std::pair{exported, _("export")}}) {
+            for (const auto& candidate: {NestedFile{source, pdfIcon, _("Source PDF")},
+                                         NestedFile{exported, annotatedPdfIcon, _("Exported PDF with annotations")}}) {
                 std::error_code fileError;
-                if (!candidate.empty() && fs::is_regular_file(candidate, fileError) &&
-                    nestedFiles.insert(utf8(candidate)).second) {
-                    nested[utf8(path)].emplace_back(candidate, role);
+                if (!candidate.path.empty() && fs::is_regular_file(candidate.path, fileError) &&
+                    nestedFiles.insert(utf8(candidate.path)).second) {
+                    nested[utf8(path)].push_back(candidate);
                 }
             }
         }
@@ -536,10 +555,11 @@ private:
             const auto name = utf8(path.filename());
             auto fileIter = appendNode(iter, path, name, kindFor(path, false), escape(name), true);
             if (auto children = nested.find(utf8(path)); children != nested.end()) {
-                for (const auto& [child, role]: children->second) {
-                    const auto childName = utf8(child.filename());
-                    appendNode(&fileIter, child, childName, KIND_NESTED,
-                               escape(childName) + "  <span alpha=\"60%\">" + escape(role) + "</span>", false);
+                for (const auto& child: children->second) {
+                    const auto childName = utf8(child.path.filename());
+                    auto childIter = appendNode(&fileIter, child.path, childName, KIND_NESTED, escape(childName), false);
+                    gtk_tree_store_set(store, &childIter, COL_ICON, child.icon, COL_TOOLTIP,
+                                       escape(child.tooltip).c_str(), -1);
                 }
             }
         }
@@ -1827,6 +1847,7 @@ private:
     GIcon* fileIcon{};
     GIcon* xournalIcon{};
     GIcon* pdfIcon{};
+    GIcon* annotatedPdfIcon{};
     guint saveSource = 0;
     std::map<std::string, GFileMonitor*> monitors;
     guint refreshSource = 0;
