@@ -157,3 +157,18 @@ TEST_F(AnnotationFilesTest, addedPagesCountAsAnnotations) {
     doc.addPage(std::make_shared<XojPage>(100.0, 100.0));
     EXPECT_TRUE(AnnotationFiles::hasAnnotations(doc));
 }
+
+TEST_F(AnnotationFilesTest, reorderedPagesCountAsAnnotations) {
+    fs::copy_file(GET_TESTFILE(u8"packaged_xopp/pdfBackground/old.xopp.bg.pdf"), dir / "Lecture.pdf");
+    DocumentHandler handler;
+    Document doc(&handler);
+    ASSERT_TRUE(doc.readPdf(dir / "Lecture.pdf", true, false));
+    ASSERT_GE(doc.getPageCount(), 2U);
+    EXPECT_FALSE(AnnotationFiles::hasAnnotations(doc));
+
+    // Same page count, only PDF backgrounds, no strokes: the order still differs from the PDF
+    auto first = doc.getPage(0);
+    doc.deletePage(0);
+    doc.insertPage(first, 1);
+    EXPECT_TRUE(AnnotationFiles::hasAnnotations(doc));
+}

@@ -2818,8 +2818,27 @@ void Control::enableEditing() {
     }
     // A PDF opened read-only on purpose may already have its document: edit that one instead of starting over
     if (auto existing = existingDocumentForPdf()) {
-        openFileWithoutSavingTheCurrentDocument(std::move(*existing), false, static_cast<int>(getCurrentPageNo()),
-                                                [](bool) {});
+        // Read-only, page i shows PDF page i. The document may have inserted or reordered pages: go to the page that
+        // shows the same PDF page, after the page the document was opened at has been scrolled to
+        const size_t pdfPage = getCurrentPageNo();
+        openFileWithoutSavingTheCurrentDocument(
+                std::move(*existing), false, static_cast<int>(pdfPage), [this, pdfPage](bool opened) {
+                    if (!opened) {
+                        return;
+                    }
+                    std::optional<size_t> target;
+                    this->doc->lock_shared();
+                    for (size_t i = 0; i < this->doc->getPageCount() && !target; i++) {
+                        const auto page = this->doc->getPage(i);
+                        if (page->getBackgroundType().isPdfPage() && page->getPdfPageNr() == pdfPage) {
+                            target = i;
+                        }
+                    }
+                    this->doc->unlock_shared();
+                    if (target && *target != pdfPage) {
+                        Util::execInUiThread([this, page = *target] { this->scrollHandler->scrollToPage(page); });
+                    }
+                });
         return;
     }
     setReadOnly(false);
