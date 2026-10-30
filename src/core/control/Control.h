@@ -331,6 +331,24 @@ public:
     AudioController* getAudioController() const;
     /// Fork: whether audio is used; the AudioController itself is only created after the window is drawn
     bool isAudioEnabled() const;
+
+    /**
+     * Fork: a PDF without its .xopp is opened read-only: the document cannot be changed until editing is enabled,
+     * which creates the .xopp next to the PDF. Only the info bar above the document enables editing.
+     */
+    bool isReadOnly() const;
+    void setReadOnly(bool readOnly);
+    void enableEditing();
+    /// Called when an edit was attempted while read-only: points the user to the info bar
+    void notifyReadOnly();
+    /// Opens a PDF read-only, even if it has a .xopp document
+    void openPdfReadOnly(fs::path pdf);
+
+private:
+    /// Fork: the .xopp document that annotates the PDF of the current document, if there is one
+    auto existingDocumentForPdf() -> std::optional<fs::path>;
+
+public:
     PageTypeHandler* getPageTypes() const;
     PageBackgroundChangeController* getPageBackgroundChangeController() const;
     LayerController* getLayerController() const;
@@ -590,5 +608,6 @@ private:
     // Keep after the ActionDatabase so it is destroyed first: ~AudioController refers to the ActionDatabase
     std::unique_ptr<AudioController> audioController;
     bool audioEnabled = false;
+    bool readOnly = false;
     guint audioInitSource = 0;
 };

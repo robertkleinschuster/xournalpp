@@ -13,6 +13,8 @@
 #include <gio/gio.h>
 #include <gtk/gtk.h>
 
+#include <map>
+
 #include "enums/Action.enum.h"
 #include "util/Assert.h"
 #include "util/EnumIndexedArray.h"
@@ -69,6 +71,10 @@ public:
     ActionRef getAction(Action a) const;
     bool isActionEnabled(Action a) const;
 
+    /// Fork: while read-only, the actions that change the document stay disabled; enableAction() calls are remembered
+    /// and applied when editing is enabled again
+    void setReadOnly(bool readOnly);
+
     /// Disables every action
     void disableAll();
     /// Set the actions enabled flag depending on ActionProperties::initiallyEnabled()
@@ -112,6 +118,8 @@ public:
 private:
     EnumIndexedArray<ActionRef, Action> gActions;
     EnumIndexedArray<gulong, Action> signalIds;
+    bool readOnly = false;
+    std::map<Action, bool> requestedWhileReadOnly;
     Control* control;
     GtkApplicationWindow* win;
 

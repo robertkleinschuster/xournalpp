@@ -43,6 +43,10 @@ PageBackgroundChangeController::PageBackgroundChangeController(Control* control)
 }
 
 void PageBackgroundChangeController::applyBackgroundToAllPages(const PageType& pt) {
+    if (control->isReadOnly()) {  // Fork: read-only PDF
+        control->notifyReadOnly();
+        return;
+    }
     control->clearSelectionEndText();
 
     auto apply = [pt, this](CommitParameter param = std::nullopt) {
@@ -80,6 +84,10 @@ void PageBackgroundChangeController::applyBackgroundToAllPages(const PageType& p
 }
 
 void PageBackgroundChangeController::applyPageSizeToAllPages(const PaperSize& paperSize) {
+    if (control->isReadOnly()) {  // Fork: read-only PDF
+        control->notifyReadOnly();
+        return;
+    }
     control->clearSelectionEndText();
 
     Document* doc = control->getDocument();
@@ -97,11 +105,19 @@ void PageBackgroundChangeController::applyPageSizeToAllPages(const PaperSize& pa
 }
 
 void PageBackgroundChangeController::applyCurrentPageBackgroundToAll() {
+    if (control->isReadOnly()) {  // Fork: read-only PDF
+        control->notifyReadOnly();
+        return;
+    }
     PageType pt = control->getCurrentPage()->getBackgroundType();
     applyBackgroundToAllPages(pt);
 }
 
 void PageBackgroundChangeController::changePdfPagesBackground(const fs::path& filepath, bool attachPdf) {
+    if (control->isReadOnly()) {  // Fork: read-only PDF
+        control->notifyReadOnly();
+        return;
+    }
     Document* doc = this->control->getDocument();
 
     const fs::path oldFilepath = doc->getPdfFilepath();
@@ -121,6 +137,10 @@ void PageBackgroundChangeController::changePdfPagesBackground(const fs::path& fi
 }
 
 void PageBackgroundChangeController::changeCurrentPageBackground(const PageType& pt) {
+    if (control->isReadOnly()) {  // Fork: read-only PDF
+        control->notifyReadOnly();
+        return;
+    }
     control->clearSelectionEndText();
 
     const size_t pageNr = control->getCurrentPageNo();
@@ -155,6 +175,10 @@ void PageBackgroundChangeController::changeCurrentPageBackground(const PageType&
 }
 
 void PageBackgroundChangeController::changeCurrentPageSize(const PaperSize& pageSize) {
+    if (control->isReadOnly()) {  // Fork: read-only PDF
+        control->notifyReadOnly();
+        return;
+    }
     control->clearSelectionEndText();
 
     auto undoAction = commitPageSizeChange(control->getCurrentPageNo(), pageSize);

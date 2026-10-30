@@ -1573,6 +1573,7 @@ void Control::askToOpenFile() {
 
 void Control::replaceDocument(std::unique_ptr<Document> doc, int scrollToPage) {
     this->closeDocument();
+    setReadOnly(false);
 
     fs::path filepath = doc->getFilepath();
 
@@ -1838,8 +1839,8 @@ void Control::openFileWithoutSavingTheCurrentDocument(fs::path filepath, bool at
         }
         const bool opened = this->openPdfFile(std::move(filepath), attachToDocument, scrollToPage);
         if (opened && !attachToDocument) {
-            // Fork: keep the annotations in a .xopp file next to the PDF right away
-            AnnotationFiles::createDocumentFileForPdf(this);
+            // Fork: view the PDF read-only; the .xopp is only created once editing is enabled
+            setReadOnly(true);
         }
         callback(opened);
         return;
@@ -1875,6 +1876,14 @@ void Control::fileLoaded(int scrollToPage) {
                 md->page = scrollToPage;
             }
             loadMetadata(*md);
+        } else if (scrollToPage >= 0) {
+            // Fork: also go to the requested page of a document that was never opened before (e.g. after enabling
+            // editing of a PDF viewed read-only), keeping the zoom
+            MetadataEntry entry;
+            entry.path = filepath;
+            entry.page = scrollToPage;
+            entry.zoom = zoom->getZoom() / zoom->getZoom100Value();
+            loadMetadata(entry);
         }
         RecentManager::addRecentFileFilename(filepath);
 
@@ -2270,7 +2279,8 @@ void Control::close(std::function<void(bool)> callback, const bool allowDestroy,
 
     resetGeometryTool();
 
-    bool safeToClose = forceClose || !undoRedo->isChanged();
+    // Fork: a read-only PDF is never saved; whatever slipped through the read-only checks is discarded
+    bool safeToClose = forceClose || this->readOnly || !undoRedo->isChanged();
     if (!safeToClose) {
         fs::path path = doc->getFilepath();
         const bool fileRemoved = !path.empty() && !fs::exists(path);
@@ -2760,6 +2770,74 @@ auto Control::getSearchBar() const -> SearchBar* { return this->searchBar; }
 auto Control::getAudioController() const -> AudioController* { return this->audioController.get(); }
 
 auto Control::isAudioEnabled() const -> bool { return this->audioEnabled; }
+
+auto Control::isReadOnly() const -> bool { return this->readOnly; }
+
+void Control::setReadOnly(bool readOnly) {
+    this->readOnly = readOnly;
+    if (this->actionDB) {
+        this->actionDB->setReadOnly(readOnly);
+    }
+    if (this->win) {
+        this->win->setReadOnlyBarVisible(readOnly, readOnly && existingDocumentForPdf().has_value());
+    }
+}
+
+auto Control::existingDocumentForPdf() -> std::optional<fs::path> {
+    this->doc->lock_shared();
+    const auto pdf = this->doc->getPdfFilepath();
+    this->doc->unlock_shared();
+    if (pdf.empty()) {
+        return std::nullopt;
+    }
+    auto existing = AnnotationFiles::documentForSource(pdf);
+    if (!existing) {
+        existing = AnnotationFiles::documentForExport(pdf, *this->settings);
+    }
+    if (!existing) {
+        // The names a normal open looks for next to the PDF, including old .xoj journals
+        fs::path root = pdf;
+        Util::clearExtensions(root, ".pdf");
+        for (const char* ext: {".xopp", ".xoj", ".pdf.xopp", ".pdf.xoj"}) {
+            fs::path candidate = root;
+            candidate += ext;
+            if (std::error_code error; fs::exists(candidate, error)) {
+                return candidate;
+            }
+        }
+    }
+    return existing;
+}
+
+void Control::enableEditing() {
+    if (!this->readOnly || this->isBlocking) {  // e.g. while exporting, the job still reads the document
+        return;
+    }
+    // A PDF opened read-only on purpose may already have its document: edit that one instead of starting over
+    if (auto existing = existingDocumentForPdf()) {
+        openFileWithoutSavingTheCurrentDocument(std::move(*existing), false, static_cast<int>(getCurrentPageNo()),
+                                                [](bool) {});
+        return;
+    }
+    setReadOnly(false);
+    AnnotationFiles::createDocumentFileForPdf(this);
+}
+
+void Control::notifyReadOnly() {
+    if (this->win) {
+        this->win->highlightReadOnlyBar();
+    }
+}
+
+void Control::openPdfReadOnly(fs::path pdf) {
+    this->close(
+            [this, pdf = std::move(pdf)](bool closed) mutable {
+                if (closed && openPdfFile(std::move(pdf), false, -1)) {
+                    setReadOnly(true);
+                }
+            },
+            false, true, false);
+}
 
 auto Control::getPageTypes() const -> PageTypeHandler* { return this->pageTypes; }
 

@@ -13,6 +13,7 @@
 - Keep the fork identity and configuration directory separate from upstream so both installations can run side by side.
 - Preserve the touch-sequence reset on window deactivation. It prevents stale touch state from breaking touchscreen scroll and pinch zoom.
 - Use graph paper as the default for new documents.
+- A PDF without its .xopp opens read-only (no files are created) with an info bar; only its "Enable Editing" button creates the .xopp next to the PDF or opens an existing one. Read-only is enforced in ActionDatabase (EDITING_ACTIONS), XojPageView's press handlers, PageBackgroundChangeController, drag and drop, and Control::close discards. The annotated PDF is only exported once the document has annotations (AnnotationFiles::hasAnnotations) or an export already exists.
 - Keep UI changes focused: a project-folder browser in the existing sidebar and persistent document tabs. The startup recent-documents overlay has been removed. Git support stays minimal: status colors in the explorer tree (green new, blue modified) and a single sync button (commit, pull --rebase, push) shown only for git repositories. Do not add further Git UI or replace the normal document view.
 
 ## Windows build

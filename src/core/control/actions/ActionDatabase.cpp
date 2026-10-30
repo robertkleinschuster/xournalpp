@@ -1,5 +1,7 @@
 #include "ActionDatabase.h"
 
+#include <algorithm>
+#include <iterator>
 #include <type_traits>
 #include <utility>
 
@@ -180,8 +182,71 @@ ActionDatabase::~ActionDatabase() {
 }
 
 
+/// Fork: actions that change the document, disabled while a PDF is viewed read-only
+static constexpr Action EDITING_ACTIONS[] = {
+        Action::SAVE,
+        Action::SAVE_AS,
+        Action::ARRANGE_SELECTION_ORDER,
+        Action::UNDO,
+        Action::REDO,
+        Action::CUT,
+        Action::PASTE,
+        Action::DELETE,
+        Action::MOVE_SELECTION_LAYER_UP,
+        Action::MOVE_SELECTION_LAYER_DOWN,
+        Action::NEW_PAGE_BEFORE,
+        Action::NEW_PAGE_AFTER,
+        Action::NEW_PAGE_AT_END,
+        Action::DUPLICATE_PAGE,
+        Action::MOVE_PAGE_TOWARDS_BEGINNING,
+        Action::MOVE_PAGE_TOWARDS_END,
+        Action::APPEND_NEW_PDF_PAGES,
+        Action::CONFIGURE_PAGE_TEMPLATE,
+        Action::DELETE_PAGE,
+        Action::PAPER_FORMAT,
+        Action::PAPER_BACKGROUND_COLOR,
+        Action::SETSQUARE,
+        Action::COMPASS,
+        Action::AUDIO_RECORD,
+        Action::LAYER_NEW_ABOVE_CURRENT,
+        Action::LAYER_NEW_BELOW_CURRENT,
+        Action::LAYER_COPY,
+        Action::LAYER_MOVE_UP,
+        Action::LAYER_MOVE_DOWN,
+        Action::LAYER_DELETE,
+        Action::LAYER_MERGE_DOWN,
+        Action::LAYER_RENAME,
+};
+
+static bool isEditingAction(Action action) {
+    return std::find(std::begin(EDITING_ACTIONS), std::end(EDITING_ACTIONS), action) != std::end(EDITING_ACTIONS);
+}
+
+void ActionDatabase::setReadOnly(bool readOnly) {
+    if (this->readOnly == readOnly) {
+        return;
+    }
+    if (readOnly) {
+        for (Action a: EDITING_ACTIONS) {
+            requestedWhileReadOnly[a] = isActionEnabled(a);
+            g_simple_action_set_enabled(gActions[a].get(), false);
+        }
+        this->readOnly = true;
+    } else {
+        this->readOnly = false;
+        for (auto [a, enabled]: requestedWhileReadOnly) {
+            g_simple_action_set_enabled(gActions[a].get(), enabled);
+        }
+        requestedWhileReadOnly.clear();
+    }
+}
+
 void ActionDatabase::enableAction(Action action, bool enable) {
     xoj_assert(gActions[action]);
+    if (readOnly && isEditingAction(action)) {
+        requestedWhileReadOnly[action] = enable;
+        enable = false;
+    }
     g_simple_action_set_enabled(gActions[action].get(), enable);
     ACTIONDB_PRINT_DEBUG((enable ? "Enabling Action \"" : "Disabling Action\"") << Action_toString(action) << "\"");
 }

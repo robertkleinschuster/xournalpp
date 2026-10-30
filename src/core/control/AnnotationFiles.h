@@ -54,6 +54,9 @@ std::optional<std::filesystem::path> documentForExport(const std::filesystem::pa
 /// unless that file already exists.
 void createDocumentFileForPdf(Control* control);
 
+/// Whether the document has anything beyond the plain PDF pages: strokes, text, images or added/removed pages
+auto hasAnnotations(Document& doc) -> bool;
+
 }  // namespace AnnotationFiles
 
 /**

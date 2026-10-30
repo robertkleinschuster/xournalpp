@@ -18,6 +18,8 @@
 #include "control/xojfile/SaveHandler.h"
 #include "model/Document.h"
 #include "model/DocumentHandler.h"
+#include "model/Point.h"
+#include "model/Stroke.h"
 #include "model/XojPage.h"
 
 namespace fs = std::filesystem;
@@ -130,4 +132,28 @@ TEST_F(AnnotationFilesTest, renamedDocumentIsFoundByItsSourcePdf) {
     ASSERT_TRUE(found);
     EXPECT_EQ(fs::path(*found).filename(), xopp.filename());
     EXPECT_FALSE(AnnotationFiles::documentForSource(dir / "Skript.pdf"));
+}
+
+TEST_F(AnnotationFilesTest, onlyChangedDocumentsHaveAnnotations) {
+    fs::copy_file(GET_TESTFILE(u8"packaged_xopp/pdfBackground/old.xopp.bg.pdf"), dir / "Lecture.pdf");
+    DocumentHandler handler;
+    Document doc(&handler);
+    ASSERT_TRUE(doc.readPdf(dir / "Lecture.pdf", true, false));
+    ASSERT_GT(doc.getPageCount(), 0U);
+    EXPECT_FALSE(AnnotationFiles::hasAnnotations(doc));
+
+    auto stroke = std::make_unique<Stroke>();
+    stroke->addPoint(Point(10, 10));
+    stroke->addPoint(Point(20, 20));
+    doc.getPage(0)->getSelectedLayer()->addElement(std::move(stroke));
+    EXPECT_TRUE(AnnotationFiles::hasAnnotations(doc));
+}
+
+TEST_F(AnnotationFilesTest, addedPagesCountAsAnnotations) {
+    fs::copy_file(GET_TESTFILE(u8"packaged_xopp/pdfBackground/old.xopp.bg.pdf"), dir / "Lecture.pdf");
+    DocumentHandler handler;
+    Document doc(&handler);
+    ASSERT_TRUE(doc.readPdf(dir / "Lecture.pdf", true, false));
+    doc.addPage(std::make_shared<XojPage>(100.0, 100.0));
+    EXPECT_TRUE(AnnotationFiles::hasAnnotations(doc));
 }

@@ -5035,3 +5035,27 @@ msgstr "Die Datei konnte nicht geöffnet werden."
 #: ../ui/settings.glade
 msgid "Show sidebar outside of the side toolbars"
 msgstr "Seitenleiste außerhalb der seitlichen Werkzeugleisten anzeigen"
+
+#: ../src/core/gui/MainWindow.cpp
+msgid ""
+"This PDF is open read-only. Enable editing to annotate it; this creates a .xopp "
+"document next to the PDF."
+msgstr ""
+"Dieses PDF ist schreibgeschützt geöffnet. Aktivieren Sie die Bearbeitung, um es "
+"zu beschriften; dabei wird ein .xopp-Dokument neben dem PDF angelegt."
+
+#: ../src/core/gui/MainWindow.cpp
+msgid "Enable Editing"
+msgstr "Bearbeitung aktivieren"
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "Open Read-Only"
+msgstr "Schreibgeschützt öffnen"
+
+#: ../src/core/gui/MainWindow.cpp
+msgid ""
+"This PDF is open read-only. It already has a document with your notes; "
+"enabling editing opens it."
+msgstr ""
+"Dieses PDF ist schreibgeschützt geöffnet. Es gibt bereits ein Dokument mit "
+"Ihren Notizen; „Bearbeitung aktivieren“ öffnet es."

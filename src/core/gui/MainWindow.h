@@ -97,6 +97,11 @@ public:
     /// Fork: places the sidebar outside of the side toolbars or between them and the document, see Settings
     void updateSidebarLayout();
 
+    /// Fork: the info bar shown above the document while a PDF is viewed read-only, see Control::isReadOnly()
+    void setReadOnlyBarVisible(bool visible, bool hasDocument = false);
+    /// Draws attention to the info bar after an edit was attempted
+    void highlightReadOnlyBar();
+
     void setUndoDescription(const std::string& description);
     void setRedoDescription(const std::string& description);
 
@@ -159,6 +164,8 @@ private:
     static void loadMainCSS(GladeSearchpath* gladeSearchPath, const gchar* cssFilename);
 
 private:
+    void createReadOnlyBar();
+
     Control* control;
 
     std::unique_ptr<XournalView> xournal;
@@ -193,4 +200,7 @@ private:
     xoj::util::WidgetSPtr sidebarWidget;
     /// Fork: holds the side toolbars and the contents while the sidebar is outside of them
     xoj::util::WidgetSPtr contentRow;
+    GtkWidget* readOnlyBar = nullptr;
+    GtkWidget* readOnlyLabel = nullptr;
+    guint readOnlyHighlightSource = 0;
 };

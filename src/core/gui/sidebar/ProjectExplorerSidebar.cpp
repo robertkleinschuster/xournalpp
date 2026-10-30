@@ -438,7 +438,11 @@ public:
         if (type != DOCUMENT_CHANGE_COMPLETE || projectRoot.empty()) {
             return;
         }
-        const auto documentPath = control->getDocument()->getFilepath();
+        // A PDF viewed read-only has no document file yet: remember the PDF itself
+        auto documentPath = control->getDocument()->getFilepath();
+        if (documentPath.empty()) {
+            documentPath = control->getDocument()->getPdfFilepath();
+        }
         std::error_code error;
         const auto absolute = documentPath.empty() ? fs::path() : fs::weakly_canonical(documentPath, error);
         if (absolute.empty() || error || !Util::isChildOrEquivalent(absolute, projectRoot)) {
@@ -1273,8 +1277,8 @@ private:
                 self->openDocument(pathFromUtf8(self->pathAt(&iter).c_str()));
                 break;
             case KIND_NESTED:
-                // The PDFs belong to the document: edit them through it
-                self->openDocument(self->owningDocument(&iter));
+                // The document row above opens the PDFs for editing; the nested entries show them as they are
+                self->openReadOnly(pathFromUtf8(self->pathAt(&iter).c_str()));
                 break;
             default:
                 break;
@@ -1334,6 +1338,8 @@ private:
             addMenuItem(menu, _("Open"), [this, document] { openDocument(document); });
             if (Util::hasPdfFileExt(pathFromUtf8(target.c_str()))) {
                 // Read-only viewing, e.g. of the exported PDF, without creating annotations
+                addMenuItem(menu, _("Open Read-Only"),
+                            [this, target] { openReadOnly(pathFromUtf8(target.c_str())); });
                 addMenuItem(menu, _("Open in PDF Viewer"), [this, target] { openWithDefaultApp(target); });
             }
             addMenuSeparator(menu);
@@ -1856,6 +1862,10 @@ private:
     /// Opens a document like an IDE switches files: pending changes of the current one are saved first
     void openDocument(fs::path path) {
         autoSaver->saveNow([this, path = std::move(path)] { control->openFile(path); });
+    }
+
+    void openReadOnly(fs::path pdf) {
+        autoSaver->saveNow([this, pdf = std::move(pdf)] { control->openPdfReadOnly(pdf); });
     }
 
     void showMessage(const char* message) {

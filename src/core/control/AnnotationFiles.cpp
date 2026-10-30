@@ -15,6 +15,7 @@
 #include "control/settings/Settings.h"
 #include "model/Document.h"
 #include "model/DocumentHandler.h"
+#include "model/XojPage.h"
 #include "undo/UndoRedoHandler.h"
 #include "util/GzInputStream.h"
 #include "util/PathUtil.h"
@@ -275,6 +276,18 @@ auto AnnotationFiles::documentForExport(const fs::path& pdf, const Settings& set
     return std::nullopt;
 }
 
+auto AnnotationFiles::hasAnnotations(Document& doc) -> bool {
+    doc.lock_shared();
+    bool annotated = doc.getPageCount() != doc.getPdfPageCount();
+    for (size_t i = 0; !annotated && i < doc.getPageCount(); i++) {
+        const auto page = doc.getPage(i);
+        // Reordered or duplicated pages change the exported PDF as well
+        annotated = !page->getBackgroundType().isPdfPage() || page->getPdfPageNr() != i || page->isAnnotated();
+    }
+    doc.unlock_shared();
+    return annotated;
+}
+
 void AnnotationFiles::createDocumentFileForPdf(Control* control) {
     Document* doc = control->getDocument();
     doc->lock_shared();
@@ -338,6 +351,11 @@ void AnnotationExporter::exportIfOutdated(std::function<void()> done) {
         return;
     }
     std::error_code error;
+    if (!AnnotationFiles::hasAnnotations(*doc) && !fs::exists(target, error)) {
+        // Nothing to export yet, e.g. right after editing was enabled; an existing export is still updated
+        done();
+        return;
+    }
     const auto saved = fs::last_write_time(xopp, error);
     if (error) {
         done();

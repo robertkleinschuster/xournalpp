@@ -174,7 +174,11 @@ void MainWindow::populate(GladeSearchpath* gladeSearchPath) {
 
 GMenuModel* MainWindow::getMenuModel() const { return menubar->getModel(); }
 
-MainWindow::~MainWindow() = default;
+MainWindow::~MainWindow() {
+    if (readOnlyHighlightSource) {
+        g_source_remove(readOnlyHighlightSource);
+    }
+}
 
 struct ThemeProperties {
     bool dark;
@@ -321,6 +325,7 @@ void MainWindow::initXournalWidget() {
 
     gtk_widget_set_hexpand(winXournal, true);
     gtk_widget_set_vexpand(winXournal, true);
+    createReadOnlyBar();
     gtk_box_append(GTK_BOX(get("boxContents")), winXournal);
 
     scrollHandling = std::make_unique<ScrollHandling>(GTK_SCROLLED_WINDOW(winXournal));
@@ -360,6 +365,12 @@ void MainWindow::dragDataRecived(GtkWidget* widget, GdkDragContext* dragContext,
                                  guint info, guint time, MainWindow* win) {
     GtkWidget* source = gtk_drag_get_source_widget(dragContext);
     if (source && widget == gtk_widget_get_toplevel(source)) {
+        gtk_drag_finish(dragContext, false, false, time);
+        return;
+    }
+    // Fork: every drop inserts content into the document
+    if (win->control->isReadOnly()) {
+        win->control->notifyReadOnly();
         gtk_drag_finish(dragContext, false, false, time);
         return;
     }
@@ -429,6 +440,65 @@ void MainWindow::dragDataRecived(GtkWidget* widget, GdkDragContext* dragContext,
 }
 
 auto MainWindow::getControl() const -> Control* { return control; }
+
+void MainWindow::createReadOnlyBar() {
+    readOnlyBar = gtk_info_bar_new();
+    gtk_info_bar_set_message_type(GTK_INFO_BAR(readOnlyBar), GTK_MESSAGE_INFO);
+
+    readOnlyLabel = gtk_label_new(nullptr);
+    gtk_label_set_line_wrap(GTK_LABEL(readOnlyLabel), true);
+    gtk_label_set_xalign(GTK_LABEL(readOnlyLabel), 0.0f);
+    gtk_container_add(GTK_CONTAINER(gtk_info_bar_get_content_area(GTK_INFO_BAR(readOnlyBar))), readOnlyLabel);
+
+    // Large enough to hit with a finger
+    auto* button = gtk_info_bar_add_button(GTK_INFO_BAR(readOnlyBar), _("Enable Editing"), GTK_RESPONSE_ACCEPT);
+    gtk_style_context_add_class(gtk_widget_get_style_context(button), "suggested-action");
+    gtk_widget_set_size_request(button, -1, 40);
+
+    g_signal_connect(readOnlyBar, "response", G_CALLBACK(+[](GtkInfoBar*, gint response, gpointer data) {
+                         if (response == GTK_RESPONSE_ACCEPT) {
+                             static_cast<Control*>(data)->enableEditing();
+                         }
+                     }),
+                     control);
+
+    gtk_widget_show_all(readOnlyBar);
+    gtk_widget_set_visible(readOnlyBar, false);
+    gtk_widget_set_no_show_all(readOnlyBar, true);
+    gtk_box_append(GTK_BOX(get("boxContents")), readOnlyBar);
+}
+
+void MainWindow::setReadOnlyBarVisible(bool visible, bool hasDocument) {
+    if (readOnlyBar) {
+        gtk_label_set_text(GTK_LABEL(readOnlyLabel),
+                           hasDocument ? _("This PDF is open read-only. It already has a document with your notes; "
+                                           "enabling editing opens it.") :
+                                         _("This PDF is open read-only. Enable editing to annotate it; this creates a "
+                                           ".xopp document next to the PDF."));
+        gtk_widget_set_visible(readOnlyBar, visible);
+        if (!visible && readOnlyHighlightSource) {
+            g_source_remove(readOnlyHighlightSource);
+            readOnlyHighlightSource = 0;
+            gtk_info_bar_set_message_type(GTK_INFO_BAR(readOnlyBar), GTK_MESSAGE_INFO);
+        }
+    }
+}
+
+void MainWindow::highlightReadOnlyBar() {
+    if (!readOnlyBar || !gtk_widget_get_visible(readOnlyBar)) {
+        return;
+    }
+    gtk_info_bar_set_message_type(GTK_INFO_BAR(readOnlyBar), GTK_MESSAGE_WARNING);
+    if (readOnlyHighlightSource) {
+        g_source_remove(readOnlyHighlightSource);
+    }
+    readOnlyHighlightSource = g_timeout_add(1500, +[](gpointer data) -> gboolean {
+        auto* self = static_cast<MainWindow*>(data);
+        self->readOnlyHighlightSource = 0;
+        gtk_info_bar_set_message_type(GTK_INFO_BAR(self->readOnlyBar), GTK_MESSAGE_INFO);
+        return G_SOURCE_REMOVE;
+    }, this);
+}
 
 void MainWindow::updateSidebarLayout() {
     // Default: mainContainerBox [left toolbars, container [paned [sidebar, contents]], right toolbars]

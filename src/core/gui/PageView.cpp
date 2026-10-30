@@ -224,6 +224,25 @@ void XojPageView::deleteLaserPointerHandler() {
     laserPointer.reset();
 }
 
+/// Fork: a PDF viewed read-only can be read, searched and copied from, but not changed
+static auto blockedWhileReadOnly(Control* control) -> bool {
+    if (!control->isReadOnly()) {
+        return false;
+    }
+    switch (control->getToolHandler()->getToolType()) {
+        case TOOL_HAND:
+        case TOOL_SELECT_PDF_TEXT_LINEAR:
+        case TOOL_SELECT_PDF_TEXT_RECT:
+        case TOOL_LASER_POINTER_PEN:
+        case TOOL_LASER_POINTER_HIGHLIGHTER:
+        case TOOL_PLAY_OBJECT:
+            return false;
+        default:
+            control->notifyReadOnly();
+            return true;
+    }
+}
+
 auto XojPageView::onButtonPressEvent(const PositionInputData& pos) -> bool {
     if (currentSequenceDeviceId) {
         // An input sequence is already under way from another device
@@ -243,6 +262,10 @@ auto XojPageView::onButtonPressEvent(const PositionInputData& pos) -> bool {
     double y = pos.y;
 
     if (x < 0 || y < 0) {
+        return false;
+    }
+
+    if (blockedWhileReadOnly(control)) {
         return false;
     }
 
@@ -448,6 +471,9 @@ auto XojPageView::onButtonClickEvent(const PositionInputData& pos) -> bool {
 }
 
 auto XojPageView::onButtonDoublePressEvent(const PositionInputData& pos) -> bool {
+    if (blockedWhileReadOnly(xournal->getControl())) {
+        return false;
+    }
     // This method assumes that it is called after onButtonPressEvent but before
     // onButtonReleaseEvent
     double zoom = this->xournal->getZoom();
@@ -517,6 +543,9 @@ auto XojPageView::onButtonDoublePressEvent(const PositionInputData& pos) -> bool
 }
 
 auto XojPageView::onButtonTriplePressEvent(const PositionInputData& pos) -> bool {
+    if (blockedWhileReadOnly(xournal->getControl())) {
+        return false;
+    }
     // This method assumes that it is called after onButtonDoubleEvent but before
     // onButtonReleaseEvent
     double zoom = this->xournal->getZoom();

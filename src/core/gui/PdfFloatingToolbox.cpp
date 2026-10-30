@@ -141,6 +141,12 @@ void PdfFloatingToolbox::strikethroughCb(GtkButton* button, PdfFloatingToolbox* 
 void PdfFloatingToolbox::show() {
     gtk_widget_hide(this->floatingToolbox);  // force showing in new position
     gtk_widget_show_all(this->floatingToolbox);
+
+    // Fork: marking text changes the document, copying it does not
+    const bool editable = !theMainWindow->getControl()->isReadOnly();
+    for (const char* id: {"pdfTbHighlight", "pdfTbUnderline", "pdfTbStrikethrough"}) {
+        gtk_widget_set_visible(theMainWindow->get(id), editable);
+    }
 }
 
 void PdfFloatingToolbox::copyTextToClipboard() {
