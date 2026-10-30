@@ -8,6 +8,23 @@ void attachConsole() {
         return;
     }
 
+    // Fork: since Windows 11 24H2 a console without a window can be requested directly. The fallback below starts
+    // cmd.exe and polls for it, which delays the startup by 50-100 ms.
+    struct AllocConsoleOptions {
+        int mode;  // ALLOC_CONSOLE_MODE_NO_WINDOW = 2
+        BOOL useShowWindow;
+        WORD showWindow;
+    };
+    using AllocConsoleWithOptionsFn = HRESULT(WINAPI*)(AllocConsoleOptions*, int*);
+    if (auto allocConsoleWithOptions = reinterpret_cast<AllocConsoleWithOptionsFn>(reinterpret_cast<void*>(
+                GetProcAddress(GetModuleHandleW(L"kernel32.dll"), "AllocConsoleWithOptions")))) {
+        AllocConsoleOptions options = {2, FALSE, 0};
+        int result = 0;
+        if (SUCCEEDED(allocConsoleWithOptions(&options, &result))) {
+            return;
+        }
+    }
+
     // Make sure the console starts hidden.
     STARTUPINFOW startupInfo = {0};
     startupInfo.dwFlags = STARTF_USESHOWWINDOW;
