@@ -4856,3 +4856,58 @@ msgstr "Xournal++ Notiz Datei"
 msgid "Xournal++ page template file"
 msgstr "Xournal++ Seitenvorlagendatei"
 
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "Project Explorer"
+msgstr "Projekt-Explorer"
+
+#: ../ui/mainmenubar.xml
+msgid "Open Project Folder..."
+msgstr "Projektordner öffnen..."
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "Open project folder"
+msgstr "Projektordner öffnen"
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "Search files"
+msgstr "Dateien suchen"
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "No folder opened"
+msgstr "Kein Ordner geöffnet"
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "Open Folder"
+msgstr "Ordner öffnen"
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "Open Folder…"
+msgstr "Ordner öffnen…"
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "Close Folder"
+msgstr "Ordner schließen"
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "No matching files"
+msgstr "Keine passenden Dateien"
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "Show in File Manager"
+msgstr "Im Datei-Explorer anzeigen"
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "Copy Path"
+msgstr "Pfad kopieren"
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "Collapse All"
+msgstr "Alle einklappen"
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "Refresh"
+msgstr "Aktualisieren"
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "The selected folder could not be opened."
+msgstr "Der ausgewählte Ordner konnte nicht geöffnet werden."
