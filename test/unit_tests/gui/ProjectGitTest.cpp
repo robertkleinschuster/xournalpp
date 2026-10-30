@@ -117,3 +117,12 @@ TEST(ProjectGit, quotesArgumentsWithSpacesAndQuotes) {
     EXPECT_TRUE(result.success) << result.error;
     EXPECT_EQ(result.output, value + "\n");
 }
+
+TEST(ProjectGit, branchNamesDoNotConfuseCounts) {
+    auto status = ProjectGit::parseStatus(statusOutput({"## ahead...origin/ahead"}), "/repo");
+    EXPECT_TRUE(status.hasUpstream);
+    EXPECT_EQ(status.ahead, 0U);
+    status = ProjectGit::parseStatus(statusOutput({"## behind 5...origin/behind 5 [ahead 3]"}), "/repo");
+    EXPECT_EQ(status.ahead, 3U);
+    EXPECT_EQ(status.behind, 0U);
+}

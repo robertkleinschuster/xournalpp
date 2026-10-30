@@ -115,16 +115,34 @@ auto runSync(const std::string& git, const fs::path& dir, const std::vector<std:
     HANDLE input = CreateFileW(L"NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, &attributes, OPEN_EXISTING,
                                FILE_ATTRIBUTE_NORMAL, nullptr);
 
-    STARTUPINFOW startup{};
-    startup.cb = sizeof(startup);
-    startup.dwFlags = STARTF_USESTDHANDLES;
-    startup.hStdInput = input;
-    startup.hStdOutput = outWrite;
-    startup.hStdError = errWrite;
+    // Several git commands may start at the same time on different threads. Restrict inheritance to this command's own
+    // handles: otherwise e.g. a long running fetch would inherit the pipe of a status started meanwhile, and reading
+    // that status' output would only end when the fetch exits.
+    HANDLE inherited[] = {input, outWrite, errWrite};
+    SIZE_T attributeSize = 0;
+    InitializeProcThreadAttributeList(nullptr, 1, 0, &attributeSize);
+    std::vector<char> attributeBuffer(attributeSize);
+    auto* attributeList = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(attributeBuffer.data());
+    const bool listReady = InitializeProcThreadAttributeList(attributeList, 1, 0, &attributeSize) &&
+                           UpdateProcThreadAttribute(attributeList, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST, inherited,
+                                                     sizeof(inherited), nullptr, nullptr);
+
+    STARTUPINFOEXW startup{};
+    startup.StartupInfo.cb = sizeof(startup);
+    startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
+    startup.StartupInfo.hStdInput = input;
+    startup.StartupInfo.hStdOutput = outWrite;
+    startup.StartupInfo.hStdError = errWrite;
+    startup.lpAttributeList = listReady ? attributeList : nullptr;
     PROCESS_INFORMATION process{};
     const auto workingDirectory = dir.wstring();
-    const bool started = CreateProcessW(nullptr, commandLine.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW,
-                                        nullptr, workingDirectory.c_str(), &startup, &process);
+    const bool started = listReady && input != INVALID_HANDLE_VALUE &&
+                         CreateProcessW(nullptr, commandLine.data(), nullptr, nullptr, TRUE,
+                                        CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT, nullptr,
+                                        workingDirectory.c_str(), &startup.StartupInfo, &process);
+    if (listReady) {
+        DeleteProcThreadAttributeList(attributeList);
+    }
     CloseHandle(outWrite);
     CloseHandle(errWrite);
     if (input != INVALID_HANDLE_VALUE) {
@@ -185,12 +203,17 @@ struct PendingResult {
     ProjectGit::CommandResult result;
 };
 
-auto parseCount(const std::string& text, const std::string& label) -> size_t {
-    const auto pos = text.find(label);
+auto parseCount(const std::string& header, const std::string& label) -> size_t {
+    // Only look at the "[ahead 1, behind 2]" part, branch names may contain the labels too
+    const auto bracket = header.rfind(" [");
+    if (bracket == std::string::npos) {
+        return 0;
+    }
+    const auto pos = header.find(label, bracket);
     if (pos == std::string::npos) {
         return 0;
     }
-    return static_cast<size_t>(std::strtoul(text.c_str() + pos + label.size(), nullptr, 10));
+    return static_cast<size_t>(std::strtoul(header.c_str() + pos + label.size(), nullptr, 10));
 }
 
 }  // namespace
