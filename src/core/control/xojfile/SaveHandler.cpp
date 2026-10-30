@@ -82,6 +82,13 @@ void SaveHandler::prepareSave(const Document* doc, const fs::path& target) {
     }
 }
 
+void SaveHandler::setExportFilename(const std::string& filename) {
+    if (!filename.empty()) {
+        // Other Xournal++ versions ignore unknown attributes of the root element
+        this->root->setAttrib(u8"fork-export", filename);
+    }
+}
+
 void SaveHandler::writeHeader() {
     this->root->setAttrib(xoj::xml_attrs::CREATOR_STR, PROJECT_STRING);
     this->root->setAttrib(xoj::xml_attrs::FILEVERSION_STR, FILE_FORMAT_VERSION);

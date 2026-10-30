@@ -1616,6 +1616,7 @@ private:
         control->addDefaultPage(std::nullopt, &document);
         SaveHandler handler;
         handler.prepareSave(&document, path);
+        handler.setExportFilename(AnnotationFiles::exportFilenameForSave(document, path, *control->getSettings()));
         handler.saveTo(path);
         if (!handler.getErrorMessage().empty()) {
             showError(_("The document could not be created."), handler.getErrorMessage());

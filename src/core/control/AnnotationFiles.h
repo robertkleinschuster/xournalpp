@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <functional>
 #include <optional>
+#include <string>
 
 class Control;
 class Document;
@@ -22,12 +23,22 @@ class Settings;
  */
 namespace AnnotationFiles {
 
-/// Where the annotated PDF of a saved .xopp document is exported to; empty if it has no .xopp file
-/// or the export would overwrite the source PDF.
+/**
+ * Where the annotated PDF of a saved .xopp document is exported to; empty if it has no .xopp file
+ * or the export would overwrite the source PDF.
+ * The name recorded in the .xopp file takes precedence, so changing the export name setting does not
+ * break the association of existing documents; otherwise the setting is used.
+ */
 std::filesystem::path exportPath(const Document& doc, const Settings& settings);
 
 /// exportPath() for a .xopp file on disk, without loading it
 std::filesystem::path exportPathForFile(const std::filesystem::path& xopp, const Settings& settings);
+
+/// The export file name recorded in a .xopp file (the "fork-export" attribute), or empty
+std::string recordedExportFilename(const std::filesystem::path& xopp);
+
+/// The export file name to record when saving doc to target: the one already recorded there, or a new one
+std::string exportFilenameForSave(const Document& doc, const std::filesystem::path& target, const Settings& settings);
 
 /// The .xopp document in the same folder whose exported PDF is pdf, if any
 std::optional<std::filesystem::path> documentForExport(const std::filesystem::path& pdf, const Settings& settings);

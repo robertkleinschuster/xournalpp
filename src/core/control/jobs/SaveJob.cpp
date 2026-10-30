@@ -5,6 +5,7 @@
 #include <cairo.h>  // for cairo_create, cairo_destroy
 #include <glib.h>   // for g_warning, g_error
 
+#include "control/AnnotationFiles.h"      // for exportFilenameForSave
 #include "control/Control.h"              // for Control
 #include "control/jobs/BlockingJob.h"     // for BlockingJob
 #include "control/xojfile/SaveHandler.h"  // for SaveHandler
@@ -109,6 +110,8 @@ auto SaveJob::save() -> bool {
     Util::safeReplaceExtension(target, "xopp");
 
     h.prepareSave(doc, target);
+    // Fork: keep the exported PDF associated with this document, even if the export name setting changes
+    h.setExportFilename(AnnotationFiles::exportFilenameForSave(*doc, target, *control->getSettings()));
     doc->unlock_shared();
 
     auto const createBackup = doc->shouldCreateBackupOnSave();

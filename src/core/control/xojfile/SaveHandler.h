@@ -50,6 +50,9 @@ public:
     /// Update document information. Requires write access to the Document.
     void updateDocumentInfo(Document* doc);
 
+    /// Fork: records the file name of the exported, annotated PDF in the document (call after prepareSave)
+    void setExportFilename(const std::string& filename);
+
     const std::string& getErrorMessage();
 
 protected:
