@@ -61,4 +61,8 @@ public:
 
     /// Clear active touch sequences when the application loses its input focus.
     void resetTouchSequence();
+
+private:
+    /// Fork: drops touches the system no longer knows about (Windows only), before handling the new touch current
+    void forgetEndedTouches(GdkEventSequence* current);
 };

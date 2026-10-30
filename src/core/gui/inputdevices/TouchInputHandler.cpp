@@ -17,7 +17,39 @@
 
 #include "InputContext.h"  // for InputContext
 
+#ifdef _WIN32
+#include <windows.h>
+
+namespace {
+/// GDK uses the Windows pointer id as touch sequence: ask Windows whether that finger still touches the screen
+auto isTouchDown(GdkEventSequence* sequence) -> bool {
+    POINTER_INFO info{};
+    return GetPointerInfo(static_cast<UINT32>(reinterpret_cast<uintptr_t>(sequence)), &info) &&
+           (info.pointerFlags & POINTER_FLAG_INCONTACT);
+}
+}  // namespace
+#endif
+
 TouchInputHandler::TouchInputHandler(InputContext* inputContext): AbstractInputHandler(inputContext) {}
+
+void TouchInputHandler::forgetEndedTouches(GdkEventSequence* current) {
+#ifdef _WIN32
+    // Fork: Windows sometimes loses the end of a touch, e.g. when palm rejection cancels it. The vanished finger would
+    // stay "down" forever, making every new finger the second one of a pinch with a phantom finger, or marking all new
+    // touches invalid. See https://github.com/xournalpp/xournalpp/issues/5289
+    bool ended = (primarySequence && primarySequence != current && !isTouchDown(primarySequence)) ||
+                 (secondarySequence && secondarySequence != current && !isTouchDown(secondarySequence));
+    for (auto* sequence: invalidActive) {
+        ended = ended || (sequence != current && !isTouchDown(sequence));
+    }
+    // Only earlier touches are checked: the current one may already be lifted while its events are still queued.
+    // A lifted earlier touch whose end event is still queued is forgotten a moment early, which is harmless.
+    if (ended) {
+        g_message("Touch input: forgetting touches that ended without an end event");
+        resetTouchSequence();
+    }
+#endif
+}
 
 auto TouchInputHandler::handleImpl(InputEvent const& event) -> bool {
     if (!event.sequence) {
@@ -28,6 +60,7 @@ auto TouchInputHandler::handleImpl(InputEvent const& event) -> bool {
     bool zoomGesturesEnabled = inputContext->getSettings()->isZoomGesturesEnabled();
 
     if (event.type == BUTTON_PRESS_EVENT) {
+        forgetEndedTouches(event.sequence);
         if (invalidActive.find(event.sequence) != invalidActive.end()) {
             g_warning("Missed touch end/cancel event. Resetting touch input handler.");
             invalidActive.clear();
