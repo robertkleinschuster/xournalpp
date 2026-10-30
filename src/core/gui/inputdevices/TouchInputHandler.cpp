@@ -4,7 +4,8 @@
 
 #include "TouchInputHandler.h"
 
-#include <cmath>  // for abs
+#include <cmath>    // for abs
+#include <utility>  // for exchange
 
 #include "control/Control.h"                        // for Control
 #include "control/settings/Settings.h"              // for Settings
@@ -30,7 +31,53 @@ auto isTouchDown(GdkEventSequence* sequence) -> bool {
 }  // namespace
 #endif
 
+
 TouchInputHandler::TouchInputHandler(InputContext* inputContext): AbstractInputHandler(inputContext) {}
+
+TouchInputHandler::~TouchInputHandler() {
+    cancelFrame();
+    if (frameWidget) {
+        g_object_remove_weak_pointer(G_OBJECT(frameWidget), reinterpret_cast<gpointer*>(&frameWidget));
+    }
+}
+
+void TouchInputHandler::requestFrame() {
+    if (frameCallbackId) {
+        return;
+    }
+    if (!frameWidget) {
+        frameWidget = inputContext->getView()->getWidget();
+        g_object_add_weak_pointer(G_OBJECT(frameWidget), reinterpret_cast<gpointer*>(&frameWidget));
+    }
+    frameCallbackId = gtk_widget_add_tick_callback(
+            frameWidget,
+            +[](GtkWidget*, GdkFrameClock*, gpointer data) -> gboolean {
+                auto* self = static_cast<TouchInputHandler*>(data);
+                self->frameCallbackId = 0;
+                self->applyPendingMotion();
+                return G_SOURCE_REMOVE;
+            },
+            this, nullptr);
+}
+
+void TouchInputHandler::cancelFrame() {
+    if (frameCallbackId && frameWidget) {
+        gtk_widget_remove_tick_callback(frameWidget, frameCallbackId);
+    }
+    frameCallbackId = 0;
+}
+
+void TouchInputHandler::applyPendingMotion() {
+    cancelFrame();
+    if (pendingScroll.x != 0.0 || pendingScroll.y != 0.0) {
+        const auto scroll = std::exchange(pendingScroll, {});
+        inputContext->getView()->getLayout()->scrollRelative(-scroll.x, -scroll.y);
+    }
+    if (zoomPending) {
+        zoomPending = false;
+        applyZoom();
+    }
+}
 
 void TouchInputHandler::forgetEndedTouches(GdkEventSequence* current) {
 #ifdef _WIN32
@@ -61,6 +108,8 @@ auto TouchInputHandler::handleImpl(InputEvent const& event) -> bool {
 
     if (event.type == BUTTON_PRESS_EVENT) {
         forgetEndedTouches(event.sequence);
+        // Finish a pending scroll before a second finger may turn the gesture into a zoom
+        applyPendingMotion();
         if (invalidActive.find(event.sequence) != invalidActive.end()) {
             g_warning("Missed touch end/cancel event. Resetting touch input handler.");
             invalidActive.clear();
@@ -113,6 +162,8 @@ auto TouchInputHandler::handleImpl(InputEvent const& event) -> bool {
     }
 
     if (event.type == BUTTON_RELEASE_EVENT) {
+        // Finish the movement up to the release before the gesture changes
+        applyPendingMotion();
         if (zooming && primarySequence && secondarySequence &&
             (event.sequence == primarySequence || event.sequence == secondarySequence)) {
             zoomEnd();
@@ -161,7 +212,8 @@ void TouchInputHandler::scrollMotion(InputEvent const& event) {
         }
     }();
 
-    inputContext->getView()->getLayout()->scrollRelative(-offset.x, -offset.y);
+    pendingScroll += offset;
+    requestFrame();
 }
 
 void TouchInputHandler::zoomStart() {
@@ -200,7 +252,11 @@ void TouchInputHandler::zoomMotion(InputEvent const& event) {
     } else {
         this->secLastAbs = event.absolute;
     }
+    zoomPending = true;
+    requestFrame();
+}
 
+void TouchInputHandler::applyZoom() {
     double distance = this->priLastAbs.distance(this->secLastAbs);
     double zoom = distance / this->startZoomDistance;
 
@@ -235,6 +291,9 @@ void TouchInputHandler::onBlock() {
 void TouchInputHandler::onUnblock() { resetTouchSequence(); }
 
 void TouchInputHandler::resetTouchSequence() {
+    cancelFrame();
+    this->pendingScroll = {};
+    this->zoomPending = false;
     if (this->zooming) {
         zoomEnd();
     }
