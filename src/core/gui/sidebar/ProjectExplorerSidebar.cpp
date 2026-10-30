@@ -8,10 +8,13 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "control/Control.h"
 #include "control/settings/PageTemplateSettings.h"
+#include "control/DocumentAutoSaver.h"
+#include "control/settings/Settings.h"
 #include "control/xojfile/SaveHandler.h"
 #include "gui/GladeSearchpath.h"
 #include "gui/MainWindow.h"
@@ -86,7 +89,26 @@ auto escape(const std::string& value) -> std::string {
     return result;
 }
 
-auto isIgnored(const fs::path& path) -> bool { return path.filename() == ".git"; }
+/// Recovery copies written by Xournal++ itself: ".<name>.autosave.xopp" and "<name>.xopp~" (backup while saving)
+auto isXournalBackup(const std::string& name) -> bool {
+    constexpr std::string_view autosaveSuffix = ".autosave.xopp";
+    return (name.size() > autosaveSuffix.size() && name.front() == '.' &&
+            name.compare(name.size() - autosaveSuffix.size(), autosaveSuffix.size(), autosaveSuffix) == 0) ||
+           (!name.empty() && name.back() == '~');
+}
+
+auto isIgnored(const fs::path& path) -> bool {
+    return path.filename() == ".git" || isXournalBackup(utf8(path.filename()));
+}
+
+/// Keeps Xournal++ recovery copies out of the sync, in any folder of the repository
+const std::vector<std::string> GIT_PATHSPEC = {"--", ".", ":(exclude,glob)**/.*.autosave.xopp",
+                                               ":(exclude,glob)**/*~"};
+
+auto withPathspec(std::vector<std::string> args) -> std::vector<std::string> {
+    args.insert(args.end(), GIT_PATHSPEC.begin(), GIT_PATHSPEC.end());
+    return args;
+}
 
 auto hasVisibleEntries(const fs::path& dir) -> bool {
     std::error_code error;
@@ -200,6 +222,8 @@ class ProjectExplorerSidebar final: public AbstractSidebarPage, public ProjectEx
 public:
     explicit ProjectExplorerSidebar(Control* control): AbstractSidebarPage(control) {
         parent = GTK_WINDOW(control->getGtkWindow());
+        // The explorer lives as long as the main window, so it owns the IDE-like saving of documents
+        autoSaver = std::make_unique<DocumentAutoSaver>(control);
         root = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
         g_object_ref_sink(root);
 
@@ -756,7 +780,7 @@ private:
             }
             std::error_code error;
             const auto top = fs::weakly_canonical(pathFromUtf8(trim(result.output).c_str()), error);
-            ProjectGit::run(top, {"status", "--porcelain=v1", "-z", "--branch", "--untracked-files=all"}, lifetime,
+            ProjectGit::run(top, withPathspec({"status", "--porcelain=v1", "-z", "--branch", "--untracked-files=all"}), lifetime,
                             [this, root, top, done](auto status) {
                                 if (root == projectRoot && status.success) {
                                     gitToplevel = top;
@@ -829,7 +853,7 @@ private:
                 syncPull();
                 return;
             }
-            ProjectGit::run(gitToplevel, {"add", "-A"}, lifetime, [this](auto added) {
+            ProjectGit::run(gitToplevel, withPathspec({"add", "-A"}), lifetime, [this](auto added) {
                 if (!added.success) {
                     finishSync(_("Your changes could not be committed."), added.error);
                     return;
@@ -1037,7 +1061,7 @@ private:
             for (bool valid = gtk_tree_model_iter_children(model(), &child, parentIter); valid;
                  valid = gtk_tree_model_iter_next(model(), &child)) {
                 if (kindAt(&child) == KIND_DOCUMENT) {
-                    control->openFile(pathFromUtf8(pathAt(&child).c_str()));
+                    openDocument(pathFromUtf8(pathAt(&child).c_str()));
                     return true;
                 }
                 if (visit(&child)) {
@@ -1102,7 +1126,7 @@ private:
                 }
                 break;
             case KIND_DOCUMENT:
-                self->control->openFile(pathFromUtf8(self->pathAt(&iter).c_str()));
+                self->openDocument(pathFromUtf8(self->pathAt(&iter).c_str()));
                 break;
             default:
                 break;
@@ -1149,7 +1173,7 @@ private:
 
         auto* menu = gtk_menu_new();
         if (kind == KIND_DOCUMENT) {
-            addMenuItem(menu, _("Open"), [this, target] { control->openFile(pathFromUtf8(target.c_str())); });
+            addMenuItem(menu, _("Open"), [this, target] { openDocument(pathFromUtf8(target.c_str())); });
             addMenuSeparator(menu);
         }
         if (!projectRoot.empty()) {
@@ -1469,7 +1493,10 @@ private:
     }
 
     void createDocument(const fs::path& dir) {
-        std::string name = utf8(uniquePath(dir, _("New Document"), ".xopp").filename());
+        // Suggest the default file name from the preferences, e.g. "2026-10-30-Note-14-05"
+        Document unnamed(control);
+        const auto stem = unnamed.createSaveFilename(Document::XOPP, control->getSettings()->getDefaultSaveName());
+        std::string name = utf8(uniquePath(dir, utf8(stem), ".xopp").filename());
         fs::path path;
         while (true) {
             auto entered = askForName(_("New Document"), _("Create"), name);
@@ -1499,7 +1526,7 @@ private:
             return;
         }
         showEntry(path);
-        control->openFile(path);
+        openDocument(path);
     }
 
     void createFolder(const fs::path& dir) {
@@ -1651,6 +1678,11 @@ private:
         gtk_widget_destroy(dialog);
     }
 
+    /// Opens a document like an IDE switches files: pending changes of the current one are saved first
+    void openDocument(fs::path path) {
+        autoSaver->saveNow([this, path = std::move(path)] { control->openFile(path); });
+    }
+
     void showMessage(const char* message) {
         auto* dialog = gtk_message_dialog_new(parent, GTK_DIALOG_MODAL, GTK_MESSAGE_INFO, GTK_BUTTONS_CLOSE,
                                               "%s", message);
@@ -1658,6 +1690,7 @@ private:
         gtk_widget_destroy(dialog);
     }
 
+    std::unique_ptr<DocumentAutoSaver> autoSaver;
     GtkWidget* root{};
     GtkWindow* parent{};
     GtkSearchEntry* searchEntry{};
