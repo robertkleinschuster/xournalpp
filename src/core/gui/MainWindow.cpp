@@ -20,7 +20,6 @@
 #include "gui/FloatingToolbox.h"                        // for FloatingToolbox
 #include "gui/GladeGui.h"                               // for GladeGui
 #include "gui/PdfFloatingToolbox.h"                     // for PdfFloatingToolbox
-#include "gui/RecentDocumentsOverlay.h"                  // for createRecentDocumentsOverlay
 #include "gui/SearchBar.h"                              // for SearchBar
 #include "gui/inputdevices/InputEvents.h"               // for INPUT_DEVICE_TOUC...
 #include "gui/menus/menubar/Menubar.h"                  // for Menubar
@@ -320,33 +319,15 @@ void MainWindow::initXournalWidget() {
 
     setGtkTouchscreenScrollingForDeviceMapping();
 
-    documentOverlay = gtk_overlay_new();
-    gtk_widget_set_hexpand(documentOverlay, true);
-    gtk_widget_set_vexpand(documentOverlay, true);
-    gtk_container_add(GTK_CONTAINER(documentOverlay), winXournal);
-    startOverlay = createRecentDocumentsOverlay(control);
-    gtk_overlay_add_overlay(GTK_OVERLAY(documentOverlay), startOverlay);
-    gtk_box_append(GTK_BOX(get("boxContents")), documentOverlay);
+    gtk_widget_set_hexpand(winXournal, true);
+    gtk_widget_set_vexpand(winXournal, true);
+    gtk_box_append(GTK_BOX(get("boxContents")), winXournal);
 
     scrollHandling = std::make_unique<ScrollHandling>(GTK_SCROLLED_WINDOW(winXournal));
 
     this->xournal = std::make_unique<XournalView>(winXournal, control, scrollHandling.get());
 
     control->getZoomControl()->initZoomHandler(this->window, winXournal, xournal.get(), control);
-    gtk_widget_show_all(documentOverlay);
-    gtk_widget_hide(startOverlay);
-}
-
-void MainWindow::showStartOverlay() {
-    if (startOverlay) {
-        gtk_widget_show(startOverlay);
-    }
-}
-
-void MainWindow::hideStartOverlay() {
-    if (startOverlay) {
-        gtk_widget_hide(startOverlay);
-    }
 }
 
 void MainWindow::setGtkTouchscreenScrollingForDeviceMapping() {

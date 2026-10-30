@@ -86,8 +86,6 @@ public:
     void setMenubarVisible(bool visible);
     void setSidebarVisible(bool visible);
     void setToolbarVisible(bool visible);
-    void showStartOverlay();
-    void hideStartOverlay();
 
     Control* getControl() const;
 
@@ -162,8 +160,6 @@ private:
 
     std::unique_ptr<XournalView> xournal;
     GtkWidget* winXournal = nullptr;
-    GtkWidget* documentOverlay = nullptr;
-    GtkWidget* startOverlay = nullptr;
     std::unique_ptr<ScrollHandling> scrollHandling;
 
     std::atomic_bool gtkTouchscreenScrollingEnabled{true};

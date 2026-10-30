@@ -116,7 +116,6 @@ public:
             gtk_entry_set_text(folderEntry, "");
             refreshFiles();
         }
-        control->getWindow()->hideStartOverlay();
     }
 
 private:
