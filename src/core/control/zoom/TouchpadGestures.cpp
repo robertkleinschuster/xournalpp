@@ -84,6 +84,7 @@ struct Device {
     // Hybrid reporting: a frame may be split over several reports, only the first one carries the contact count
     ULONG frameRemaining = 0;
     Contacts frame;
+    Contacts contacts;  ///< the fingers of the last complete frame of this device
 };
 
 /// Millimetres per logical unit of a coordinate, from the HID physical range and unit
@@ -150,7 +151,7 @@ private:
         }
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
         // INPUTSINK: also delivered while another window has the focus; the main thread decides what to use
-        RAWINPUTDEVICE device{PAGE_DIGITIZER, USAGE_TOUCHPAD, RIDEV_INPUTSINK, hwnd};
+        RAWINPUTDEVICE device{PAGE_DIGITIZER, USAGE_TOUCHPAD, RIDEV_INPUTSINK | RIDEV_DEVNOTIFY, hwnd};
         if (!RegisterRawInputDevices(&device, 1, sizeof(device))) {
             g_message("Touchpad gestures: raw touchpad input is not available");
         }
@@ -167,6 +168,8 @@ private:
         auto* self = reinterpret_cast<RawTouchpadReader*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
         if (message == WM_INPUT && self) {
             self->onInput(reinterpret_cast<HRAWINPUT>(lParam));
+        } else if (message == WM_INPUT_DEVICE_CHANGE && self && wParam == GIDC_REMOVAL) {
+            self->onRemoved(reinterpret_cast<HANDLE>(lParam));
         } else if (message == WM_CLOSE) {
             DestroyWindow(hwnd);
             return 0;
@@ -224,6 +227,13 @@ private:
         return devices.emplace(handle, std::move(device)).first->second;
     }
 
+    /// An unplugged touchpad sends no lift report; its handle may also be reused for another device
+    void onRemoved(HANDLE handle) {
+        if (devices.erase(handle)) {
+            onContacts({});
+        }
+    }
+
     void onInput(HRAWINPUT input) {
         UINT size = 0;
         GetRawInputData(input, RID_INPUT, nullptr, &size, sizeof(RAWINPUTHEADER));
@@ -246,7 +256,7 @@ private:
             changed = parseReport(device, report, reportSize) || changed;
         }
         if (changed) {
-            onContacts(contacts);
+            onContacts(device.contacts);
         }
     }
 
@@ -259,7 +269,7 @@ private:
             device.frameRemaining = contactCount;  // first report of a frame
             device.frame.clear();
         } else if (device.frameRemaining == 0) {
-            contacts.clear();  // no finger on the touchpad any more
+            device.contacts.clear();  // no finger on the touchpad any more
             return true;
         }
         const size_t slotsInReport = std::min<size_t>(device.slots.size(), device.frameRemaining);
@@ -291,7 +301,7 @@ private:
         }
         device.frameRemaining -= static_cast<ULONG>(slotsInReport);
         if (device.frameRemaining == 0) {
-            contacts = device.frame;
+            device.contacts = device.frame;
             return true;
         }
         return false;
@@ -303,7 +313,6 @@ private:
     std::atomic<bool> failed{false};
     // Only used on the reader thread
     std::map<HANDLE, Device> devices;
-    Contacts contacts;
     std::vector<BYTE> buffer;
 };
 }  // namespace
