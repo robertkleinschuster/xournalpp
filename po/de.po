@@ -4955,3 +4955,55 @@ msgstr "Die entfernten Änderungen konnten nicht mit Ihren zusammengeführt werd
 #: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
 msgid "Your changes could not be uploaded."
 msgstr "Ihre Änderungen konnten nicht hochgeladen werden."
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "New Document"
+msgstr "Neues Dokument"
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "New Folder"
+msgstr "Neuer Ordner"
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "Rename…"
+msgstr "Umbenennen…"
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "The document could not be created."
+msgstr "Das Dokument konnte nicht erstellt werden."
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "The folder could not be created."
+msgstr "Der Ordner konnte nicht erstellt werden."
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "This name is not allowed."
+msgstr "Dieser Name ist nicht erlaubt."
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "Names cannot contain any of these characters: < > : \" / \\ | ? *"
+msgstr "Namen dürfen keines dieser Zeichen enthalten: < > : \" / \\ | ? *"
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "An entry with this name already exists."
+msgstr "Ein Eintrag mit diesem Namen existiert bereits."
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "The entry could not be renamed."
+msgstr "Der Eintrag konnte nicht umbenannt werden."
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "Delete “{1}”?"
+msgstr "„{1}“ löschen?"
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "The folder and everything in it will be moved to the trash."
+msgstr "Der Ordner und sein gesamter Inhalt werden in den Papierkorb verschoben."
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "The file will be moved to the trash."
+msgstr "Die Datei wird in den Papierkorb verschoben."
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "The entry could not be moved to the trash."
+msgstr "Der Eintrag konnte nicht in den Papierkorb verschoben werden."
