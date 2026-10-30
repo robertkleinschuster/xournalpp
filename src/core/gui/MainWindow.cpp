@@ -328,6 +328,7 @@ void MainWindow::initXournalWidget() {
     this->xournal = std::make_unique<XournalView>(winXournal, control, scrollHandling.get());
 
     control->getZoomControl()->initZoomHandler(this->window, winXournal, xournal.get(), control);
+    gtk_widget_show_all(winXournal);
 }
 
 void MainWindow::setGtkTouchscreenScrollingForDeviceMapping() {
