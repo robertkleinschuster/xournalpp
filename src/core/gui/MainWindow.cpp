@@ -430,6 +430,70 @@ void MainWindow::dragDataRecived(GtkWidget* widget, GdkDragContext* dragContext,
 
 auto MainWindow::getControl() const -> Control* { return control; }
 
+void MainWindow::updateSidebarLayout() {
+    // Default: mainContainerBox [left toolbars, container [paned [sidebar, contents]], right toolbars]
+    // Outside: mainContainerBox [container [paned [sidebar, contentRow [left toolbars, contents, right toolbars]]]]
+    // The content child (contents or contentRow) is either in the paned or, while the sidebar is hidden, in the
+    // container. The toolbars at the top and bottom keep the full width.
+    GtkWidget* contents = get("boxContents");
+    GtkWidget* row = get("mainContainerBox");
+    GtkWidget* container = boxContainerWidget.get();
+    GtkWidget* toolbars[] = {get("tbLeft1"), get("tbLeft2"), get("tbRight1"), get("tbRight2")};
+
+    const bool outside = control->getSettings()->isSidebarOutsideToolbars();
+    if (!contentRow) {
+        GtkWidget* box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+        g_object_ref_sink(box);
+        gtk_widget_show(box);
+        contentRow.reset(box, xoj::util::adopt);
+    }
+    GtkWidget* newContent = outside ? contentRow.get() : contents;
+    if (mainContentWidget.get() == newContent) {
+        return;
+    }
+
+    xoj::util::WidgetSPtr keepContents(contents, xoj::util::ref);
+    xoj::util::WidgetSPtr keepContainer(container, xoj::util::ref);
+    std::vector<xoj::util::WidgetSPtr> keepToolbars;
+    for (GtkWidget* toolbar: toolbars) {
+        keepToolbars.emplace_back(toolbar, xoj::util::ref);
+    }
+
+    GtkWidget* oldContent = mainContentWidget.get();
+    GtkWidget* parent = gtk_widget_get_parent(oldContent);
+    const bool inPaned = GTK_IS_PANED(parent);
+    const bool firstInPaned = inPaned && gtk_paned_get_child1(GTK_PANED(parent)) == oldContent;
+    gtk_container_remove(GTK_CONTAINER(parent), oldContent);
+
+    GtkWidget* toolbarParent = outside ? row : contentRow.get();
+    for (GtkWidget* toolbar: toolbars) {
+        gtk_container_remove(GTK_CONTAINER(toolbarParent), toolbar);
+    }
+    // Rebuild the row in order: left toolbars, middle, right toolbars
+    GtkWidget* targetRow = outside ? contentRow.get() : row;
+    GtkWidget* middle = outside ? contents : container;
+    if (!outside) {
+        gtk_container_remove(GTK_CONTAINER(row), container);
+        gtk_container_remove(GTK_CONTAINER(contentRow.get()), contents);
+    }
+    gtk_box_pack_start(GTK_BOX(targetRow), toolbars[0], false, true, 0);
+    gtk_box_pack_start(GTK_BOX(targetRow), toolbars[1], false, true, 0);
+    gtk_box_pack_start(GTK_BOX(targetRow), middle, true, true, 0);
+    gtk_box_pack_start(GTK_BOX(targetRow), toolbars[2], false, true, 0);
+    gtk_box_pack_start(GTK_BOX(targetRow), toolbars[3], false, true, 0);
+    gtk_widget_set_hexpand(newContent, true);
+    gtk_widget_set_vexpand(newContent, true);
+
+    if (!inPaned) {
+        gtk_box_append(GTK_BOX(container), newContent);
+    } else if (firstInPaned) {
+        gtk_paned_pack1(GTK_PANED(parent), newContent, true, false);
+    } else {
+        gtk_paned_pack2(GTK_PANED(parent), newContent, true, false);
+    }
+    mainContentWidget.reset(newContent, xoj::util::ref);
+}
+
 void MainWindow::updateScrollbarSidebarPosition() {
     // Part 1: update scrollbar position
     if (winXournal != nullptr) {
@@ -452,6 +516,8 @@ void MainWindow::updateScrollbarSidebarPosition() {
     }
 
     // Part 2: update sidebar position
+    updateSidebarLayout();
+
     GtkPaned* paned = GTK_PANED(this->panedContainerWidget.get());
 
     // Allocation is reset when we switch up the contained elements. Fetch the

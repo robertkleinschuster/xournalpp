@@ -3753,6 +3753,21 @@ This setting can make it easier to draw with touch.</property>
                                       </packing>
                                     </child>
                                     <child>
+                                      <object class="GtkCheckButton" id="cbSidebarOutsideToolbars">
+                                        <property name="label" translatable="yes">Show sidebar outside of the side toolbars</property>
+                                        <property name="name">cbSidebarOutsideToolbars</property>
+                                        <property name="visible">True</property>
+                                        <property name="can-focus">True</property>
+                                        <property name="receives-default">False</property>
+                                        <property name="draw-indicator">True</property>
+                                      </object>
+                                      <packing>
+                                        <property name="expand">False</property>
+                                        <property name="fill">True</property>
+                                        <property name="position">1</property>
+                                      </packing>
+                                    </child>
+                                    <child>
                                       <object class="GtkCheckButton" id="cbShowScrollbarLeft">
                                         <property name="label" translatable="yes">Show vertical scrollbar on the left side</property>
                                         <property name="name">cbShowScrollbarLeft</property>
@@ -3764,7 +3779,7 @@ This setting can make it easier to draw with touch.</property>
                                       <packing>
                                         <property name="expand">False</property>
                                         <property name="fill">True</property>
-                                        <property name="position">1</property>
+                                        <property name="position">2</property>
                                       </packing>
                                     </child>
                                   </object>

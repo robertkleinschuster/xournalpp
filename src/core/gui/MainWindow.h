@@ -94,6 +94,9 @@ public:
 
     void updateScrollbarSidebarPosition();
 
+    /// Fork: places the sidebar outside of the side toolbars or between them and the document, see Settings
+    void updateSidebarLayout();
+
     void setUndoDescription(const std::string& description);
     void setRedoDescription(const std::string& description);
 
@@ -188,4 +191,6 @@ private:
     xoj::util::WidgetSPtr panedContainerWidget;
     xoj::util::WidgetSPtr mainContentWidget;
     xoj::util::WidgetSPtr sidebarWidget;
+    /// Fork: holds the side toolbars and the contents while the sidebar is outside of them
+    xoj::util::WidgetSPtr contentRow;
 };

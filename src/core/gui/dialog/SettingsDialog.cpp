@@ -337,6 +337,7 @@ void SettingsDialog::load() {
     loadCheckbox("cbEnableZoomGestures", settings->isZoomGesturesEnabled());
     loadCheckbox("cbForceZoomToFitOnLoad", settings->getForceZoomToFitOnLoad());
     loadCheckbox("cbShowSidebarRight", settings->isSidebarOnRight());
+    loadCheckbox("cbSidebarOutsideToolbars", settings->isSidebarOutsideToolbars());
     loadCheckbox("cbShowScrollbarLeft", settings->isScrollbarOnLeft());
     loadCheckbox("cbAutoloadMostRecent", settings->isAutoloadMostRecent());
     loadCheckbox("cbAutoloadXoj", settings->isAutoloadPdfXoj());
@@ -743,6 +744,7 @@ void SettingsDialog::save() {
     settings->setPressureMultiplier(getSlider("scalePressureMultiplier"));
     settings->setZoomGesturesEnabled(getCheckbox("cbEnableZoomGestures"));
     settings->setSidebarOnRight(getCheckbox("cbShowSidebarRight"));
+    settings->setSidebarOutsideToolbars(getCheckbox("cbSidebarOutsideToolbars"));
     settings->setScrollbarOnLeft(getCheckbox("cbShowScrollbarLeft"));
     settings->setAutoloadMostRecent(getCheckbox("cbAutoloadMostRecent"));
     settings->setAutoloadPdfXoj(getCheckbox("cbAutoloadXoj"));

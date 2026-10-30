@@ -5031,3 +5031,7 @@ msgstr "Im PDF-Viewer öffnen"
 #: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
 msgid "The file could not be opened."
 msgstr "Die Datei konnte nicht geöffnet werden."
+
+#: ../ui/settings.glade
+msgid "Show sidebar outside of the side toolbars"
+msgstr "Seitenleiste außerhalb der seitlichen Werkzeugleisten anzeigen"

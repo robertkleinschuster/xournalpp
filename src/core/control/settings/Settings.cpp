@@ -105,6 +105,7 @@ void Settings::loadDefault() {
     this->selectedToolbar = DEFAULT_TOOLBAR;
 
     this->sidebarOnRight = false;
+    this->sidebarOutsideToolbars = false;
 
     this->scrollbarOnLeft = false;
 
@@ -471,6 +472,8 @@ void Settings::parseItem(xmlDocPtr doc, xmlNodePtr cur) {
         this->sidebarWidth = std::max<int>(g_ascii_strtoll(reinterpret_cast<const char*>(value), nullptr, 10), 50);
     } else if (xmlStrcmp(name, reinterpret_cast<const xmlChar*>("sidebarOnRight")) == 0) {
         this->sidebarOnRight = xmlStrcmp(value, reinterpret_cast<const xmlChar*>("true")) == 0;
+    } else if (xmlStrcmp(name, reinterpret_cast<const xmlChar*>("sidebarOutsideToolbars")) == 0) {
+        this->sidebarOutsideToolbars = xmlStrcmp(value, reinterpret_cast<const xmlChar*>("true")) == 0;
     } else if (xmlStrcmp(name, reinterpret_cast<const xmlChar*>("scrollbarOnLeft")) == 0) {
         this->scrollbarOnLeft = xmlStrcmp(value, reinterpret_cast<const xmlChar*>("true")) == 0;
     } else if (xmlStrcmp(name, reinterpret_cast<const xmlChar*>("menubarVisible")) == 0) {
@@ -1052,6 +1055,7 @@ void Settings::save() {
     xmlNode = saveProperty("sidebarNumberingStyle", static_cast<int>(sidebarNumberingStyle), root);
 
     SAVE_BOOL_PROP(sidebarOnRight);
+    SAVE_BOOL_PROP(sidebarOutsideToolbars);
     SAVE_BOOL_PROP(scrollbarOnLeft);
     SAVE_BOOL_PROP(menubarVisible);
     SAVE_BOOL_PROP(filepathShownInTitlebar);
@@ -1339,6 +1343,18 @@ void Settings::setZoomGesturesEnabled(bool enable) {
         return;
     }
     this->zoomGesturesEnabled = enable;
+    save();
+}
+
+auto Settings::isSidebarOutsideToolbars() const -> bool { return this->sidebarOutsideToolbars; }
+
+void Settings::setSidebarOutsideToolbars(bool outside) {
+    if (this->sidebarOutsideToolbars == outside) {
+        return;
+    }
+
+    this->sidebarOutsideToolbars = outside;
+
     save();
 }
 

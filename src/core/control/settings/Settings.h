@@ -236,6 +236,10 @@ public:
     bool isSidebarOnRight() const;
     void setSidebarOnRight(bool right);
 
+    /// Fork: whether the sidebar is placed outside of the toolbars on the left and right side
+    bool isSidebarOutsideToolbars() const;
+    void setSidebarOutsideToolbars(bool outside);
+
     bool isScrollbarOnLeft() const;
     void setScrollbarOnLeft(bool right);
 
@@ -683,6 +687,7 @@ private:
      *  If the sidebar is on the right
      */
     bool sidebarOnRight{};
+    bool sidebarOutsideToolbars{};
 
     /**
      *  Type of cursor icon to use with a stylus
