@@ -249,21 +249,14 @@ public:
         gtk_tree_view_set_activate_on_single_click(tree, true);
         gtk_tree_view_set_show_expanders(tree, true);
 
-        column = gtk_tree_view_column_new();
+        auto* column = gtk_tree_view_column_new();
         auto* iconRenderer = gtk_cell_renderer_pixbuf_new();
         g_object_set(iconRenderer, "stock-size", GTK_ICON_SIZE_MENU, "xpad", 4, "ypad", 3, nullptr);
         gtk_tree_view_column_pack_start(column, iconRenderer, false);
         gtk_tree_view_column_add_attribute(column, iconRenderer, "gicon", COL_ICON);
         gtk_tree_view_column_add_attribute(column, iconRenderer, "sensitive", COL_SENSITIVE);
-        textRenderer = gtk_cell_renderer_text_new();
+        auto* textRenderer = gtk_cell_renderer_text_new();
         g_object_set(textRenderer, "ellipsize", PANGO_ELLIPSIZE_END, "ypad", 3, nullptr);
-        g_signal_connect(textRenderer, "edited",
-                         G_CALLBACK(+[](GtkCellRendererText*, gchar* path, gchar* text, gpointer data) {
-                             static_cast<ProjectExplorerSidebar*>(data)->onRenamed(path, text);
-                         }), this);
-        g_signal_connect(textRenderer, "editing-canceled", G_CALLBACK(+[](GtkCellRenderer*, gpointer data) {
-                             static_cast<ProjectExplorerSidebar*>(data)->finishEditing({});
-                         }), this);
         gtk_tree_view_column_pack_start(column, textRenderer, true);
         gtk_tree_view_column_add_attribute(column, textRenderer, "markup", COL_MARKUP);
         gtk_tree_view_column_add_attribute(column, textRenderer, "sensitive", COL_SENSITIVE);
@@ -565,11 +558,6 @@ private:
     /// Rebuilds the tree, keeping expansion state and selection. Keeps the scroll position unless the
     /// selection should be brought into view instead (e.g. after the search query changed).
     void refresh(bool keepScroll) {
-        if (editing) {
-            // Rebuilding would cancel the inline rename; catch up afterwards
-            refreshAfterEditing = true;
-            return;
-        }
         auto* adjustment = gtk_scrollable_get_vadjustment(GTK_SCROLLABLE(tree));
         pendingScroll = gtk_adjustment_get_value(adjustment);
         const auto selected = selectedPath();
@@ -716,11 +704,7 @@ private:
                 recolor(&child);
             }
         };
-        if (editing) {
-            refreshAfterEditing = true;
-        } else {
-            recolor(nullptr);
-        }
+        recolor(nullptr);
         updateSyncButton();
     }
 
@@ -1176,7 +1160,9 @@ private:
         }
         const bool isRoot = !target.empty() && pathFromUtf8(target.c_str()) == projectRoot;
         if (kind != KIND_PLACEHOLDER && !isRoot) {
-            addMenuItem(menu, _("Rename…"), [this, target] { startRename(pathFromUtf8(target.c_str())); });
+            addMenuItem(menu, _("Rename…"), [this, target, kind] {
+                renameEntry(pathFromUtf8(target.c_str()), kind == KIND_DOCUMENT);
+            });
             addMenuItem(menu, _("Delete"), [this, target, kind] {
                 deleteEntry(pathFromUtf8(target.c_str()), kind == KIND_DIRECTORY);
             });
@@ -1417,17 +1403,91 @@ private:
         return candidate;
     }
 
-    /// Makes sure new entries are visible: leaves search mode and reloads the tree
-    void prepareForNewEntry() {
+    /**
+     * Asks for a name in a small dialog. The part before the extension is preselected, as in JetBrains IDEs.
+     * Returns nullopt if the dialog was cancelled.
+     */
+    auto askForName(const char* title, const char* acceptLabel, const std::string& initial)
+            -> std::optional<std::string> {
+        auto* dialog = gtk_dialog_new_with_buttons(title, parent,
+                                                   static_cast<GtkDialogFlags>(GTK_DIALOG_MODAL |
+                                                                               GTK_DIALOG_DESTROY_WITH_PARENT),
+                                                   _("Cancel"), GTK_RESPONSE_CANCEL, acceptLabel, GTK_RESPONSE_ACCEPT,
+                                                   nullptr);
+        gtk_dialog_set_default_response(GTK_DIALOG(dialog), GTK_RESPONSE_ACCEPT);
+        gtk_window_set_resizable(GTK_WINDOW(dialog), false);
+        auto* area = gtk_dialog_get_content_area(GTK_DIALOG(dialog));
+        gtk_container_set_border_width(GTK_CONTAINER(area), 12);
+        gtk_box_set_spacing(GTK_BOX(area), 6);
+        auto* label = gtk_label_new(_("Name"));
+        gtk_label_set_xalign(GTK_LABEL(label), 0.0F);
+        gtk_box_pack_start(GTK_BOX(area), label, false, false, 0);
+        auto* entry = gtk_entry_new();
+        gtk_entry_set_text(GTK_ENTRY(entry), initial.c_str());
+        gtk_entry_set_activates_default(GTK_ENTRY(entry), true);
+        gtk_entry_set_width_chars(GTK_ENTRY(entry), 36);
+        gtk_box_pack_start(GTK_BOX(area), entry, false, false, 0);
+        gtk_widget_show_all(area);
+
+        const auto stem = utf8(pathFromUtf8(initial.c_str()).stem());
+        gtk_widget_grab_focus(entry);
+        gtk_editable_select_region(GTK_EDITABLE(entry), 0, static_cast<gint>(g_utf8_strlen(stem.c_str(), -1)));
+
+        std::optional<std::string> result;
+        if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT) {
+            gchar* stripped = g_strstrip(g_strdup(gtk_entry_get_text(GTK_ENTRY(entry))));
+            result = std::string(stripped);
+            g_free(stripped);
+        }
+        gtk_widget_destroy(dialog);
+        return result;
+    }
+
+    /// Returns an error message if name cannot be used for a new entry next to the others in dir
+    static auto checkName(const std::string& name, const fs::path& target, const fs::path& existing = {})
+            -> std::optional<std::pair<const char*, std::string>> {
+        if (name.empty() || name == "." || name == ".." || name.find_first_of("<>:\"/\\|?*") != std::string::npos) {
+            return std::pair{_("This name is not allowed."),
+                             std::string(_("Names cannot contain any of these characters: < > : \" / \\ | ? *"))};
+        }
+        std::error_code error;
+        // A case-only rename refers to the same file on Windows, so it does not count as a conflict
+        if (fs::exists(target, error) && (existing.empty() || !fs::equivalent(existing, target, error))) {
+            return std::pair{_("An entry with this name already exists."), name};
+        }
+        return std::nullopt;
+    }
+
+    /// Makes sure the new or renamed entry is visible and selected
+    void showEntry(const fs::path& path) {
         if (searching) {
             query.clear();
             gtk_entry_set_text(GTK_ENTRY(searchEntry), "");
         }
         refresh(true);
+        reveal(path, true);
     }
 
     void createDocument(const fs::path& dir) {
-        const auto path = uniquePath(dir, _("New Document"), ".xopp");
+        std::string name = utf8(uniquePath(dir, _("New Document"), ".xopp").filename());
+        fs::path path;
+        while (true) {
+            auto entered = askForName(_("New Document"), _("Create"), name);
+            if (!entered) {
+                return;
+            }
+            name = *entered;
+            // Every new document is a Xournal++ file, whatever else the name looks like
+            if (!Util::hasXournalFileExt(pathFromUtf8(name.c_str()))) {
+                name += ".xopp";
+            }
+            path = dir / pathFromUtf8(name.c_str());
+            if (auto problem = checkName(name, path)) {
+                showError(problem->first, problem->second);
+                continue;
+            }
+            break;
+        }
         // Build an empty document with the default page template and write it like a normal save
         Document document(control);
         control->addDefaultPage(std::nullopt, &document);
@@ -1438,82 +1498,60 @@ private:
             showError(_("The document could not be created."), handler.getErrorMessage());
             return;
         }
-        openAfterEditing = path;
-        prepareForNewEntry();
-        startRename(path);
+        showEntry(path);
+        control->openFile(path);
     }
 
     void createFolder(const fs::path& dir) {
-        const auto path = uniquePath(dir, _("New Folder"), "");
-        std::error_code error;
-        if (!fs::create_directory(path, error)) {
-            showError(_("The folder could not be created."), error.message());
+        std::string name = utf8(uniquePath(dir, _("New Folder"), "").filename());
+        while (true) {
+            auto entered = askForName(_("New Folder"), _("Create"), name);
+            if (!entered) {
+                return;
+            }
+            name = *entered;
+            const auto path = dir / pathFromUtf8(name.c_str());
+            if (auto problem = checkName(name, path)) {
+                showError(problem->first, problem->second);
+                continue;
+            }
+            std::error_code error;
+            if (!fs::create_directory(path, error)) {
+                showError(_("The folder could not be created."), error.message());
+                return;
+            }
+            showEntry(path);
             return;
         }
-        prepareForNewEntry();
-        startRename(path);
     }
 
-    /// Starts editing the name of an entry inline in the tree
-    void startRename(const fs::path& path) {
-        if (searching) {
-            prepareForNewEntry();
-        }
-        reveal(path, true);
-        GtkTreeIter iter;
-        if (!gtk_tree_selection_get_selected(gtk_tree_view_get_selection(tree), nullptr, &iter) ||
-            pathFromUtf8(pathAt(&iter).c_str()) != path) {
-            finishEditing({});
+    void renameEntry(const fs::path& oldPath, bool document) {
+        std::string name = utf8(oldPath.filename());
+        while (true) {
+            auto entered = askForName(_("Rename"), _("Rename"), name);
+            if (!entered || *entered == utf8(oldPath.filename())) {
+                return;
+            }
+            name = *entered;
+            // Keep the document type if the extension was left out
+            if (document && !pathFromUtf8(name.c_str()).has_extension()) {
+                name += utf8(oldPath.extension());
+            }
+            const auto newPath = oldPath.parent_path() / pathFromUtf8(name.c_str());
+            if (auto problem = checkName(name, newPath, oldPath)) {
+                showError(problem->first, problem->second);
+                continue;
+            }
+            std::error_code error;
+            fs::rename(oldPath, newPath, error);
+            if (error) {
+                showError(_("The entry could not be renamed."), error.message());
+                return;
+            }
+            movedEntry(oldPath, newPath);
+            showEntry(newPath);
             return;
         }
-        GtkTreePath* treePath = gtk_tree_model_get_path(model(), &iter);
-        editing = true;
-        g_object_set(textRenderer, "editable", true, nullptr);
-        gtk_widget_grab_focus(GTK_WIDGET(tree));
-        gtk_tree_view_set_cursor_on_cell(tree, treePath, column, textRenderer, true);
-        gtk_tree_path_free(treePath);
-    }
-
-    void onRenamed(const gchar* treePath, const gchar* text) {
-        GtkTreeIter iter;
-        if (!gtk_tree_model_get_iter_from_string(model(), &iter, treePath)) {
-            finishEditing({});
-            return;
-        }
-        const auto oldPath = pathFromUtf8(pathAt(&iter).c_str());
-        gchar* stripped = g_strstrip(g_strdup(text));
-        std::string name = stripped;
-        g_free(stripped);
-
-        if (name.empty() || name == utf8(oldPath.filename())) {
-            finishEditing(oldPath);
-            return;
-        }
-        if (name == "." || name == ".." || name.find_first_of("<>:\"/\\|?*") != std::string::npos) {
-            finishEditing(oldPath);
-            showError(_("This name is not allowed."), _("Names cannot contain any of these characters: < > : \" / \\ | ? *"));
-            return;
-        }
-        // Keep the document type if the extension was left out
-        if (kindAt(&iter) == KIND_DOCUMENT && !pathFromUtf8(name.c_str()).has_extension()) {
-            name += utf8(oldPath.extension());
-        }
-        const auto newPath = oldPath.parent_path() / pathFromUtf8(name.c_str());
-        std::error_code error;
-        // A case-only rename refers to the same file on Windows, so it does not count as a conflict
-        if (fs::exists(newPath, error) && !fs::equivalent(oldPath, newPath, error)) {
-            finishEditing(oldPath);
-            showError(_("An entry with this name already exists."), name);
-            return;
-        }
-        fs::rename(oldPath, newPath, error);
-        if (error) {
-            finishEditing(oldPath);
-            showError(_("The entry could not be renamed."), error.message());
-            return;
-        }
-        movedEntry(oldPath, newPath);
-        finishEditing(newPath);
     }
 
     /// Updates all remembered paths (open document, selection, expanded folders) after a rename
@@ -1536,9 +1574,6 @@ private:
         expandedPaths = std::move(expanded);
         selectedFile = rebase(selectedFile).value_or(selectedFile);
         lastDocumentFile = rebase(lastDocumentFile).value_or(lastDocumentFile);
-        if (auto moved = rebase(utf8(openAfterEditing))) {
-            openAfterEditing = pathFromUtf8(moved->c_str());
-        }
 
         Document* document = control->getDocument();
         if (auto moved = rebase(utf8(document->getFilepath()))) {
@@ -1548,28 +1583,6 @@ private:
             control->updateWindowTitle();
         }
         scheduleSave();
-    }
-
-    /// Ends inline editing; the tree is rebuilt once GTK has finished with the edited row
-    void finishEditing(fs::path select) {
-        editing = false;
-        g_object_set(textRenderer, "editable", false, nullptr);
-        pendingSelection = std::move(select);
-        g_idle_add(+[](gpointer data) -> gboolean {
-            auto* self = static_cast<ProjectExplorerSidebar*>(data);
-            if (self->editing) {
-                return G_SOURCE_REMOVE;
-            }
-            self->refreshAfterEditing = false;
-            self->refresh(true);
-            if (!self->pendingSelection.empty()) {
-                self->reveal(self->pendingSelection, true);
-            }
-            if (!self->openAfterEditing.empty()) {
-                self->control->openFile(std::exchange(self->openAfterEditing, {}));
-            }
-            return G_SOURCE_REMOVE;
-        }, this);
     }
 
     void deleteEntry(const fs::path& path, bool directory) {
@@ -1608,7 +1621,7 @@ private:
     }
 
     static auto onKeyPress(GtkWidget*, GdkEventKey* event, ProjectExplorerSidebar* self) -> gboolean {
-        if (self->editing || (event->keyval != GDK_KEY_F2 && event->keyval != GDK_KEY_Delete)) {
+        if (event->keyval != GDK_KEY_F2 && event->keyval != GDK_KEY_Delete) {
             return false;
         }
         GtkTreeIter iter;
@@ -1621,7 +1634,7 @@ private:
             return false;
         }
         if (event->keyval == GDK_KEY_F2) {
-            self->startRename(path);
+            self->renameEntry(path, kind == KIND_DOCUMENT);
         } else {
             self->deleteEntry(path, kind == KIND_DIRECTORY);
         }
@@ -1669,13 +1682,6 @@ private:
     guint gitRefreshSource = 0;
     guint gitStatusTimer = 0;
     guint gitFetchTimer = 0;
-    GtkTreeViewColumn* column{};
-    GtkCellRenderer* textRenderer{};
-    bool editing = false;
-    bool refreshAfterEditing = false;
-    /// Document to open once its inline rename after creation is finished
-    fs::path openAfterEditing;
-    fs::path pendingSelection;
     GtkGesture* longPress{};
     fs::path projectRoot;
     std::string query;

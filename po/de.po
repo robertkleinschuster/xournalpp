@@ -5007,3 +5007,11 @@ msgstr "Die Datei wird in den Papierkorb verschoben."
 #: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
 msgid "The entry could not be moved to the trash."
 msgstr "Der Eintrag konnte nicht in den Papierkorb verschoben werden."
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "Create"
+msgstr "Erstellen"
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "Rename"
+msgstr "Umbenennen"
