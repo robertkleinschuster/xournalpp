@@ -168,6 +168,9 @@ bool QPdfExport::overlayAndSave(const fs::path& saveDestination, std::stringstre
         replaceKey("/ModDate", createPDFDateStringForNow());
 
         QPDFWriter writer(background, char_cast(saveDestination.u8string().data()));  // is UTF8 ok?
+        // Fork: copy already compressed streams (the source PDF and the annotation overlay) as they are instead of
+        // decompressing and recompressing them, which dominated the export time. New streams are still compressed.
+        writer.setDecodeLevel(qpdf_dl_none);
         writer.write();
     } catch (const std::exception& e) {
         this->lastError = _("Error with overlay or final export:");

@@ -21,6 +21,12 @@
 #include "model/Document.h"
 #include "model/PageRef.h"
 #include "model/XojPage.h"
+#include "control/jobs/ProgressListener.h"
+#include "model/DocumentHandler.h"
+#include "model/Layer.h"
+#include "model/PageType.h"
+#include "pdf/base/XojPdfExport.h"
+#include "pdf/base/XojPdfExportFactory.h"
 #include "util/OutputStream.h"
 #include "util/PathUtil.h"
 
@@ -147,3 +153,39 @@ TEST(FileSaveBenchmark, benchmarkHandwrittenTextFormattingOnly) {
               << " uncompressed bytes).\n";
 }
 
+
+static void exportPdf(const Document& doc, const fs::path& target, const char* label) {
+    DummyProgressListener listener;
+    auto exporter = XojPdfExportFactory::createExport(&doc, &listener);
+    const auto start = g_get_monotonic_time();
+    ASSERT_TRUE(exporter->createPdf(target, false)) << exporter->getLastError();
+    std::cout << label << ": " << doc.getPageCount() << " pages in " << (g_get_monotonic_time() - start) / 1000
+              << "ms (" << fs::file_size(target) << " bytes).\n";
+}
+
+TEST(PdfExportBenchmark, benchmarkHandwrittenTextAndPdfBackground) {
+    auto handwritten = LoadHandler{}.loadDocument(GET_TESTFILE(u8"benchmark/handwritten-text.xopp"));
+    ASSERT_TRUE(handwritten);
+    const auto dir = Util::getTmpDirSubfolder();
+    const auto source = dir / u8"export-benchmark-source.pdf";
+
+    // Handwriting only: rendered with cairo. The result serves as source PDF for the next case.
+    exportPdf(*handwritten, source, "Cairo export of handwriting");
+
+    // The same pages as PDF background with the same handwriting on top: the annotation workflow (QPDF)
+    auto annotated = LoadHandler{}.loadDocument(GET_TESTFILE(u8"benchmark/handwritten-text.xopp"));
+    ASSERT_TRUE(annotated->readPdf(source, false, true));
+    for (size_t i = 0; i < annotated->getPageCount(); ++i) {
+        annotated->getPage(i)->setBackgroundPdfPageNr(i);
+        annotated->getPage(i)->setBackgroundType(PageType(PageTypeFormat::Pdf));
+    }
+    exportPdf(*annotated, dir / u8"export-benchmark-annotated.pdf", "QPDF export of annotated PDF");
+
+    std::error_code error;  // the source may still be open by the PDF document
+    fs::remove(source, error);
+    if (const char* keep = g_getenv("XOPP_BENCHMARK_KEEP_EXPORT")) {
+        // Keep the result for inspection, e.g. with qpdf --check
+        fs::copy_file(dir / u8"export-benchmark-annotated.pdf", fs::path(keep), fs::copy_options::overwrite_existing);
+    }
+    fs::remove(dir / u8"export-benchmark-annotated.pdf", error);
+}
