@@ -54,11 +54,13 @@ public:
             return;
         }
         // Continue after the blocking job has unblocked the UI, which is queued just like this callback
-        g_idle_add(+[](gpointer data) -> gboolean {
-            std::unique_ptr<std::function<void()>> callback(static_cast<std::function<void()>*>(data));
-            (*callback)();
-            return G_SOURCE_REMOVE;
-        }, new std::function<void()>(std::exchange(done, {})));
+        g_idle_add(
+                +[](gpointer data) -> gboolean {
+                    std::unique_ptr<std::function<void()>> callback(static_cast<std::function<void()>*>(data));
+                    (*callback)();
+                    return G_SOURCE_REMOVE;
+                },
+                new std::function<void()>(std::exchange(done, {})));
     }
 
 private:
@@ -82,9 +84,8 @@ auto pathFromUtf8(const std::string& value) -> fs::path {
 
 /// Export path following the export name setting
 auto exportPathFromSetting(const Document& doc, const fs::path& xopp, const Settings& settings) -> fs::path {
-    auto target = xopp.parent_path() /
-                  doc.createSaveFilename(Document::PDF, settings.getDefaultSaveName(),
-                                         settings.getDefaultPdfExportName());
+    auto target = xopp.parent_path() / doc.createSaveFilename(Document::PDF, settings.getDefaultSaveName(),
+                                                              settings.getDefaultPdfExportName());
     target += ".pdf";
     return target;
 }
@@ -237,8 +238,8 @@ auto AnnotationFiles::exportPath(const Document& doc, const Settings& settings) 
         return {};
     }
     const auto recorded = recordedExportFilename(xopp);
-    auto target = recorded.empty() ? exportPathFromSetting(doc, xopp, settings) :
-                                     xopp.parent_path() / pathFromUtf8(recorded);
+    auto target =
+            recorded.empty() ? exportPathFromSetting(doc, xopp, settings) : xopp.parent_path() / pathFromUtf8(recorded);
     return safeTarget(std::move(target), xopp, doc.getPdfFilepath());
 }
 
@@ -293,8 +294,8 @@ void AnnotationFiles::createDocumentFileForPdf(Control* control) {
     doc->lock_shared();
     const auto pdf = doc->getPdfFilepath();
     const bool hasFile = !doc->getFilepath().empty();
-    auto target = pdf.parent_path() /
-                  doc->createSaveFilename(Document::XOPP, control->getSettings()->getDefaultSaveName());
+    auto target =
+            pdf.parent_path() / doc->createSaveFilename(Document::XOPP, control->getSettings()->getDefaultSaveName());
     doc->unlock_shared();
     target += ".xopp";
 
@@ -373,11 +374,13 @@ void AnnotationExporter::exportIfOutdated(std::function<void()> done) {
         fs::path target;
         std::function<void()> done;
     };
-    g_idle_add(+[](gpointer data) -> gboolean {
-        std::unique_ptr<Pending> pending(static_cast<Pending*>(data));
-        auto* job = new AutoPdfExportJob(pending->control, pending->target, std::move(pending->done));
-        pending->control->getScheduler()->addJob(job, JOB_PRIORITY_NONE);
-        job->unref();
-        return G_SOURCE_REMOVE;
-    }, new Pending{control, target, std::move(done)});
+    g_idle_add(
+            +[](gpointer data) -> gboolean {
+                std::unique_ptr<Pending> pending(static_cast<Pending*>(data));
+                auto* job = new AutoPdfExportJob(pending->control, pending->target, std::move(pending->done));
+                pending->control->getScheduler()->addJob(job, JOB_PRIORITY_NONE);
+                job->unref();
+                return G_SOURCE_REMOVE;
+            },
+            new Pending{control, target, std::move(done)});
 }

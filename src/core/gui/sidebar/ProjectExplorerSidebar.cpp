@@ -11,10 +11,10 @@
 #include <string_view>
 #include <vector>
 
-#include "control/Control.h"
-#include "control/settings/PageTemplateSettings.h"
 #include "control/AnnotationFiles.h"
+#include "control/Control.h"
 #include "control/DocumentAutoSaver.h"
+#include "control/settings/PageTemplateSettings.h"
 #include "control/settings/Settings.h"
 #include "control/xojfile/SaveHandler.h"
 #include "gui/GladeSearchpath.h"
@@ -115,8 +115,7 @@ auto isIgnored(const fs::path& path) -> bool {
 }
 
 /// Keeps Xournal++ recovery copies out of the sync, in any folder of the repository
-const std::vector<std::string> GIT_PATHSPEC = {"--", ".", ":(exclude,glob)**/.*.autosave.xopp",
-                                               ":(exclude,glob)**/*~"};
+const std::vector<std::string> GIT_PATHSPEC = {"--", ".", ":(exclude,glob)**/.*.autosave.xopp", ":(exclude,glob)**/*~"};
 
 auto withPathspec(std::vector<std::string> args) -> std::vector<std::string> {
     args.insert(args.end(), GIT_PATHSPEC.begin(), GIT_PATHSPEC.end());
@@ -257,13 +256,15 @@ public:
                              auto* self = static_cast<ProjectExplorerSidebar*>(data);
                              self->query = casefold(gtk_entry_get_text(GTK_ENTRY(entry)));
                              self->refresh(false);
-                         }), this);
-        g_signal_connect(searchEntry, "stop-search", G_CALLBACK(+[](GtkSearchEntry* entry, gpointer) {
-                             gtk_entry_set_text(GTK_ENTRY(entry), "");
-                         }), nullptr);
+                         }),
+                         this);
+        g_signal_connect(searchEntry, "stop-search",
+                         G_CALLBACK(+[](GtkSearchEntry* entry, gpointer) { gtk_entry_set_text(GTK_ENTRY(entry), ""); }),
+                         nullptr);
         g_signal_connect(searchEntry, "activate", G_CALLBACK(+[](GtkEntry*, gpointer data) {
                              static_cast<ProjectExplorerSidebar*>(data)->openFirstDocument();
-                         }), this);
+                         }),
+                         this);
         g_signal_connect(searchEntry, "key-press-event",
                          G_CALLBACK(+[](GtkWidget*, GdkEventKey* event, gpointer data) -> gboolean {
                              if (event->keyval != GDK_KEY_Down) {
@@ -271,7 +272,8 @@ public:
                              }
                              gtk_widget_grab_focus(GTK_WIDGET(static_cast<ProjectExplorerSidebar*>(data)->tree));
                              return TRUE;
-                         }), this);
+                         }),
+                         this);
         searchRow = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
         g_object_set(searchRow, "margin", 6, nullptr);
         gtk_box_pack_start(GTK_BOX(searchRow), GTK_WIDGET(searchEntry), true, true, 0);
@@ -330,7 +332,8 @@ public:
                                  self->selectedFile = selected;
                                  self->scheduleSave();
                              }
-                         }), this);
+                         }),
+                         this);
 
         longPress = gtk_gesture_long_press_new(GTK_WIDGET(tree));
         gtk_gesture_single_set_touch_only(GTK_GESTURE_SINGLE(longPress), true);
@@ -351,7 +354,8 @@ public:
         gtk_style_context_add_class(gtk_widget_get_style_context(openButton), "suggested-action");
         g_signal_connect(openButton, "clicked", G_CALLBACK(+[](GtkButton*, gpointer data) {
                              static_cast<ProjectExplorerSidebar*>(data)->chooseFolder();
-                         }), this);
+                         }),
+                         this);
         gtk_box_pack_start(GTK_BOX(emptyView), openButton, false, false, 0);
         gtk_box_pack_start(GTK_BOX(root), emptyView, true, true, 0);
 
@@ -370,14 +374,20 @@ public:
         }
 
         refreshGit();
-        gitStatusTimer = g_timeout_add_seconds(GIT_STATUS_INTERVAL_S, +[](gpointer data) -> gboolean {
-            static_cast<ProjectExplorerSidebar*>(data)->refreshGit();
-            return G_SOURCE_CONTINUE;
-        }, this);
-        gitFetchTimer = g_timeout_add_seconds(GIT_FETCH_INTERVAL_S, +[](gpointer data) -> gboolean {
-            static_cast<ProjectExplorerSidebar*>(data)->fetchRemote();
-            return G_SOURCE_CONTINUE;
-        }, this);
+        gitStatusTimer = g_timeout_add_seconds(
+                GIT_STATUS_INTERVAL_S,
+                +[](gpointer data) -> gboolean {
+                    static_cast<ProjectExplorerSidebar*>(data)->refreshGit();
+                    return G_SOURCE_CONTINUE;
+                },
+                this);
+        gitFetchTimer = g_timeout_add_seconds(
+                GIT_FETCH_INTERVAL_S,
+                +[](gpointer data) -> gboolean {
+                    static_cast<ProjectExplorerSidebar*>(data)->fetchRemote();
+                    return G_SOURCE_CONTINUE;
+                },
+                this);
     }
 
     ~ProjectExplorerSidebar() override {
@@ -510,8 +520,8 @@ private:
                                           gitColorFor(path, kind), -1);
         if (kind == KIND_DIRECTORY && lazy && hasVisibleEntries(path)) {
             GtkTreeIter placeholder;
-            gtk_tree_store_insert_with_values(store, &placeholder, &iter, -1, COL_NAME, "", COL_KIND,
-                                              KIND_PLACEHOLDER, COL_SENSITIVE, false, -1);
+            gtk_tree_store_insert_with_values(store, &placeholder, &iter, -1, COL_NAME, "", COL_KIND, KIND_PLACEHOLDER,
+                                              COL_SENSITIVE, false, -1);
         }
         return iter;
     }
@@ -616,9 +626,8 @@ private:
             if (rootName.empty()) {
                 rootName = utf8(projectRoot);
             }
-            auto rootIter =
-                    appendNode(nullptr, projectRoot, rootName, KIND_DIRECTORY, "<b>" + escape(rootName) + "</b>",
-                               !searching);
+            auto rootIter = appendNode(nullptr, projectRoot, rootName, KIND_DIRECTORY,
+                                       "<b>" + escape(rootName) + "</b>", !searching);
             if (searching) {
                 fillSearchResults(&rootIter);
                 gtk_tree_view_expand_all(tree);
@@ -695,13 +704,15 @@ private:
             reveal(pathFromUtf8(selected.c_str()), !keepScroll);
         }
         if (keepScroll && !scrollSource) {
-            scrollSource = g_idle_add(+[](gpointer data) -> gboolean {
-                auto* self = static_cast<ProjectExplorerSidebar*>(data);
-                self->scrollSource = 0;
-                gtk_adjustment_set_value(gtk_scrollable_get_vadjustment(GTK_SCROLLABLE(self->tree)),
-                                         self->pendingScroll);
-                return G_SOURCE_REMOVE;
-            }, this);
+            scrollSource = g_idle_add(
+                    +[](gpointer data) -> gboolean {
+                        auto* self = static_cast<ProjectExplorerSidebar*>(data);
+                        self->scrollSource = 0;
+                        gtk_adjustment_set_value(gtk_scrollable_get_vadjustment(GTK_SCROLLABLE(self->tree)),
+                                                 self->pendingScroll);
+                        return G_SOURCE_REMOVE;
+                    },
+                    this);
         }
     }
 
@@ -709,12 +720,15 @@ private:
         if (refreshSource) {
             return;
         }
-        refreshSource = g_timeout_add(REFRESH_DELAY_MS, +[](gpointer data) -> gboolean {
-            auto* self = static_cast<ProjectExplorerSidebar*>(data);
-            self->refreshSource = 0;
-            self->refresh(true);
-            return G_SOURCE_REMOVE;
-        }, this);
+        refreshSource = g_timeout_add(
+                REFRESH_DELAY_MS,
+                +[](gpointer data) -> gboolean {
+                    auto* self = static_cast<ProjectExplorerSidebar*>(data);
+                    self->refreshSource = 0;
+                    self->refresh(true);
+                    return G_SOURCE_REMOVE;
+                },
+                this);
     }
 
     void updateView() {
@@ -739,7 +753,8 @@ private:
         gtk_container_add(GTK_CONTAINER(syncButton), content);
         g_signal_connect(syncButton, "clicked", G_CALLBACK(+[](GtkButton*, gpointer data) {
                              static_cast<ProjectExplorerSidebar*>(data)->startSync();
-                         }), this);
+                         }),
+                         this);
     }
 
     void updateSyncButton() {
@@ -854,12 +869,15 @@ private:
         if (gitRefreshSource) {
             return;
         }
-        gitRefreshSource = g_timeout_add(GIT_REFRESH_DELAY_MS, +[](gpointer data) -> gboolean {
-            auto* self = static_cast<ProjectExplorerSidebar*>(data);
-            self->gitRefreshSource = 0;
-            self->refreshGit();
-            return G_SOURCE_REMOVE;
-        }, this);
+        gitRefreshSource = g_timeout_add(
+                GIT_REFRESH_DELAY_MS,
+                +[](gpointer data) -> gboolean {
+                    auto* self = static_cast<ProjectExplorerSidebar*>(data);
+                    self->gitRefreshSource = 0;
+                    self->refreshGit();
+                    return G_SOURCE_REMOVE;
+                },
+                this);
     }
 
     /// Reads the repository root and status of the project folder in the background
@@ -1094,8 +1112,8 @@ private:
         refreshGit();
         updateSyncButton();
         if (message) {
-            auto* dialog = gtk_message_dialog_new(parent, GTK_DIALOG_MODAL, GTK_MESSAGE_ERROR, GTK_BUTTONS_CLOSE,
-                                                  "%s", message);
+            auto* dialog = gtk_message_dialog_new(parent, GTK_DIALOG_MODAL, GTK_MESSAGE_ERROR, GTK_BUTTONS_CLOSE, "%s",
+                                                  message);
             if (const auto text = trim(details); !text.empty()) {
                 gtk_message_dialog_format_secondary_text(GTK_MESSAGE_DIALOG(dialog), "%s", text.c_str());
             }
@@ -1144,7 +1162,8 @@ private:
                                  default:
                                      break;
                              }
-                         }), this);
+                         }),
+                         this);
         monitors.emplace(key, monitor);
         std::error_code error;
         folderTimes[key] = fs::last_write_time(dir, error);
@@ -1310,8 +1329,7 @@ private:
         }
     }
 
-    static void onRowActivated(GtkTreeView* view, GtkTreePath* path, GtkTreeViewColumn*,
-                               ProjectExplorerSidebar* self) {
+    static void onRowActivated(GtkTreeView* view, GtkTreePath* path, GtkTreeViewColumn*, ProjectExplorerSidebar* self) {
         GtkTreeIter iter;
         if (!gtk_tree_model_get_iter(self->model(), &iter, path)) {
             return;
@@ -1357,8 +1375,8 @@ private:
     static void onLongPress(GtkGesture* gesture, gdouble x, gdouble y, ProjectExplorerSidebar* self) {
         gint binX = 0;
         gint binY = 0;
-        gtk_tree_view_convert_widget_to_bin_window_coords(self->tree, static_cast<gint>(x), static_cast<gint>(y),
-                                                          &binX, &binY);
+        gtk_tree_view_convert_widget_to_bin_window_coords(self->tree, static_cast<gint>(x), static_cast<gint>(y), &binX,
+                                                          &binY);
         // Claim the touch sequence so the release does not also activate the row
         gtk_gesture_set_state(gesture, GTK_EVENT_SEQUENCE_CLAIMED);
         self->showContextMenu(binX, binY, nullptr);
@@ -1389,8 +1407,7 @@ private:
             addMenuItem(menu, _("Open"), [this, document] { openDocument(document); });
             if (Util::hasPdfFileExt(pathFromUtf8(target.c_str()))) {
                 // Read-only viewing, e.g. of the exported PDF, without creating annotations
-                addMenuItem(menu, _("Open Read-Only"),
-                            [this, target] { openReadOnly(pathFromUtf8(target.c_str())); });
+                addMenuItem(menu, _("Open Read-Only"), [this, target] { openReadOnly(pathFromUtf8(target.c_str())); });
                 addMenuItem(menu, _("Open in PDF Viewer"), [this, target] { openWithDefaultApp(target); });
             }
             addMenuSeparator(menu);
@@ -1403,12 +1420,10 @@ private:
         }
         const bool isRoot = !target.empty() && pathFromUtf8(target.c_str()) == projectRoot;
         if (kind != KIND_PLACEHOLDER && !isRoot) {
-            addMenuItem(menu, _("Rename…"), [this, target, kind] {
-                renameEntry(pathFromUtf8(target.c_str()), kind == KIND_DOCUMENT);
-            });
-            addMenuItem(menu, _("Delete"), [this, target, kind] {
-                deleteEntry(pathFromUtf8(target.c_str()), kind == KIND_DIRECTORY);
-            });
+            addMenuItem(menu, _("Rename…"),
+                        [this, target, kind] { renameEntry(pathFromUtf8(target.c_str()), kind == KIND_DOCUMENT); });
+            addMenuItem(menu, _("Delete"),
+                        [this, target, kind] { deleteEntry(pathFromUtf8(target.c_str()), kind == KIND_DIRECTORY); });
             addMenuSeparator(menu);
         }
         if (kind != KIND_PLACEHOLDER) {
@@ -1433,11 +1448,14 @@ private:
         gtk_menu_attach_to_widget(GTK_MENU(menu), GTK_WIDGET(tree), nullptr);
         // Items are activated after "deactivate", so destroy the menu only once the main loop is idle again
         g_signal_connect(menu, "deactivate", G_CALLBACK(+[](GtkMenuShell* shell, gpointer) {
-                             g_idle_add(+[](gpointer widget) -> gboolean {
-                                 gtk_widget_destroy(GTK_WIDGET(widget));
-                                 return G_SOURCE_REMOVE;
-                             }, shell);
-                         }), nullptr);
+                             g_idle_add(
+                                     +[](gpointer widget) -> gboolean {
+                                         gtk_widget_destroy(GTK_WIDGET(widget));
+                                         return G_SOURCE_REMOVE;
+                                     },
+                                     shell);
+                         }),
+                         nullptr);
         gtk_menu_popup_at_pointer(GTK_MENU(menu), event);
     }
 
@@ -1598,12 +1616,15 @@ private:
         if (saveSource || projectRoot.empty()) {
             return;
         }
-        saveSource = g_timeout_add(SAVE_DELAY_MS, +[](gpointer data) -> gboolean {
-            auto* self = static_cast<ProjectExplorerSidebar*>(data);
-            self->saveSource = 0;
-            self->saveState();
-            return G_SOURCE_REMOVE;
-        }, this);
+        saveSource = g_timeout_add(
+                SAVE_DELAY_MS,
+                +[](gpointer data) -> gboolean {
+                    auto* self = static_cast<ProjectExplorerSidebar*>(data);
+                    self->saveSource = 0;
+                    self->saveState();
+                    return G_SOURCE_REMOVE;
+                },
+                this);
     }
 
     void resetSearchAndBuild() {
@@ -1614,7 +1635,7 @@ private:
 
     void chooseFolder() {
         auto* chooser = gtk_file_chooser_native_new(_("Open project folder"), parent,
-                                                   GTK_FILE_CHOOSER_ACTION_SELECT_FOLDER, _("Open"), _("Cancel"));
+                                                    GTK_FILE_CHOOSER_ACTION_SELECT_FOLDER, _("Open"), _("Cancel"));
         const auto initialFolder = projectRoot.empty() ? fs::path(g_get_home_dir()) : projectRoot;
         if (auto uri = Util::toUri(initialFolder)) {
             gtk_file_chooser_set_current_folder_uri(GTK_FILE_CHOOSER(chooser), uri->c_str());
@@ -1632,7 +1653,8 @@ private:
                                  }
                              }
                              g_object_unref(dialog);
-                         }), this);
+                         }),
+                         this);
         gtk_native_dialog_show(GTK_NATIVE_DIALOG(chooser));
     }
 
@@ -1662,11 +1684,9 @@ private:
      */
     auto askForName(const char* title, const char* acceptLabel, const std::string& initial)
             -> std::optional<std::string> {
-        auto* dialog = gtk_dialog_new_with_buttons(title, parent,
-                                                   static_cast<GtkDialogFlags>(GTK_DIALOG_MODAL |
-                                                                               GTK_DIALOG_DESTROY_WITH_PARENT),
-                                                   _("Cancel"), GTK_RESPONSE_CANCEL, acceptLabel, GTK_RESPONSE_ACCEPT,
-                                                   nullptr);
+        auto* dialog = gtk_dialog_new_with_buttons(
+                title, parent, static_cast<GtkDialogFlags>(GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT),
+                _("Cancel"), GTK_RESPONSE_CANCEL, acceptLabel, GTK_RESPONSE_ACCEPT, nullptr);
         gtk_dialog_set_default_response(GTK_DIALOG(dialog), GTK_RESPONSE_ACCEPT);
         gtk_window_set_resizable(GTK_WINDOW(dialog), false);
         auto* area = gtk_dialog_get_content_area(GTK_DIALOG(dialog));
@@ -1901,8 +1921,8 @@ private:
     }
 
     void showError(const char* message, const std::string& details) {
-        auto* dialog = gtk_message_dialog_new(parent, GTK_DIALOG_MODAL, GTK_MESSAGE_ERROR, GTK_BUTTONS_CLOSE, "%s",
-                                              message);
+        auto* dialog =
+                gtk_message_dialog_new(parent, GTK_DIALOG_MODAL, GTK_MESSAGE_ERROR, GTK_BUTTONS_CLOSE, "%s", message);
         if (!details.empty()) {
             gtk_message_dialog_format_secondary_text(GTK_MESSAGE_DIALOG(dialog), "%s", details.c_str());
         }
@@ -1920,8 +1940,8 @@ private:
     }
 
     void showMessage(const char* message) {
-        auto* dialog = gtk_message_dialog_new(parent, GTK_DIALOG_MODAL, GTK_MESSAGE_INFO, GTK_BUTTONS_CLOSE,
-                                              "%s", message);
+        auto* dialog =
+                gtk_message_dialog_new(parent, GTK_DIALOG_MODAL, GTK_MESSAGE_INFO, GTK_BUTTONS_CLOSE, "%s", message);
         gtk_dialog_run(GTK_DIALOG(dialog));
         gtk_widget_destroy(dialog);
     }
@@ -1972,7 +1992,7 @@ private:
     guint saveSource = 0;
     std::map<std::string, GFileMonitor*> monitors;
     std::map<std::string, fs::file_time_type> folderTimes;  ///< modification times of the watched folders
-    GtkWindow* focusWindow{};                                ///< weak pointer, see checkForMissedChanges()
+    GtkWindow* focusWindow{};                               ///< weak pointer, see checkForMissedChanges()
     guint refreshSource = 0;
     /// Whether another sidebar tab was shown since the tree was built (the file monitors keep it current otherwise)
     bool refreshOnEnable = false;

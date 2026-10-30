@@ -89,8 +89,7 @@ MainWindow::MainWindow(GladeSearchpath* gladeSearchPath, Control* control, GtkAp
     // Window handler
     g_signal_connect(this->window, "delete-event", xoj::util::wrap_for_g_callback_v<deleteEventCallback>,
                      this->control);
-    g_signal_connect(this->window, "notify::is-active",
-                     G_CALLBACK(+[](GObject* object, GParamSpec*, gpointer self) {
+    g_signal_connect(this->window, "notify::is-active", G_CALLBACK(+[](GObject* object, GParamSpec*, gpointer self) {
                          auto* win = static_cast<MainWindow*>(self);
                          if (!gtk_window_is_active(GTK_WINDOW(object)) && win->xournal) {
                              win->xournal->resetTouchInputSequence();
@@ -492,12 +491,15 @@ void MainWindow::highlightReadOnlyBar() {
     if (readOnlyHighlightSource) {
         g_source_remove(readOnlyHighlightSource);
     }
-    readOnlyHighlightSource = g_timeout_add(1500, +[](gpointer data) -> gboolean {
-        auto* self = static_cast<MainWindow*>(data);
-        self->readOnlyHighlightSource = 0;
-        gtk_info_bar_set_message_type(GTK_INFO_BAR(self->readOnlyBar), GTK_MESSAGE_INFO);
-        return G_SOURCE_REMOVE;
-    }, this);
+    readOnlyHighlightSource = g_timeout_add(
+            1500,
+            +[](gpointer data) -> gboolean {
+                auto* self = static_cast<MainWindow*>(data);
+                self->readOnlyHighlightSource = 0;
+                gtk_info_bar_set_message_type(GTK_INFO_BAR(self->readOnlyBar), GTK_MESSAGE_INFO);
+                return G_SOURCE_REMOVE;
+            },
+            this);
 }
 
 void MainWindow::updateSidebarLayout() {

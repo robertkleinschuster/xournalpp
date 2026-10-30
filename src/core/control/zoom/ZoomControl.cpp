@@ -1,21 +1,21 @@
 #include "ZoomControl.h"
 
 #include <algorithm>  // for find, max, clamp
-#include <utility>    // for swap
 #include <cmath>      // for isfinite
+#include <utility>    // for swap
 
 #include <glib-object.h>  // for G_CALLBACK, g_signal_connect
 #include <glib.h>         // for g_warning, guint
 
 #include "control/Control.h"  // for Control
 #include "control/actions/ActionDatabase.h"
-#include "control/settings/Settings.h"  // for Settings
-#include "control/zoom/ZoomListener.h"  // for ZoomListener
-#include "gui/Layout.h"                 // for Layout
+#include "control/settings/Settings.h"      // for Settings
+#include "control/zoom/TouchpadGestures.h"  // for TouchpadGestures
+#include "control/zoom/ZoomListener.h"      // for ZoomListener
+#include "gui/Layout.h"                     // for Layout
 #include "gui/MainWindow.h"
 #include "gui/PageView.h"               // for XojPageView
 #include "gui/XournalView.h"            // for XournalView
-#include "control/zoom/TouchpadGestures.h"  // for TouchpadGestures
 #include "gui/scroll/ScrollHandling.h"  // for ScrollHandling
 #include "util/Assert.h"                // for xoj_assert
 #include "util/Util.h"                  // for execInUiThread

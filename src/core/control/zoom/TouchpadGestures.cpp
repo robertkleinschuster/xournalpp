@@ -57,8 +57,8 @@ constexpr gint64 MOMENTUM_MAX_REST_US = 120'000;
 /// After the fingers are lifted, Windows keeps sending synthesized scroll events (inertia) with short gaps
 constexpr gint64 INERTIA_GAP_US = 200'000;
 constexpr gint64 INERTIA_MAX_US = 2'500'000;
-/// Touchpads report resting fingers as well; without reports for this long the lift report was lost (e.g. the touchpad was
-/// unplugged or the computer suspended), so the gesture is over
+/// Touchpads report resting fingers as well; without reports for this long the lift report was lost (e.g. the touchpad
+/// was unplugged or the computer suspended), so the gesture is over
 constexpr gint64 CONTACTS_STALE_US = 300'000;
 /// Longest frame step for the momentum, so it does not jump after the window was hidden
 constexpr double MAX_INERTIA_STEP_S = 0.05;
@@ -94,8 +94,8 @@ auto millimetresPerUnit(const HIDP_VALUE_CAPS& caps) -> double {
         return 0.0;
     }
     double physical = static_cast<double>(caps.PhysicalMax) - static_cast<double>(caps.PhysicalMin);
-    const int exponent = (caps.UnitsExp & 0x8) ? static_cast<int>(caps.UnitsExp & 0xF) - 16 :
-                                                  static_cast<int>(caps.UnitsExp & 0xF);
+    const int exponent =
+            (caps.UnitsExp & 0x8) ? static_cast<int>(caps.UnitsExp & 0xF) - 16 : static_cast<int>(caps.UnitsExp & 0xF);
     double unitMm = 0.0;
     if ((caps.Units & 0xFF) == 0x11) {
         unitMm = 10.0;  // centimetre
@@ -290,11 +290,10 @@ private:
             }
             ULONG x = 0;
             ULONG y = 0;
-            const bool position =
-                    HidP_GetUsageValue(HidP_Input, PAGE_GENERIC, slot.link, USAGE_X, &x, data, report, length) ==
-                            HIDP_STATUS_SUCCESS &&
-                    HidP_GetUsageValue(HidP_Input, PAGE_GENERIC, slot.link, USAGE_Y, &y, data, report, length) ==
-                            HIDP_STATUS_SUCCESS;
+            const bool position = HidP_GetUsageValue(HidP_Input, PAGE_GENERIC, slot.link, USAGE_X, &x, data, report,
+                                                     length) == HIDP_STATUS_SUCCESS &&
+                                  HidP_GetUsageValue(HidP_Input, PAGE_GENERIC, slot.link, USAGE_Y, &y, data, report,
+                                                     length) == HIDP_STATUS_SUCCESS;
             if (tip && position) {
                 device.frame[id] = {x * slot.xMm, y * slot.yMm};
             }
@@ -373,15 +372,15 @@ struct TouchpadGestures::Impl {
 
     Impl(ZoomControl* zoom, XournalView* view, GtkWidget* toplevel): zoom(zoom), view(view), toplevel(toplevel) {
         g_object_add_weak_pointer(G_OBJECT(toplevel), reinterpret_cast<gpointer*>(&this->toplevel));
-        activeHandler = g_signal_connect(toplevel, "notify::is-active",
-                                         G_CALLBACK(+[](GObject*, GParamSpec*, gpointer data) {
-                                             auto* self = static_cast<Impl*>(data);
-                                             if (!self->isActive()) {
-                                                 self->finishGesture();
-                                                 self->stopInertia();
-                                             }
-                                         }),
-                                         this);
+        activeHandler =
+                g_signal_connect(toplevel, "notify::is-active", G_CALLBACK(+[](GObject*, GParamSpec*, gpointer data) {
+                                     auto* self = static_cast<Impl*>(data);
+                                     if (!self->isActive()) {
+                                         self->finishGesture();
+                                         self->stopInertia();
+                                     }
+                                 }),
+                                 this);
         reader = std::make_unique<RawTouchpadReader>([this](const Contacts& contacts) { handOver(contacts); });
     }
 
@@ -413,17 +412,20 @@ struct TouchpadGestures::Impl {
         std::lock_guard lock(mutex);
         latest = contacts;
         if (!pendingIdle) {
-            pendingIdle = g_idle_add_full(G_PRIORITY_HIGH_IDLE, +[](gpointer data) -> gboolean {
-                auto* self = static_cast<Impl*>(data);
-                Contacts contacts;
-                {
-                    std::lock_guard lock(self->mutex);
-                    contacts = self->latest;
-                    self->pendingIdle = 0;
-                }
-                self->updateGesture(contacts);
-                return G_SOURCE_REMOVE;
-            }, this, nullptr);
+            pendingIdle = g_idle_add_full(
+                    G_PRIORITY_HIGH_IDLE,
+                    +[](gpointer data) -> gboolean {
+                        auto* self = static_cast<Impl*>(data);
+                        Contacts contacts;
+                        {
+                            std::lock_guard lock(self->mutex);
+                            contacts = self->latest;
+                            self->pendingIdle = 0;
+                        }
+                        self->updateGesture(contacts);
+                        return G_SOURCE_REMOVE;
+                    },
+                    this, nullptr);
         }
     }
 

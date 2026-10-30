@@ -9,12 +9,12 @@
 #include <glib-object.h>  // for G_CALLBACK, g_s...
 #include <gtk/gtk.h>      // for gtk_toggle_tool_button_new...
 
-#include "control/Control.h"                         // for Control
-#include "control/settings/Settings.h"               // for Settings
-#include "gui/GladeGui.h"                            // for GladeGui
-#include "gui/sidebar/AbstractSidebarPage.h"         // for AbstractSidebar...
-#include "gui/sidebar/indextree/SidebarIndexPage.h"  // for SidebarIndexPage
+#include "control/Control.h"                  // for Control
+#include "control/settings/Settings.h"        // for Settings
+#include "gui/GladeGui.h"                     // for GladeGui
+#include "gui/sidebar/AbstractSidebarPage.h"  // for AbstractSidebar...
 #include "gui/sidebar/ProjectExplorerSidebar.h"
+#include "gui/sidebar/indextree/SidebarIndexPage.h"  // for SidebarIndexPage
 #include "model/Document.h"                          // for Document
 #include "model/XojPage.h"                           // for XojPage
 #include "pdf/base/XojPdfPage.h"                     // for XojPdfPageSPtr

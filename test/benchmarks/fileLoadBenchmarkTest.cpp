@@ -16,15 +16,15 @@
 #include <glib-2.0/glib.h>
 #include <gtest/gtest.h>
 
+#include "control/jobs/ProgressListener.h"
 #include "control/xojfile/LoadHandler.h"
 #include "control/xojfile/SaveHandler.h"
 #include "model/Document.h"
-#include "model/PageRef.h"
-#include "model/XojPage.h"
-#include "control/jobs/ProgressListener.h"
 #include "model/DocumentHandler.h"
 #include "model/Layer.h"
+#include "model/PageRef.h"
 #include "model/PageType.h"
+#include "model/XojPage.h"
 #include "pdf/base/XojPdfExport.h"
 #include "pdf/base/XojPdfExportFactory.h"
 #include "util/OutputStream.h"
@@ -115,8 +115,8 @@ static void benchSaveFile(const fs::path& filename, int iterations) {
         prepare += prepared - start;
         write += stop - prepared;
     }
-    std::cout << "Saved " << filename << ' ' << iterations << " times: prepareSave " << prepare / 1000
-              << "ms, saveTo " << write / 1000 << "ms (" << fs::file_size(target) << " bytes).\n";
+    std::cout << "Saved " << filename << ' ' << iterations << " times: prepareSave " << prepare / 1000 << "ms, saveTo "
+              << write / 1000 << "ms (" << fs::file_size(target) << " bytes).\n";
     fs::remove(target);
 }
 

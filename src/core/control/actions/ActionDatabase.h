@@ -10,10 +10,10 @@
  */
 #pragma once
 
+#include <map>
+
 #include <gio/gio.h>
 #include <gtk/gtk.h>
-
-#include <map>
 
 #include "enums/Action.enum.h"
 #include "util/Assert.h"

@@ -40,8 +40,8 @@ auto fastFormat(double value) -> std::string {
 }  // namespace
 
 TEST(WriteDouble, matchesGlibForEdgeCases) {
-    for (double value: {0.0, -0.0, 1.0, -1.0, 0.5, 123.456789012345, 595.27559055, 841.88976378, 1e-5, 1e-4, 1e7,
-                        1e8, 1.23456785e8, 99999999.5, 0.000123456789, 2.5e-300, 1.7976931348623157e308,
+    for (double value: {0.0, -0.0, 1.0, -1.0, 0.5, 123.456789012345, 595.27559055, 841.88976378, 1e-5, 1e-4, 1e7, 1e8,
+                        1.23456785e8, 99999999.5, 0.000123456789, 2.5e-300, 1.7976931348623157e308,
                         std::numeric_limits<double>::denorm_min(), 1.0 / 3.0}) {
         EXPECT_EQ(fastFormat(value), glibFormat(value)) << "value " << value;
     }

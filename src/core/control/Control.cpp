@@ -2229,9 +2229,7 @@ void Control::resetSavedStatus() {
     this->updateWindowTitle();
 }
 
-void Control::setBeforeCloseHook(std::function<void(std::function<void()>)> hook) {
-    beforeCloseHook = std::move(hook);
-}
+void Control::setBeforeCloseHook(std::function<void(std::function<void()>)> hook) { beforeCloseHook = std::move(hook); }
 
 void Control::setUserSavedHook(std::function<void(bool)> hook) { userSavedHook = std::move(hook); }
 
@@ -2297,35 +2295,34 @@ void Control::close(std::function<void(bool)> callback, const bool allowDestroy,
         if (allowCancel) {
             buttons.emplace_back(_("Cancel"), CANCEL);
         }
-        XojMsgBox::askQuestion(getGtkWindow(), message, std::string(), std::move(buttons),
-                               [ctrl = this, saveAs, allowDestroy, allowCancel,
-                                callback = std::move(callback)](int response) mutable {
-                                   if (response == SAVE) {
-                                       ctrl->saveImpl(saveAs, [ctrl, allowDestroy, allowCancel,
-                                                               callback = std::move(callback)](bool saved) mutable {
-                                           if (saved && ctrl->beforeCloseHook) {
-                                               ctrl->beforeCloseHook([=]() mutable {
-                                                   ctrl->finishCloseAfterHook(std::move(callback), allowDestroy,
-                                                                              allowCancel);
-                                               });
-                                               return;
-                                           }
-                                           if (saved && allowDestroy) {
-                                               ctrl->closeDocument();
-                                           }
-                                           callback(saved);
-                                       });
-                                       return;
-                                   }
-                                   auto execAfter = [allowDestroy, ctrl, cb = std::move(callback)](bool saved) {
-                                       if (saved && allowDestroy) {
-                                           ctrl->closeDocument();
-                                       }
-                                       cb(saved);
-                                   };
-                                   bool safeToClose = response == DISCARD;
-                                   execAfter(safeToClose);
-                               });
+        XojMsgBox::askQuestion(
+                getGtkWindow(), message, std::string(), std::move(buttons),
+                [ctrl = this, saveAs, allowDestroy, allowCancel, callback = std::move(callback)](int response) mutable {
+                    if (response == SAVE) {
+                        ctrl->saveImpl(saveAs, [ctrl, allowDestroy, allowCancel,
+                                                callback = std::move(callback)](bool saved) mutable {
+                            if (saved && ctrl->beforeCloseHook) {
+                                ctrl->beforeCloseHook([=]() mutable {
+                                    ctrl->finishCloseAfterHook(std::move(callback), allowDestroy, allowCancel);
+                                });
+                                return;
+                            }
+                            if (saved && allowDestroy) {
+                                ctrl->closeDocument();
+                            }
+                            callback(saved);
+                        });
+                        return;
+                    }
+                    auto execAfter = [allowDestroy, ctrl, cb = std::move(callback)](bool saved) {
+                        if (saved && allowDestroy) {
+                            ctrl->closeDocument();
+                        }
+                        cb(saved);
+                    };
+                    bool safeToClose = response == DISCARD;
+                    execAfter(safeToClose);
+                });
     } else if (beforeCloseHook && !forceClose) {
         beforeCloseHook([ctrl = this, allowDestroy, allowCancel, callback = std::move(callback)]() mutable {
             ctrl->finishCloseAfterHook(std::move(callback), allowDestroy, allowCancel);

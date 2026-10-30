@@ -32,8 +32,8 @@
 #include "util/raii/CStringWrapper.h"
 #include "util/raii/GObjectSPtr.h"
 
-#include "config.h"
 #include "config-dev.h"
+#include "config.h"
 #include "filesystem.h"
 
 static constexpr const char* UI_RESOURCE = "/org/xournalpp/wrapper/ui/crashDialog.glade";

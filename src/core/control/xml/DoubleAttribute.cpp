@@ -12,6 +12,4 @@ DoubleAttribute::DoubleAttribute(const char8_t* name, double value): XMLAttribut
 
 DoubleAttribute::~DoubleAttribute() = default;
 
-void DoubleAttribute::writeOut(OutputStream* out) {
-    Util::writeDouble(out, value);
-}
+void DoubleAttribute::writeOut(OutputStream* out) { Util::writeDouble(out, value); }

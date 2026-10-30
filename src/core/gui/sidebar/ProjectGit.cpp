@@ -36,9 +36,9 @@ auto findGit() -> const std::optional<std::string>& {
 #ifdef _WIN32
         for (const char* variable: {"ProgramFiles", "ProgramW6432", "LOCALAPPDATA"}) {
             if (const char* base = g_getenv(variable)) {
-                const auto candidate = pathFromUtf8(base) /
-                                       (std::string(variable) == "LOCALAPPDATA" ? "Programs/Git/cmd/git.exe" :
-                                                                                  "Git/cmd/git.exe");
+                const auto candidate =
+                        pathFromUtf8(base) /
+                        (std::string(variable) == "LOCALAPPDATA" ? "Programs/Git/cmd/git.exe" : "Git/cmd/git.exe");
                 std::error_code error;
                 if (fs::is_regular_file(candidate, error)) {
                     return utf8(candidate);
@@ -226,24 +226,28 @@ void ProjectGit::run(const fs::path& dir, std::vector<std::string> args, std::we
     const auto& git = findGit();
     if (!git) {
         pending->result.error = "Git was not found";
-        g_idle_add(+[](gpointer data) -> gboolean {
-            std::unique_ptr<PendingResult> p(static_cast<PendingResult*>(data));
-            if (!p->owner.expired()) {
-                p->callback(std::move(p->result));
-            }
-            return G_SOURCE_REMOVE;
-        }, pending);
+        g_idle_add(
+                +[](gpointer data) -> gboolean {
+                    std::unique_ptr<PendingResult> p(static_cast<PendingResult*>(data));
+                    if (!p->owner.expired()) {
+                        p->callback(std::move(p->result));
+                    }
+                    return G_SOURCE_REMOVE;
+                },
+                pending);
         return;
     }
     std::thread([pending, git = *git, dir, args = std::move(args)] {
         pending->result = runSync(git, dir, args);
-        g_idle_add(+[](gpointer data) -> gboolean {
-            std::unique_ptr<PendingResult> p(static_cast<PendingResult*>(data));
-            if (!p->owner.expired()) {
-                p->callback(std::move(p->result));
-            }
-            return G_SOURCE_REMOVE;
-        }, pending);
+        g_idle_add(
+                +[](gpointer data) -> gboolean {
+                    std::unique_ptr<PendingResult> p(static_cast<PendingResult*>(data));
+                    if (!p->owner.expired()) {
+                        p->callback(std::move(p->result));
+                    }
+                    return G_SOURCE_REMOVE;
+                },
+                pending);
     }).detach();
 }
 

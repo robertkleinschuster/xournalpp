@@ -284,9 +284,7 @@ void TouchInputHandler::zoomEnd() {
     zoomControl->endZoomSequence();
 }
 
-void TouchInputHandler::onBlock() {
-    resetTouchSequence();
-}
+void TouchInputHandler::onBlock() { resetTouchSequence(); }
 
 void TouchInputHandler::onUnblock() { resetTouchSequence(); }
 

@@ -30,14 +30,16 @@ DocumentAutoSaver::DocumentAutoSaver(Control* control): control(control) {
                                         // Decide once focus has settled: switching to one of our own dialogs (like
                                         // "Save changes?" when quitting) must not trigger a save
                                         if (!self->focusCheck) {
-                                            self->focusCheck = g_idle_add(+[](gpointer data) -> gboolean {
-                                                auto* self = static_cast<DocumentAutoSaver*>(data);
-                                                self->focusCheck = 0;
-                                                if (!applicationHasFocus()) {
-                                                    self->saveInBackground();
-                                                }
-                                                return G_SOURCE_REMOVE;
-                                            }, self);
+                                            self->focusCheck = g_idle_add(
+                                                    +[](gpointer data) -> gboolean {
+                                                        auto* self = static_cast<DocumentAutoSaver*>(data);
+                                                        self->focusCheck = 0;
+                                                        if (!applicationHasFocus()) {
+                                                            self->saveInBackground();
+                                                        }
+                                                        return G_SOURCE_REMOVE;
+                                                    },
+                                                    self);
                                         }
                                     }),
                                     this);
