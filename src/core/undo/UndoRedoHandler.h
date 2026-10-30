@@ -49,6 +49,7 @@ public:
 
     void fireUpdateUndoRedoButtons(const std::vector<PageRef>& pages);
     void addUndoRedoListener(UndoRedoListener* listener);
+    void removeUndoRedoListener(UndoRedoListener* listener);
 
     bool isChanged();
     bool isChangedAutosave();
