@@ -13,6 +13,7 @@
 
 #include "control/Control.h"
 #include "control/settings/PageTemplateSettings.h"
+#include "control/AnnotationFiles.h"
 #include "control/DocumentAutoSaver.h"
 #include "control/settings/Settings.h"
 #include "control/xojfile/SaveHandler.h"
@@ -31,7 +32,8 @@ namespace fs = std::filesystem;
 namespace {
 
 enum Column : gint { COL_ICON, COL_NAME, COL_MARKUP, COL_PATH, COL_KIND, COL_SENSITIVE, COL_FOREGROUND, COL_COUNT };
-enum Kind : gint { KIND_DIRECTORY, KIND_DOCUMENT, KIND_FILE, KIND_PLACEHOLDER };
+/// KIND_NESTED: source or exported PDF shown below its .xopp document
+enum Kind : gint { KIND_DIRECTORY, KIND_DOCUMENT, KIND_FILE, KIND_PLACEHOLDER, KIND_NESTED };
 
 constexpr size_t MAX_SEARCH_RESULTS = 1000;
 constexpr int MAX_SEARCH_DEPTH = 16;
@@ -224,6 +226,7 @@ public:
         parent = GTK_WINDOW(control->getGtkWindow());
         // The explorer lives as long as the main window, so it owns the IDE-like saving of documents
         autoSaver = std::make_unique<DocumentAutoSaver>(control);
+        annotationExporter = std::make_unique<AnnotationExporter>(control);
         root = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
         g_object_ref_sink(root);
 
@@ -490,18 +493,55 @@ private:
             return;
         }
         const auto dir = pathFromUtf8(pathAt(iter).c_str());
+        std::vector<fs::path> directories;
+        std::vector<fs::path> files;
         std::error_code error;
         for (fs::directory_iterator it(dir, error), end; !error && it != end; it.increment(error)) {
             if (isIgnored(it->path())) {
                 continue;
             }
             std::error_code itemError;
-            const bool directory = it->is_directory(itemError);
-            if (!directory && !it->is_regular_file(itemError)) {
+            if (it->is_directory(itemError)) {
+                directories.push_back(it->path());
+            } else if (it->is_regular_file(itemError)) {
+                files.push_back(it->path());
+            }
+        }
+        for (const auto& path: directories) {
+            const auto name = utf8(path.filename());
+            appendNode(iter, path, name, KIND_DIRECTORY, escape(name), true);
+        }
+        // Nest the source PDF and the exported PDF below their .xopp document, like file nesting in IDEs
+        std::map<std::string, std::vector<std::pair<fs::path, const char*>>> nested;
+        std::set<std::string> nestedFiles;
+        for (const auto& path: files) {
+            if (path.extension() != ".xopp") {
                 continue;
             }
-            const auto name = utf8(it->path().filename());
-            appendNode(iter, it->path(), name, kindFor(it->path(), directory), escape(name), true);
+            auto source = path;
+            source.replace_extension(".pdf");
+            const auto exported = AnnotationFiles::exportPathForFile(path, *control->getSettings());
+            for (const auto& [candidate, role]: {std::pair{source, _("source")}, std::pair{exported, _("export")}}) {
+                std::error_code fileError;
+                if (!candidate.empty() && fs::is_regular_file(candidate, fileError) &&
+                    nestedFiles.insert(utf8(candidate)).second) {
+                    nested[utf8(path)].emplace_back(candidate, role);
+                }
+            }
+        }
+        for (const auto& path: files) {
+            if (nestedFiles.count(utf8(path))) {
+                continue;
+            }
+            const auto name = utf8(path.filename());
+            auto fileIter = appendNode(iter, path, name, kindFor(path, false), escape(name), true);
+            if (auto children = nested.find(utf8(path)); children != nested.end()) {
+                for (const auto& [child, role]: children->second) {
+                    const auto childName = utf8(child.filename());
+                    appendNode(&fileIter, child, childName, KIND_NESTED,
+                               escape(childName) + "  <span alpha=\"60%\">" + escape(role) + "</span>", false);
+                }
+            }
         }
         gtk_tree_store_remove(store, &placeholder);
         watch(dir);
@@ -857,6 +897,15 @@ private:
     }
 
     void syncCommit() {
+        // Upload an up-to-date annotated PDF along with the document
+        annotationExporter->exportIfOutdated([this, alive = std::weak_ptr<void>(lifetime)] {
+            if (!alive.expired()) {
+                syncCommitExported();
+            }
+        });
+    }
+
+    void syncCommitExported() {
         // Refresh first, so that changes saved just now are included
         refreshGit([this] {
             if (!gitRepo) {
@@ -1096,7 +1145,9 @@ private:
     }
 
     static void onRowExpanded(GtkTreeView*, GtkTreeIter* iter, GtkTreePath*, ProjectExplorerSidebar* self) {
-        gtk_tree_store_set(self->store, iter, COL_ICON, self->folderOpenIcon, -1);
+        if (self->kindAt(iter) == KIND_DIRECTORY) {
+            gtk_tree_store_set(self->store, iter, COL_ICON, self->folderOpenIcon, -1);
+        }
         if (self->searching) {
             return;
         }
@@ -1108,7 +1159,8 @@ private:
         GtkTreeIter child;
         for (bool valid = gtk_tree_model_iter_children(self->model(), &child, iter); valid;
              valid = gtk_tree_model_iter_next(self->model(), &child)) {
-            if (self->kindAt(&child) == KIND_DIRECTORY && self->expandedPaths.count(self->pathAt(&child))) {
+            // Folders and documents with nested PDFs
+            if (gtk_tree_model_iter_has_child(self->model(), &child) && self->expandedPaths.count(self->pathAt(&child))) {
                 toExpand.push_back(gtk_tree_model_get_path(self->model(), &child));
             }
         }
@@ -1119,7 +1171,9 @@ private:
     }
 
     static void onRowCollapsed(GtkTreeView*, GtkTreeIter* iter, GtkTreePath*, ProjectExplorerSidebar* self) {
-        gtk_tree_store_set(self->store, iter, COL_ICON, self->folderIcon, -1);
+        if (self->kindAt(iter) == KIND_DIRECTORY) {
+            gtk_tree_store_set(self->store, iter, COL_ICON, self->folderIcon, -1);
+        }
         if (!self->searching && !self->updatingTree && self->expandedPaths.erase(self->pathAt(iter))) {
             self->scheduleSave();
         }
@@ -1142,9 +1196,21 @@ private:
             case KIND_DOCUMENT:
                 self->openDocument(pathFromUtf8(self->pathAt(&iter).c_str()));
                 break;
+            case KIND_NESTED:
+                // The PDFs belong to the document: edit them through it
+                self->openDocument(self->owningDocument(&iter));
+                break;
             default:
                 break;
         }
+    }
+
+    auto owningDocument(GtkTreeIter* nested) const -> fs::path {
+        GtkTreeIter parentIter;
+        if (!gtk_tree_model_iter_parent(model(), &parentIter, nested)) {
+            return {};
+        }
+        return pathFromUtf8(pathAt(&parentIter).c_str());
     }
 
     static auto onButtonPress(GtkWidget*, GdkEventButton* event, ProjectExplorerSidebar* self) -> gboolean {
@@ -1173,11 +1239,13 @@ private:
         GtkTreePath* path = nullptr;
         gint kind = KIND_PLACEHOLDER;
         std::string target;
+        fs::path document;  // what "Open" opens: the entry itself, or the document a nested PDF belongs to
         if (gtk_tree_view_get_path_at_pos(tree, x, y, &path, nullptr, nullptr, nullptr)) {
             GtkTreeIter iter;
             if (gtk_tree_model_get_iter(model(), &iter, path)) {
                 kind = kindAt(&iter);
                 target = pathAt(&iter);
+                document = kind == KIND_NESTED ? owningDocument(&iter) : pathFromUtf8(target.c_str());
             }
             if (kind != KIND_PLACEHOLDER) {
                 gtk_tree_selection_select_path(gtk_tree_view_get_selection(tree), path);
@@ -1186,8 +1254,12 @@ private:
         }
 
         auto* menu = gtk_menu_new();
-        if (kind == KIND_DOCUMENT) {
-            addMenuItem(menu, _("Open"), [this, target] { openDocument(pathFromUtf8(target.c_str())); });
+        if (kind == KIND_DOCUMENT || kind == KIND_NESTED) {
+            addMenuItem(menu, _("Open"), [this, document] { openDocument(document); });
+            if (Util::hasPdfFileExt(pathFromUtf8(target.c_str()))) {
+                // Read-only viewing, e.g. of the exported PDF, without creating annotations
+                addMenuItem(menu, _("Open in PDF Viewer"), [this, target] { openWithDefaultApp(target); });
+            }
             addMenuSeparator(menu);
         }
         if (!projectRoot.empty()) {
@@ -1243,6 +1315,16 @@ private:
         GtkTreeIter rootIter;
         if (gtk_tree_model_get_iter_first(model(), &rootIter)) {
             expandIter(&rootIter);
+        }
+    }
+
+    void openWithDefaultApp(const std::string& file) {
+        if (auto uri = Util::toUri(pathFromUtf8(file.c_str()))) {
+            GError* error = nullptr;
+            if (!g_app_info_launch_default_for_uri(uri->c_str(), nullptr, &error)) {
+                showError(_("The file could not be opened."), error->message);
+                g_error_free(error);
+            }
         }
     }
 
@@ -1705,6 +1787,7 @@ private:
     }
 
     std::unique_ptr<DocumentAutoSaver> autoSaver;
+    std::unique_ptr<AnnotationExporter> annotationExporter;
     GtkWidget* root{};
     GtkWindow* parent{};
     GtkSearchEntry* searchEntry{};

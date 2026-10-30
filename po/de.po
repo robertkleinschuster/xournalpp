@@ -5015,3 +5015,19 @@ msgstr "Erstellen"
 #: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
 msgid "Rename"
 msgstr "Umbenennen"
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "source"
+msgstr "Quelle"
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "export"
+msgstr "Export"
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "Open in PDF Viewer"
+msgstr "Im PDF-Viewer öffnen"
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "The file could not be opened."
+msgstr "Die Datei konnte nicht geöffnet werden."
