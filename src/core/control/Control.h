@@ -146,6 +146,12 @@ public:
     void close(std::function<void(bool)> callback, bool allowDestroy = false, bool allowCancel = true,
                bool forceClose = false);
 
+    /**
+     * Fork: called by close() before a document that is saved is closed (opening another file, quitting).
+     * The hook must call proceed() when it is done, e.g. after exporting the annotated PDF.
+     */
+    void setBeforeCloseHook(std::function<void(std::function<void()> proceed)> hook);
+
     // Menu edit
     void showSettings();
 
@@ -494,6 +500,8 @@ private:
 
     Sidebar* sidebar = nullptr;
     SearchBar* searchBar = nullptr;
+
+    std::function<void(std::function<void()>)> beforeCloseHook;
 
     ToolHandler* toolHandler;
 

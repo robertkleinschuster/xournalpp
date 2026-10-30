@@ -11,6 +11,7 @@
 #include <string>      // for string
 #include <utility>     // for move
 
+#include "control/AnnotationFiles.h"                             // for AnnotationFiles
 #include "control/AudioController.h"                             // for Audi...
 #include "control/ClipboardHandler.h"                            // for Clip...
 #include "control/CompassController.h"                           // for Comp...
@@ -1794,6 +1795,13 @@ void Control::openFileWithoutSavingTheCurrentDocument(fs::path filepath, bool at
     }
 
     if (Util::hasPdfFileExt(filepath)) {
+        // Fork: an exported, annotated PDF is edited through the document it was exported from
+        if (!attachToDocument) {
+            if (auto xopp = AnnotationFiles::documentForExport(filepath, *this->settings)) {
+                this->openXoppFile(std::move(*xopp), scrollToPage, std::move(callback));
+                return;
+            }
+        }
         if (!attachToDocument && this->settings->isAutoloadPdfXoj()) {
             const std::vector<std::string> exts = {".xopp", ".xoj", ".pdf.xopp", ".pdf.xoj"};
             fs::path root = filepath;
@@ -1807,7 +1815,12 @@ void Control::openFileWithoutSavingTheCurrentDocument(fs::path filepath, bool at
                 }
             }
         }
-        callback(this->openPdfFile(std::move(filepath), attachToDocument, scrollToPage));
+        const bool opened = this->openPdfFile(std::move(filepath), attachToDocument, scrollToPage);
+        if (opened && !attachToDocument) {
+            // Fork: keep the annotations in a .xopp file next to the PDF right away
+            AnnotationFiles::createDocumentFileForPdf(this);
+        }
+        callback(opened);
         return;
     }
 
@@ -2182,6 +2195,10 @@ void Control::resetSavedStatus() {
     this->updateWindowTitle();
 }
 
+void Control::setBeforeCloseHook(std::function<void(std::function<void()>)> hook) {
+    beforeCloseHook = std::move(hook);
+}
+
 void Control::quit(bool allowCancel) {
     g_message("Quitting");
     auto afterClosed = [this, allowCancel](bool closed) {
@@ -2246,17 +2263,30 @@ void Control::close(std::function<void(bool)> callback, const bool allowDestroy,
                                        cb(saved);
                                    };
                                    if (response == SAVE) {
-                                       ctrl->saveImpl(saveAs, std::move(execAfter));
+                                       ctrl->saveImpl(saveAs, [ctrl, execAfter = std::move(execAfter)](bool saved) {
+                                           if (saved && ctrl->beforeCloseHook) {
+                                               ctrl->beforeCloseHook([execAfter] { execAfter(true); });
+                                           } else {
+                                               execAfter(saved);
+                                           }
+                                       });
                                        return;
                                    }
                                    bool safeToClose = response == DISCARD;
                                    execAfter(safeToClose);
                                });
     } else {
-        if (allowDestroy) {
-            this->closeDocument();
+        auto proceed = [ctrl = this, allowDestroy, callback = std::move(callback)] {
+            if (allowDestroy) {
+                ctrl->closeDocument();
+            }
+            callback(true);
+        };
+        if (beforeCloseHook && !forceClose) {
+            beforeCloseHook(std::move(proceed));
+        } else {
+            proceed();
         }
-        callback(true);
     }
 }
 
