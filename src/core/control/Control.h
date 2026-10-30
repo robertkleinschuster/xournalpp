@@ -152,6 +152,10 @@ public:
      */
     void setBeforeCloseHook(std::function<void(std::function<void()> proceed)> hook);
 
+    /// Fork: called after the user saved explicitly (Save / Save As), not after automatic saves
+    void setUserSavedHook(std::function<void()> hook);
+    void notifyUserSaved(bool saved);
+
     // Menu edit
     void showSettings();
 
@@ -502,6 +506,7 @@ private:
     SearchBar* searchBar = nullptr;
 
     std::function<void(std::function<void()>)> beforeCloseHook;
+    std::function<void()> userSavedHook;
 
     ToolHandler* toolHandler;
 

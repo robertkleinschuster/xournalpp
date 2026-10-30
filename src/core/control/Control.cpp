@@ -2199,6 +2199,14 @@ void Control::setBeforeCloseHook(std::function<void(std::function<void()>)> hook
     beforeCloseHook = std::move(hook);
 }
 
+void Control::setUserSavedHook(std::function<void()> hook) { userSavedHook = std::move(hook); }
+
+void Control::notifyUserSaved(bool saved) {
+    if (saved && userSavedHook) {
+        userSavedHook();
+    }
+}
+
 void Control::quit(bool allowCancel) {
     g_message("Quitting");
     auto afterClosed = [this, allowCancel](bool closed) {

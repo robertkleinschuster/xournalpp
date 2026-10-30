@@ -116,12 +116,17 @@ struct ActionProperties<Action::PROJECT_EXPLORER> {
 
 template <>
 struct ActionProperties<Action::SAVE> {
-    static void callback(GSimpleAction*, GVariant*, Control* ctrl) { ctrl->save(); }
+    // Fork: an explicit save also exports the annotated PDF
+    static void callback(GSimpleAction*, GVariant*, Control* ctrl) {
+        ctrl->save([ctrl](bool saved) { ctrl->notifyUserSaved(saved); });
+    }
 };
 
 template <>
 struct ActionProperties<Action::SAVE_AS> {
-    static void callback(GSimpleAction*, GVariant*, Control* ctrl) { ctrl->saveAs(); }
+    static void callback(GSimpleAction*, GVariant*, Control* ctrl) {
+        ctrl->saveAs([ctrl](bool saved) { ctrl->notifyUserSaved(saved); });
+    }
 };
 
 template <>
