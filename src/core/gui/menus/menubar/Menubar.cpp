@@ -78,7 +78,7 @@ void Menubar::populate(const GladeSearchpath* gladeSearchPath, MainWindow* win) 
 
     forEachSubmenu([&](auto& subm) { subm.addToMenubar(*this); });
 
-    if (!ctrl->getAudioController()) {
+    if (!ctrl->isAudioEnabled()) {
         removeItemsWithClass(G_MENU(menu), "audio");
     }
 

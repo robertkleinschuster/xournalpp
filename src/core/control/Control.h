@@ -329,6 +329,8 @@ public:
     Sidebar* getSidebar() const;
     SearchBar* getSearchBar() const;
     AudioController* getAudioController() const;
+    /// Fork: whether audio is used; the AudioController itself is only created after the window is drawn
+    bool isAudioEnabled() const;
     PageTypeHandler* getPageTypes() const;
     PageBackgroundChangeController* getPageBackgroundChangeController() const;
     LayerController* getLayerController() const;
@@ -587,4 +589,6 @@ private:
 
     // Keep after the ActionDatabase so it is destroyed first: ~AudioController refers to the ActionDatabase
     std::unique_ptr<AudioController> audioController;
+    bool audioEnabled = false;
+    guint audioInitSource = 0;
 };

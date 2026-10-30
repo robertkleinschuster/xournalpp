@@ -179,6 +179,9 @@ Control::Control(GApplication* gtkApp, GladeSearchpath* gladeSearchPath): gtkApp
 
 Control::~Control() {
     g_source_remove(this->changeTimout);
+    if (this->audioInitSource) {
+        g_source_remove(this->audioInitSource);
+    }
     this->enableAutosave(false);
 
     deleteLastAutosaveFile();
@@ -292,14 +295,25 @@ void Control::initWindow(MainWindow* win, bool disableAudio) {
 
 #ifdef ENABLE_AUDIO
     if (!(disableAudio || this->settings->isAudioDisabled())) {
-        try {
-            this->audioController = std::make_unique<AudioController>(this->settings, this);
-        } catch (const std::exception& e) {
-            XojMsgBox::showErrorToUser(
-                    GTK_WINDOW(win->getWindow()),
-                    FC(_F("Initialization of audio devices failed. You can disable audio support in Settings->Audio") %
-                       e.what()));
-        }
+        // Fork: enumerating the audio devices takes ~100 ms, so do it once the window is drawn
+        this->audioEnabled = true;
+        this->audioInitSource = g_idle_add_full(
+                G_PRIORITY_LOW,
+                +[](gpointer data) -> gboolean {
+                    auto* self = static_cast<Control*>(data);
+                    self->audioInitSource = 0;
+                    try {
+                        self->audioController = std::make_unique<AudioController>(self->settings, self);
+                    } catch (const std::exception& e) {
+                        XojMsgBox::showErrorToUser(
+                                self->getGtkWindow(),
+                                FC(_F("Initialization of audio devices failed. You can disable audio support in "
+                                      "Settings->Audio") %
+                                   e.what()));
+                    }
+                    return G_SOURCE_REMOVE;
+                },
+                this, nullptr);
     }
 #endif
 
@@ -2744,6 +2758,8 @@ auto Control::getSidebar() const -> Sidebar* { return this->sidebar; }
 auto Control::getSearchBar() const -> SearchBar* { return this->searchBar; }
 
 auto Control::getAudioController() const -> AudioController* { return this->audioController.get(); }
+
+auto Control::isAudioEnabled() const -> bool { return this->audioEnabled; }
 
 auto Control::getPageTypes() const -> PageTypeHandler* { return this->pageTypes; }
 

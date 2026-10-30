@@ -110,7 +110,7 @@ void ToolMenuHandler::load(const ToolbarData* d, GtkWidget* toolbar, const char*
             for (const ToolbarItem& dataItem: e.getItems()) {
                 std::string name = dataItem.getName();
 
-                if (!this->control->getAudioController() &&
+                if (!this->control->isAudioEnabled() &&
                     (name == "AUDIO_RECORDING" || name == "AUDIO_SEEK_BACKWARDS" || name == "AUDIO_PAUSE_PLAYBACK" ||
                      name == "AUDIO_STOP_PLAYBACK" || name == "AUDIO_SEEK_FORWARDS" || name == "PLAY_OBJECT")) {
                     continue;
@@ -486,7 +486,7 @@ void ToolMenuHandler::initToolItems() {
      */
     emplaceItem<ColorSelectorToolItem>(*control->getActionDatabase());
 
-    bool hideAudio = !this->control->getAudioController();
+    bool hideAudio = !this->control->isAudioEnabled();
     emplaceItem<ToolSelectCombocontrol>("SELECT", this->iconNameHelper, *this->control->getActionDatabase(), hideAudio);
     emplaceItem<DrawingTypeComboToolButton>("DRAW", this->iconNameHelper, *this->control->getActionDatabase());
     emplaceItem<ToolPdfCombocontrol>("PDF_TOOL", this->iconNameHelper, *this->control->getActionDatabase());
