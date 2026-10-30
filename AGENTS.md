@@ -13,7 +13,7 @@
 - Keep the fork identity and configuration directory separate from upstream so both installations can run side by side.
 - Preserve the touch-sequence reset on window deactivation. It prevents stale touch state from breaking touchscreen scroll and pinch zoom.
 - Use graph paper as the default for new documents.
-- Keep UI changes focused: a project-folder browser in the existing sidebar and persistent document tabs. The startup recent-documents overlay has been removed. Do not add Git actions or replace the normal document view.
+- Keep UI changes focused: a project-folder browser in the existing sidebar and persistent document tabs. The startup recent-documents overlay has been removed. Git support stays minimal: status colors in the explorer tree (green new, blue modified) and a single sync button (commit, pull --rebase, push) shown only for git repositories. Do not add further Git UI or replace the normal document view.
 
 ## Windows build
 

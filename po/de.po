@@ -4911,3 +4911,47 @@ msgstr "Aktualisieren"
 #: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
 msgid "The selected folder could not be opened."
 msgstr "Der ausgewählte Ordner konnte nicht geöffnet werden."
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "Syncing…"
+msgstr "Synchronisiere…"
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "Sync: everything is up to date"
+msgstr "Sync: alles ist aktuell"
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "Sync: commit, pull and push"
+msgstr "Sync: committen, holen und hochladen"
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "{1} incoming commits"
+msgstr "{1} eingehende Commits"
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "{1} changed files"
+msgstr "{1} geänderte Dateien"
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "{1} unpushed commits"
+msgstr "{1} nicht hochgeladene Commits"
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "The document could not be saved."
+msgstr "Das Dokument konnte nicht gespeichert werden."
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "The project folder is no longer a git repository."
+msgstr "Der Projektordner ist kein Git-Repository mehr."
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "Your changes could not be committed."
+msgstr "Ihre Änderungen konnten nicht committet werden."
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "Remote changes could not be merged with yours. Your changes are committed locally, but not uploaded. Please resolve the conflict with a git tool."
+msgstr "Die entfernten Änderungen konnten nicht mit Ihren zusammengeführt werden. Ihre Änderungen sind lokal committet, aber nicht hochgeladen. Bitte lösen Sie den Konflikt mit einem Git-Werkzeug."
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "Your changes could not be uploaded."
+msgstr "Ihre Änderungen konnten nicht hochgeladen werden."
