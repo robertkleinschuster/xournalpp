@@ -380,6 +380,36 @@ install(DIRECTORY ui
         DESTINATION "share/xournalpp"
         COMPONENT xournalpp
         )
+
+# Fork: GTK renders every scalable toolbar icon with librsvg at startup, which costs ~150 ms on Windows. Pre-render
+# them for the 24x24 directory the icon themes already declare; GTK prefers an exact size match, other sizes still
+# use the SVGs. Icons with their own 24x24 variant are kept.
+find_program(RSVG_CONVERT rsvg-convert)
+if (RSVG_CONVERT)
+    file(GLOB ICON_SVGS RELATIVE "${PROJECT_SOURCE_DIR}/ui" "${PROJECT_SOURCE_DIR}/ui/icons*/hicolor/scalable/actions/*.svg")
+    set(ICON_PNGS "")
+    foreach (svg ${ICON_SVGS})
+        string(REPLACE "/scalable/" "/24x24/" png "${svg}")
+        string(REGEX REPLACE "\\.svg$" ".png" png "${png}")
+        string(REGEX REPLACE "\\.png$" ".svg" own24 "${png}")
+        if (EXISTS "${PROJECT_SOURCE_DIR}/ui/${own24}")
+            continue()
+        endif ()
+        get_filename_component(pngDir "${PROJECT_BINARY_DIR}/ui-icons/${png}" DIRECTORY)
+        add_custom_command(OUTPUT "${PROJECT_BINARY_DIR}/ui-icons/${png}"
+                COMMAND ${CMAKE_COMMAND} -E make_directory "${pngDir}"
+                COMMAND ${RSVG_CONVERT} -w 24 -h 24 --keep-aspect-ratio -o "${PROJECT_BINARY_DIR}/ui-icons/${png}"
+                        "${PROJECT_SOURCE_DIR}/ui/${svg}"
+                DEPENDS "${PROJECT_SOURCE_DIR}/ui/${svg}"
+                VERBATIM)
+        list(APPEND ICON_PNGS "${PROJECT_BINARY_DIR}/ui-icons/${png}")
+    endforeach ()
+    add_custom_target(icon-pngs ALL DEPENDS ${ICON_PNGS})
+    install(DIRECTORY "${PROJECT_BINARY_DIR}/ui-icons/"
+            DESTINATION "share/xournalpp/ui"
+            COMPONENT xournalpp
+            )
+endif ()
 install(DIRECTORY plugins
         DESTINATION "share/xournalpp"
         COMPONENT xournalpp
