@@ -28,8 +28,6 @@ class RecentDocumentsSubmenu;
 class ToolbarSelectionSubmenu;
 class PageTypeSubmenu;
 class PluginsSubmenu;
-class Control;
-class MainWindow;
 
 class Menubar {
 public:
@@ -59,10 +57,6 @@ public:
 
 private:
     xoj::util::GObjectSPtr<GtkBuilder> builder;
-    xoj::util::GObjectSPtr<GSimpleAction> projectExplorerAction;
-    xoj::util::GObjectSPtr<GSimpleAction> openProjectFolderAction;
-    Control* control{};
-    GtkApplicationWindow* window{};
     GMenuModel* menu;  // owned by `builder`
 
     // Dynamically created submenus -- also add to forEachSubmenu() below

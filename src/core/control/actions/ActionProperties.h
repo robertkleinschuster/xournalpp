@@ -22,6 +22,7 @@
 #include "gui/SearchBar.h"
 #include "gui/XournalView.h"
 #include "gui/dialog/RenameLayerDialog.h"
+#include "gui/sidebar/Sidebar.h"
 #include "gui/toolbarMenubar/ToolMenuHandler.h"
 #include "model/Document.h"
 #include "model/Font.h"
@@ -94,6 +95,22 @@ struct ActionProperties<Action::ANNOTATE_PDF> {
     static void callback(GSimpleAction*, GVariant*, Control* ctrl) {
         ctrl->clearSelectionEndText();
         ctrl->askToAnnotatePdf();
+    }
+};
+
+template <>
+struct ActionProperties<Action::OPEN_PROJECT_FOLDER> {
+    static void callback(GSimpleAction*, GVariant*, Control* ctrl) {
+        ctrl->setShowSidebar(true);
+        ctrl->getSidebar()->openProjectFolder();
+    }
+};
+
+template <>
+struct ActionProperties<Action::PROJECT_EXPLORER> {
+    static void callback(GSimpleAction*, GVariant*, Control* ctrl) {
+        ctrl->setShowSidebar(true);
+        ctrl->getSidebar()->selectProjectExplorer();
     }
 };
 

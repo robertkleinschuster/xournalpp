@@ -35,6 +35,8 @@ enum class Action : size_t {
     NEW_FILE,
     OPEN,
     ANNOTATE_PDF,
+    OPEN_PROJECT_FOLDER,
+    PROJECT_EXPLORER,
     SAVE,
     SAVE_AS,
     EXPORT_AS_PDF,

@@ -8,6 +8,8 @@ constexpr const char* ACTION_NAMES[] = {  // Action to string conversion map
         "new-file",
         "open",
         "annotate-pdf",
+        "open-project-folder",
+        "project-explorer",
         "save",
         "save-as",
         "export-as-pdf",
