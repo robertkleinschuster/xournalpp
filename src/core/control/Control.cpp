@@ -304,8 +304,9 @@ void Control::initWindow(MainWindow* win, bool disableAudio) {
                     self->audioInitSource = 0;
                     try {
                         self->audioController = std::make_unique<AudioController>(self->settings, self);
+                        self->actionDB->enableAction(Action::AUDIO_RECORD, true);
                     } catch (const std::exception& e) {
-                        // Hide the audio tools again; the menu entries stay, but report that audio is disabled
+                        // Hide the audio tools again; the menu entries stay disabled
                         self->audioEnabled = false;
                         self->win->reloadToolbars();
                         XojMsgBox::showErrorToUser(

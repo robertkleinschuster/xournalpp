@@ -863,6 +863,8 @@ template <>
 struct ActionProperties<Action::AUDIO_RECORD> {
     using state_type = bool;
     static constexpr state_type initialState(Control*) { return false; }
+    /// Fork: the AudioController is created after the window is drawn, see Control::initWindow
+    static bool initiallyEnabled(Control* ctrl) { return ctrl->getAudioController() != nullptr; }
     static void callback(GSimpleAction* ga, GVariant* p, Control* ctrl) {
 #ifdef ENABLE_AUDIO
         if (!ctrl->audioController) {
