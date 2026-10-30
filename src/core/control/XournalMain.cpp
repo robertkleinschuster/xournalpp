@@ -511,7 +511,8 @@ void on_startup(GApplication* application, XMPtr app_data) {
                 Util::execInUiThread([ctrl]() { ctrl->getWindow()->getXournal()->layoutPages(); });
                 gtk_application_add_window(app, ctrl->getGtkWindow());
                 if (!app_data->openFileRequested && ctrl->getDocument()->getFilepath().empty()) {
-                    ctrl->getWindow()->setSidebarVisible(true);
+                    // Keeps the "Show sidebar" action and setting in sync, unlike MainWindow::setSidebarVisible
+                    ctrl->setShowSidebar(true);
                     ctrl->getSidebar()->selectProjectExplorer();
                 }
             });
