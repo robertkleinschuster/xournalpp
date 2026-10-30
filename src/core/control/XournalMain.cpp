@@ -31,6 +31,7 @@
 #include "control/xojfile/SaveHandler.h"     // for SaveHandler
 #include "gui/GladeSearchpath.h"             // for GladeSearchpath
 #include "gui/MainWindow.h"                  // for MainWindow
+#include "gui/TouchButtonFix.h"              // for TouchButtonFix
 #include "gui/XournalView.h"                 // for XournalView
 #include "gui/sidebar/Sidebar.h"             // for Sidebar
 #include "model/Document.h"                  // for Document
@@ -444,6 +445,9 @@ void on_startup(GApplication* application, XMPtr app_data) {
         g_message("Using default latex template in %s", globalLatexTemplatePath.string().c_str());
         app_data->control->getSettings()->save();
     }
+
+    // Fork: buttons do not react to finger taps on Windows otherwise
+    TouchButtonFix::install();
 
     app_data->win = std::make_unique<MainWindow>(app_data->gladePath.get(), app_data->control.get(),
                                                  GTK_APPLICATION(application));
