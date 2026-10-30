@@ -24,5 +24,5 @@
 
 ## Repository cautions
 
-- The sandbox cannot access tracked files in po/. Do not stage or commit translation-file deletions reported by git status.
+- Fork-specific UI strings have German translations appended to po/de.po (the file is CRLF in the working copy; validate with `msgfmt --check`). Never stage translation-file deletions reported by git status.
 - Device-level touchscreen testing has not been performed.
