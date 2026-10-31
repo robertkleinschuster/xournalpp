@@ -2328,7 +2328,7 @@ void Control::close(std::function<void(bool)> callback, const bool allowDestroy,
                     bool safeToClose = response == DISCARD;
                     execAfter(safeToClose);
                 });
-    } else if (beforeCloseHook && !forceClose) {
+    } else if (beforeCloseHook && !forceClose && !this->readOnly) {  // a read-only PDF has nothing to export
         beforeCloseHook([ctrl = this, allowDestroy, allowCancel, callback = std::move(callback)]() mutable {
             ctrl->finishCloseAfterHook(std::move(callback), allowDestroy, allowCancel);
         });
