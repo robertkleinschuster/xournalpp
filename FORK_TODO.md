@@ -117,11 +117,8 @@ other todo.txt apps (e.g. on the phone).
 
 ## Ideas put on hold
 
-Discussed during development and deliberately not done yet.
+Discussed during development and deliberately not done yet. Dropped: two-finger tap to undo (too error-prone) and
+zoom snapping at the end of a pinch.
 
-- **Momentum scrolling** in Xournal's own touch handling (GTK's kinetic scrolling is disabled because of side effects).
-- **Two-finger tap to undo**, **zoom snapping** to 100 % / page width at the end of a pinch.
-- **Explorer refresh after saving**: Xournal briefly creates and deletes `<name>.xopp~` while saving, which makes
-  the project explorer rebuild its tree; rebuilding only when the visible entries changed would avoid that.
 - **Isolated touch testing**: injected touch only reaches the visible desktop; Windows Sandbox or a virtual display
   could allow automated touch tests without interrupting the user.
