@@ -36,6 +36,9 @@ public:
     /// save)
     void saveNow(std::function<void(bool saved)> done);
 
+    /// Fork: no saves in the background while paused, e.g. while a git sync may rewrite the document file
+    void setPaused(bool paused) { this->paused = paused; }
+
 private:
     /// Whether the document has unsaved changes and a file it can be saved to without asking
     bool hasChangesToSave() const;
@@ -51,6 +54,7 @@ private:
     guint idleCheck = 0;
     gulong focusHandler = 0;
     bool saving = false;
+    bool paused = false;
     /// Callbacks of saveNow() waiting for the running save
     std::vector<std::function<void(bool)>> waiting;
     /// Expires with this object, so a save finishing later does not touch it

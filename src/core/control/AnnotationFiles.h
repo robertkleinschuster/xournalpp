@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <memory>
@@ -36,6 +37,14 @@ bool isRecoveryCopy(const std::filesystem::path& path);
  * break the association of existing documents; otherwise the setting is used.
  */
 std::filesystem::path exportPath(const Document& doc, const Settings& settings);
+
+/// The exact modification time (in platform units) and size of a file; std::filesystem has only seconds with MinGW
+struct FileStamp {
+    uint64_t modified;
+    uint64_t size;
+    bool operator==(const FileStamp&) const = default;
+};
+std::optional<FileStamp> fileStamp(const std::filesystem::path& path);
 
 /// Whether pdf exists and is not older than the document file xopp
 bool isExportUpToDate(const std::filesystem::path& xopp, const std::filesystem::path& pdf);

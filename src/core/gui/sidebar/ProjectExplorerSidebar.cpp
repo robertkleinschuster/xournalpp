@@ -1020,6 +1020,7 @@ private:
             return;
         }
         syncing = true;
+        autoSaver->setPaused(true);  // the pull may rewrite the open document
         updateSyncButton();
         // A running fetch holds ref locks the pull needs; continue when it is done
         if (fetchRunning) {
@@ -1076,14 +1077,16 @@ private:
                     finishSync(_("Your changes could not be committed."), added.error);
                     return;
                 }
-                ProjectGit::run(gitToplevel, {"commit", "-m", commitMessage()}, lifetime, [this](auto committed) {
-                    if (!committed.success) {
-                        finishSync(_("Your changes could not be committed."),
-                                   committed.error.empty() ? committed.output : committed.error);
-                        return;
-                    }
-                    syncPull();
-                });
+                // Only the project folder ("--" "." from it): changes staged elsewhere in a larger repository stay
+                ProjectGit::run(projectRoot, {"commit", "-m", commitMessage(), "--", "."}, lifetime,
+                                [this](auto committed) {
+                                    if (!committed.success) {
+                                        finishSync(_("Your changes could not be committed."),
+                                                   committed.error.empty() ? committed.output : committed.error);
+                                        return;
+                                    }
+                                    syncPull();
+                                });
             });
         });
     }
@@ -1103,8 +1106,7 @@ private:
             return;
         }
         const auto documentPath = control->getDocument()->getFilepath();
-        std::error_code error;
-        const auto before = documentPath.empty() ? fs::file_time_type() : fs::last_write_time(documentPath, error);
+        const auto before = documentPath.empty() ? std::nullopt : AnnotationFiles::fileStamp(documentPath);
         ProjectGit::run(gitToplevel, {"pull", "--rebase"}, lifetime, [this, documentPath, before](auto pulled) {
             if (!pulled.success) {
                 // A conflict needs a git tool; other failures (no network, no access) only need to be reported
@@ -1128,10 +1130,9 @@ private:
     }
 
     /// Reloads the open document if the pull changed it on disk (it has no unsaved changes at this point)
-    void reloadIfChanged(const fs::path& documentPath, fs::file_time_type before) {
-        std::error_code error;
+    void reloadIfChanged(const fs::path& documentPath, std::optional<AnnotationFiles::FileStamp> before) {
         if (documentPath.empty() || control->getDocument()->getFilepath() != documentPath ||
-            fs::last_write_time(documentPath, error) == before || error) {
+            AnnotationFiles::fileStamp(documentPath) == before) {
             return;
         }
         auto reload = [this, documentPath] {
@@ -1178,6 +1179,7 @@ private:
 
     void finishSync(const char* message, const std::string& details) {
         syncing = false;
+        autoSaver->setPaused(false);
         refreshGit();
         updateSyncButton();
         if (message) {

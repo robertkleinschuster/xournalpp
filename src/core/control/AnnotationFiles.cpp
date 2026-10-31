@@ -188,26 +188,17 @@ auto readXoppTag(const fs::path& xopp, std::string_view tagStart, size_t maxByte
  * folder whenever it shows it, and reading a document without PDF background decompresses up to maxBytes.
  */
 auto cachedXoppTag(const fs::path& xopp, std::string_view tagStart, size_t maxBytes) -> std::string {
-    // Modification time and size; std::filesystem only has a resolution of seconds with MinGW
-    std::pair<uint64_t, uint64_t> stamp;
-#ifdef _WIN32
-    WIN32_FILE_ATTRIBUTE_DATA data;
-    if (!GetFileAttributesExW(xopp.c_str(), GetFileExInfoStandard, &data) ||
-        (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+    const auto fileStamp = AnnotationFiles::fileStamp(xopp);
+    if (!fileStamp) {
         return {};
     }
-    stamp = {(uint64_t(data.ftLastWriteTime.dwHighDateTime) << 32) | data.ftLastWriteTime.dwLowDateTime,
-             (uint64_t(data.nFileSizeHigh) << 32) | data.nFileSizeLow};
+    const auto stamp = std::make_pair(fileStamp->modified, fileStamp->size);
+#ifdef _WIN32
     FILETIME nowTime;
     GetSystemTimeAsFileTime(&nowTime);
     const uint64_t now = (uint64_t(nowTime.dwHighDateTime) << 32) | nowTime.dwLowDateTime;
     constexpr uint64_t SECOND = 10'000'000;  // in 100 ns
 #else
-    GStatBuf info;
-    if (g_stat(xopp.c_str(), &info) != 0 || !S_ISREG(info.st_mode)) {
-        return {};
-    }
-    stamp = {uint64_t(info.st_mtim.tv_sec) * 1'000'000'000 + uint64_t(info.st_mtim.tv_nsec), uint64_t(info.st_size)};
     const uint64_t now = uint64_t(g_get_real_time()) * 1000;
     constexpr uint64_t SECOND = 1'000'000'000;
 #endif
@@ -276,6 +267,25 @@ auto sameFileName(const fs::path& a, const fs::path& b) -> bool {
 #endif
 }
 }  // namespace
+
+auto AnnotationFiles::fileStamp(const fs::path& path) -> std::optional<FileStamp> {
+#ifdef _WIN32
+    WIN32_FILE_ATTRIBUTE_DATA data;
+    if (!GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &data) ||
+        (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+        return std::nullopt;
+    }
+    return FileStamp{(uint64_t(data.ftLastWriteTime.dwHighDateTime) << 32) | data.ftLastWriteTime.dwLowDateTime,
+                     (uint64_t(data.nFileSizeHigh) << 32) | data.nFileSizeLow};
+#else
+    GStatBuf info;
+    if (g_stat(path.c_str(), &info) != 0 || !S_ISREG(info.st_mode)) {
+        return std::nullopt;
+    }
+    return FileStamp{uint64_t(info.st_mtim.tv_sec) * 1'000'000'000 + uint64_t(info.st_mtim.tv_nsec),
+                     uint64_t(info.st_size)};
+#endif
+}
 
 auto AnnotationFiles::isRecoveryCopy(const fs::path& path) -> bool {
     const auto name = utf8(path.filename());

@@ -102,7 +102,7 @@ auto DocumentAutoSaver::isUserBusy() const -> bool {
 }
 
 void DocumentAutoSaver::saveInBackground() {
-    if (!saving && hasChangesToSave() && !isUserBusy()) {
+    if (!saving && !paused && hasChangesToSave() && !isUserBusy()) {
         startSave();
     }
 }
