@@ -339,6 +339,8 @@ public:
      */
     bool isReadOnly() const;
     void setReadOnly(bool readOnly);
+    /// Fork: false after loading a file that upstream warns not to overwrite, until the user saves it
+    bool isAutoSaveAllowed() const;
     void enableEditing();
     /// Called when an edit was attempted while read-only: points the user to the info bar
     void notifyReadOnly();
@@ -610,5 +612,6 @@ private:
     std::unique_ptr<AudioController> audioController;
     bool audioEnabled = false;
     bool readOnly = false;
+    bool autoSaveAllowed = true;
     guint audioInitSource = 0;
 };

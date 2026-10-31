@@ -1578,6 +1578,7 @@ void Control::askToOpenFile() {
 void Control::replaceDocument(std::unique_ptr<Document> doc, int scrollToPage) {
     this->closeDocument();
     setReadOnly(false);
+    this->autoSaveAllowed = true;
 
     fs::path filepath = doc->getFilepath();
 
@@ -1672,8 +1673,11 @@ void Control::openXoppFile(fs::path filepath, int scrollToPage, std::function<vo
     }
 
     auto afterOpen = [ctrl = this, missingPdf = std::move(missingPdf), errorMessages = std::move(errorMessages),
-                      doc = std::move(doc), filepath, scrollToPage]() mutable {
+                      doc = std::move(doc), filepath, scrollToPage,
+                      newerVersion = fileVersion > FILE_FORMAT_VERSION]() mutable {
         ctrl->replaceDocument(std::move(doc), scrollToPage);
+        // Fork: never overwrite such a file automatically, only when the user saves it
+        ctrl->autoSaveAllowed = errorMessages.empty() && !newerVersion;
 
         if (!errorMessages.empty()) {
             std::string msg =
@@ -2225,6 +2229,7 @@ void Control::resetSavedStatus() {
     this->doc->unlock_shared();
 
     this->undoRedo->documentSaved();
+    this->autoSaveAllowed = true;  // the user saved it in the current format
     RecentManager::addRecentFileFilename(filepath);
     this->updateWindowTitle();
 }
@@ -2775,6 +2780,8 @@ auto Control::getAudioController() const -> AudioController* { return this->audi
 auto Control::isAudioEnabled() const -> bool { return this->audioEnabled; }
 
 auto Control::isReadOnly() const -> bool { return this->readOnly; }
+
+auto Control::isAutoSaveAllowed() const -> bool { return this->autoSaveAllowed; }
 
 void Control::setReadOnly(bool readOnly) {
     this->readOnly = readOnly;

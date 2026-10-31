@@ -57,7 +57,7 @@ DocumentAutoSaver::~DocumentAutoSaver() {
 
 auto DocumentAutoSaver::hasChangesToSave() const -> bool {
     auto* undoRedo = control->getUndoRedoHandler();
-    if (!undoRedo || !undoRedo->isChanged()) {
+    if (!undoRedo || !undoRedo->isChanged() || !control->isAutoSaveAllowed()) {
         return false;
     }
     Document* doc = control->getDocument();
