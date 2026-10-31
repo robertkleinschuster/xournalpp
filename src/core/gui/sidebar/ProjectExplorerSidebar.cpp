@@ -1676,6 +1676,9 @@ private:
         if (kind != KIND_PLACEHOLDER && !isRoot) {
             addMenuItem(menu, _("Rename…"),
                         [this, target, kind, document] { renameEntry(pathFromUtf8(target.c_str()), kind, document); });
+            addMenuItem(menu, _("Move to…"), [this, target, kind, document] {
+                moveEntry(pathFromUtf8(target.c_str()), kind, kind == KIND_NESTED ? document : fs::path());
+            });
             addMenuItem(menu, _("Delete"),
                         [this, target, kind] { deleteEntry(pathFromUtf8(target.c_str()), kind == KIND_DIRECTORY); });
             addMenuSeparator(menu);
@@ -2087,8 +2090,8 @@ private:
                     showError(_("A document keeps its file extension."), utf8(oldPath.extension()));
                     continue;
                 }
-                auto group = documentGroup(oldPath, newPath);
-                if (auto problem = groupConflict(group)) {
+                auto group = AnnotationFiles::groupForRename(oldPath, newPath, *control->getSettings());
+                if (auto problem = AnnotationFiles::groupConflict(group)) {
                     showError(_("An entry with this name already exists."), *problem);
                     continue;
                 }
@@ -2169,121 +2172,268 @@ private:
         }
     }
 
-    /// A document with the files that are renamed along with it
-    struct DocumentGroup {
-        std::vector<std::pair<fs::path, fs::path>> moves;  ///< the document first
-        std::optional<fs::path> newSource;
-        std::optional<std::string> newExportName;
-        fs::path newXopp;
-    };
 
     /**
-     * The renames for renaming a document: its source PDF if it is named like the document (a PDF with another name
-     * keeps it), and its exported PDF if its name starts with the document's name. The recorded export name follows
-     * the new name also if the exported PDF does not exist (yet).
+     * Renames (or moves) a document together with its files, so that everything stays consistent; the document records
+     * the new names and paths. If recording them fails, the renames are undone. Returns whether it worked.
      */
-    auto documentGroup(const fs::path& oldXopp, const fs::path& newXopp) const -> DocumentGroup {
-        DocumentGroup group;
-        group.newXopp = newXopp;
-        group.moves.emplace_back(oldXopp, newXopp);
-        const auto dir = oldXopp.parent_path();
-        const auto oldStem = utf8(oldXopp.stem());
-        const auto newStem = utf8(newXopp.stem());
-        std::error_code error;
-        if (const auto source = AnnotationFiles::recordedSourcePdf(oldXopp);
-            !source.empty() && fs::exists(source, error) && isSameFile(source.parent_path(), dir) &&
-            utf8(source.stem()) == oldStem) {
-            group.newSource = dir / pathFromUtf8((newStem + utf8(source.extension())).c_str());
-            group.moves.emplace_back(source, *group.newSource);
+    auto applyDocumentGroup(const AnnotationFiles::DocumentGroup& group) -> bool {
+        auto done = renameAll(group.moves);
+        if (!done) {
+            return false;
         }
-        const auto exported = AnnotationFiles::exportPathForFile(oldXopp, *control->getSettings());
-        const auto exportName = utf8(exported.filename());
-        if (!exported.empty() && exportName.rfind(oldStem, 0) == 0) {
-            group.newExportName = newStem + exportName.substr(oldStem.size());
-            if (fs::exists(exported, error)) {
-                group.moves.emplace_back(exported, dir / pathFromUtf8(group.newExportName->c_str()));
-            }
-        }
-        return group;
-    }
-
-    /// The name of a target that exists already or is the target of two renames, if any
-    auto groupConflict(const DocumentGroup& group) const -> std::optional<std::string> {
-        std::vector<fs::path> targets;
-        std::error_code error;
-        for (const auto& [from, to]: group.moves) {
-            for (const auto& other: targets) {
-                if (isSameFile(other, to) || utf8(other.filename()) == utf8(to.filename())) {
-                    return utf8(to.filename());
+        if (group.newSource || group.newExportName) {
+            if (auto problem = AnnotationFiles::relinkDocument(group.newXopp, group.newSource, group.newExportName,
+                                                               *control->getSettings());
+                !problem.empty()) {
+                undoRenames(*done);
+                for (const auto& [from, to]: *done) {
+                    movedEntry(to, from);
                 }
-            }
-            targets.push_back(to);
-            if (!isSameFile(from, to) && fs::exists(to, error)) {
-                return utf8(to.filename());
-            }
-        }
-        return std::nullopt;
-    }
-
-    /**
-     * Renames a document together with its files (see documentGroup()), so that everything stays consistent; the
-     * document records the new names. If recording them fails, the renames are undone. An open document is saved
-     * (asking like Save does) and closed first, since its files cannot be renamed while open, and opened again at the
-     * same page.
-     */
-    void renameDocumentGroup(const fs::path& oldXopp, DocumentGroup group) {
-        auto perform = [this, group]() -> bool {
-            auto done = renameAll(group.moves);
-            if (!done) {
+                showError(FC(_F("“{1}” could not be updated to use the renamed PDF.") % utf8(group.newXopp.filename())),
+                          problem);
                 return false;
             }
-            if (group.newSource || group.newExportName) {
-                if (auto problem = AnnotationFiles::relinkDocument(group.newXopp, group.newSource, group.newExportName,
-                                                                   *control->getSettings());
-                    !problem.empty()) {
-                    undoRenames(*done);
-                    for (const auto& [from, to]: *done) {
-                        movedEntry(to, from);
-                    }
-                    showError(FC(_F("“{1}” could not be updated to use the renamed PDF.") %
-                                 utf8(group.newXopp.filename())),
-                              problem);
-                    return false;
-                }
-            }
-            showEntry(group.newXopp);
-            return true;
-        };
+        }
+        showEntry(group.newXopp);
+        return true;
+    }
 
-        if (!isSameFile(control->getDocument()->getFilepath(), oldXopp)) {
-            perform();
+    void renameDocumentGroup(const fs::path& oldXopp, AnnotationFiles::DocumentGroup group) {
+        std::vector<fs::path> affected;
+        for (const auto& move: group.moves) {
+            affected.push_back(move.first);
+        }
+        withOpenDocumentClosed(affected, [this, group, oldXopp](const fs::path& open) -> std::optional<fs::path> {
+            if (!applyDocumentGroup(group)) {
+                return std::nullopt;
+            }
+            return isSameFile(open, oldXopp) ? group.newXopp : open;
+        });
+    }
+
+    /// Whether the open document or its background PDF is one of the paths or inside one of them
+    auto affectsOpenDocument(const std::vector<fs::path>& paths) const -> bool {
+        Document* document = control->getDocument();
+        document->lock_shared();
+        const auto documentPath = document->getFilepath();
+        const auto pdfPath = document->getPdfFilepath();
+        document->unlock_shared();
+        for (const auto& path: paths) {
+            if ((!documentPath.empty() && Util::isChildOrEquivalent(documentPath, path)) ||
+                (!pdfPath.empty() && Util::isChildOrEquivalent(pdfPath, path))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Runs a file operation on paths. The open document's files cannot be renamed, moved or deleted while it is open
+     * (its PDF is in use): if they are involved, the document is saved (with a regular save, so nothing is discarded),
+     * closed, and afterwards opened again at the same page. perform gets the open document's path and returns where
+     * to open it again (its new path; empty for a new document), or nullopt if the operation failed (it is opened from
+     * where it was). With discardChanges, unsaved changes are dropped instead of saved.
+     */
+    void withOpenDocumentClosed(const std::vector<fs::path>& paths,
+                                std::function<std::optional<fs::path>(const fs::path& open)> perform,
+                                bool discardChanges = false) {
+        if (!affectsOpenDocument(paths)) {
+            perform({});
+            refresh(true);
             return;
         }
-        // The open document: save it, close it, rename, open it again at the same page
+        const auto open = control->getDocument()->getFilepath();
         const auto page = static_cast<int>(control->getCurrentPageNo());
-        const auto newXopp = group.newXopp;
         std::weak_ptr<void> alive = lifetime;
-        auto closeAndRename = [this, alive, perform, oldXopp, newXopp, page]() {
+        auto closeAndPerform = [this, alive, perform, open, page]() {
             control->close(
-                    [this, alive, perform, oldXopp, newXopp, page](bool closed) {
+                    [this, alive, perform, open, page](bool closed) {
                         if (alive.expired() || !closed) {
                             return;
                         }
-                        const auto reopen = perform() ? newXopp : oldXopp;
-                        control->openFileWithoutSavingTheCurrentDocument(reopen, false, page, [](bool) {});
+                        const auto reopen = perform(open).value_or(open);
+                        std::error_code error;
+                        if (!reopen.empty() && fs::exists(reopen, error)) {
+                            control->openFileWithoutSavingTheCurrentDocument(reopen, false, page, [](bool) {});
+                        } else {
+                            control->newFile();
+                        }
+                        refresh(true);
                     },
                     true, false, true);
         };
-        if (!control->getUndoRedoHandler()->isChanged()) {
-            closeAndRename();
+        if (discardChanges || !control->getUndoRedoHandler()->isChanged()) {
+            closeAndPerform();
             return;
         }
-        // A regular save (not the automatic one, which skips files it must not overwrite): nothing is discarded
-        control->save([alive, closeAndRename](bool saved) {
+        control->save([alive, closeAndPerform](bool saved) {
             if (!alive.expired() && saved) {
-                closeAndRename();
+                closeAndPerform();
             }
         });
+    }
+
+    // --- Moving ---
+
+
+    /**
+     * Asks for a folder of the project to move path to. Folders that cannot be the target (the folder itself, folders
+     * inside it, the folder it is in) are not offered.
+     */
+    auto askForTargetFolder(const fs::path& path) -> std::optional<fs::path> {
+        auto* dialog =
+                gtk_dialog_new_with_buttons(FC(_F("Move “{1}”") % utf8(path.filename())), parent, GTK_DIALOG_MODAL,
+                                            _("Cancel"), GTK_RESPONSE_CANCEL, _("Move"), GTK_RESPONSE_ACCEPT, nullptr);
+        gtk_window_set_default_size(GTK_WINDOW(dialog), 420, 520);
+        auto* folders = gtk_tree_store_new(2, G_TYPE_STRING, G_TYPE_STRING);  // name, path
+        std::error_code error;
+        const auto current = path.parent_path();
+        std::function<void(const fs::path&, GtkTreeIter*, int)> add = [&](const fs::path& dir, GtkTreeIter* parentIter,
+                                                                          int depth) {
+            std::vector<fs::path> children;
+            for (fs::directory_iterator it(dir, error), end; !error && it != end; it.increment(error)) {
+                std::error_code typeError;
+                const auto name = utf8(it->path().filename());
+                if (it->is_directory(typeError) && !isIgnored(it->path()) && !name.empty() && name.front() != '.' &&
+                    !Util::isChildOrEquivalent(it->path(), path)) {
+                    children.push_back(it->path());
+                }
+            }
+            error.clear();
+            std::sort(children.begin(), children.end(), [](const auto& a, const auto& b) {
+                gchar* keyA = g_utf8_collate_key_for_filename(utf8(a.filename()).c_str(), -1);
+                gchar* keyB = g_utf8_collate_key_for_filename(utf8(b.filename()).c_str(), -1);
+                const bool less = std::strcmp(keyA, keyB) < 0;
+                g_free(keyA);
+                g_free(keyB);
+                return less;
+            });
+            for (const auto& child: children) {
+                GtkTreeIter iter;
+                gtk_tree_store_insert_with_values(folders, &iter, parentIter, -1, 0, utf8(child.filename()).c_str(), 1,
+                                                  utf8(child).c_str(), -1);
+                if (depth < 8) {
+                    add(child, &iter, depth + 1);
+                }
+            }
+        };
+        GtkTreeIter rootIter;
+        gtk_tree_store_insert_with_values(folders, &rootIter, nullptr, -1, 0, utf8(projectRoot.filename()).c_str(), 1,
+                                          utf8(projectRoot).c_str(), -1);
+        add(projectRoot, &rootIter, 1);
+
+        auto* view = gtk_tree_view_new_with_model(GTK_TREE_MODEL(folders));
+        g_object_unref(folders);
+        gtk_tree_view_set_headers_visible(GTK_TREE_VIEW(view), false);
+        auto* column = gtk_tree_view_column_new();
+        auto* iconRenderer = gtk_cell_renderer_pixbuf_new();
+        g_object_set(iconRenderer, "icon-name", "folder-symbolic", "ypad", 8, nullptr);
+        gtk_tree_view_column_pack_start(column, iconRenderer, false);
+        auto* textRenderer = gtk_cell_renderer_text_new();
+        g_object_set(textRenderer, "ypad", 8, nullptr);  // large enough to tap
+        gtk_tree_view_column_pack_start(column, textRenderer, true);
+        gtk_tree_view_column_add_attribute(column, textRenderer, "text", 0);
+        gtk_tree_view_append_column(GTK_TREE_VIEW(view), column);
+        GtkTreePath* first = gtk_tree_path_new_first();
+        gtk_tree_view_expand_row(GTK_TREE_VIEW(view), first, false);
+        gtk_tree_path_free(first);
+        auto* scrolled = gtk_scrolled_window_new(nullptr, nullptr);
+        gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scrolled), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+        gtk_container_add(GTK_CONTAINER(scrolled), view);
+        gtk_widget_set_vexpand(scrolled, true);
+        auto* content = gtk_dialog_get_content_area(GTK_DIALOG(dialog));
+        gtk_container_set_border_width(GTK_CONTAINER(content), 8);
+        gtk_box_pack_start(GTK_BOX(content), scrolled, true, true, 0);
+
+        // Only a folder other than the current one can be chosen
+        auto* moveButton = gtk_dialog_get_widget_for_response(GTK_DIALOG(dialog), GTK_RESPONSE_ACCEPT);
+        gtk_style_context_add_class(gtk_widget_get_style_context(moveButton), "suggested-action");
+        gtk_widget_set_sensitive(moveButton, false);
+        struct Choice {
+            GtkWidget* button;
+            fs::path current;
+            fs::path chosen;
+        } choice{moveButton, current, {}};
+        g_signal_connect(gtk_tree_view_get_selection(GTK_TREE_VIEW(view)), "changed",
+                         G_CALLBACK(+[](GtkTreeSelection* selection, Choice* choice) {
+                             GtkTreeModel* model = nullptr;
+                             GtkTreeIter iter;
+                             choice->chosen.clear();
+                             if (gtk_tree_selection_get_selected(selection, &model, &iter)) {
+                                 gchar* value = nullptr;
+                                 gtk_tree_model_get(model, &iter, 1, &value, -1);
+                                 choice->chosen = pathFromUtf8(value ? value : "");
+                                 g_free(value);
+                             }
+                             gtk_widget_set_sensitive(
+                                     choice->button,
+                                     !choice->chosen.empty() && !isSameFile(choice->chosen, choice->current));
+                         }),
+                         &choice);
+        g_signal_connect(view, "row-activated",
+                         G_CALLBACK(+[](GtkTreeView*, GtkTreePath*, GtkTreeViewColumn*, GtkWidget* dialog) {
+                             gtk_dialog_response(GTK_DIALOG(dialog), GTK_RESPONSE_ACCEPT);
+                         }),
+                         dialog);
+
+        gtk_widget_show_all(dialog);
+        const auto response = gtk_dialog_run(GTK_DIALOG(dialog));
+        auto chosen = choice.chosen;
+        gtk_widget_destroy(dialog);
+        if (response != GTK_RESPONSE_ACCEPT || chosen.empty() || isSameFile(chosen, current)) {
+            return std::nullopt;
+        }
+        return chosen;
+    }
+
+    /// Moves an entry to another folder of the project; a document moves with its files like when renaming
+    void moveEntry(const fs::path& path, gint kind, const fs::path& owner) {
+        const auto target = askForTargetFolder(path);
+        if (!target) {
+            return;
+        }
+        if (kind == KIND_DOCUMENT && isXoppFile(path)) {
+            auto group = AnnotationFiles::groupForMove(path, *target, *control->getSettings());
+            if (auto problem = AnnotationFiles::groupConflict(group)) {
+                showError(_("An entry with this name already exists."), *problem);
+                return;
+            }
+            renameDocumentGroup(path, std::move(group));
+            return;
+        }
+        const auto newPath = *target / path.filename();
+        std::error_code error;
+        if (fs::exists(newPath, error)) {
+            showError(_("An entry with this name already exists."), utf8(newPath.filename()));
+            return;
+        }
+        // A PDF keeps being the background of the document annotating it, wherever it is moved
+        const auto annotating = Util::hasPdfFileExt(path) ? (kind == KIND_NESTED && !owner.empty() ?
+                                                                     std::optional<fs::path>(owner) :
+                                                                     AnnotationFiles::documentForSource(path)) :
+                                                            std::nullopt;
+        withOpenDocumentClosed(
+                {path}, [this, path, newPath, annotating](const fs::path& open) -> std::optional<fs::path> {
+                    if (!renameAll({{path, newPath}})) {
+                        return std::nullopt;
+                    }
+                    if (annotating && isSameFile(AnnotationFiles::recordedSourcePdf(*annotating), path)) {
+                        if (auto problem =
+                                    AnnotationFiles::relinkSourcePdf(*annotating, newPath, *control->getSettings());
+                            !problem.empty()) {
+                            showError(FC(_F("“{1}” could not be updated to use the renamed PDF.") %
+                                         utf8(annotating->filename())),
+                                      problem);
+                        }
+                    }
+                    showEntry(newPath);
+                    // The open document was moved with a folder: open it from there
+                    if (!open.empty() && Util::isChildOrEquivalent(open, path)) {
+                        return newPath / open.lexically_relative(path);
+                    }
+                    return open;
+                });
     }
 
     /// Renames the exported PDF of a document, which records the new name so it keeps exporting there
@@ -2380,53 +2530,17 @@ private:
             return;
         }
 
-        Document* document = control->getDocument();
-        document->lock_shared();
-        const auto documentPath = document->getFilepath();
-        const auto pdfPath = document->getPdfFilepath();
-        document->unlock_shared();
-        const bool deletesDocument = !documentPath.empty() && Util::isChildOrEquivalent(documentPath, path);
-        const bool deletesPdf = !pdfPath.empty() && Util::isChildOrEquivalent(pdfPath, path);
-        if (!deletesDocument && !deletesPdf) {
-            trash(path);
-            refresh(true);
-            return;
-        }
-        // Files of the open document cannot be deleted while it is open (the PDF is in use): close it first. The user
-        // deletes it on purpose, so its unsaved changes are discarded instead of offering to save (which would write
-        // the deleted file again), and it is not exported on closing.
-        const auto page = static_cast<int>(control->getCurrentPageNo());
-        if (!deletesDocument) {
-            // Only its PDF goes: keep the annotations
-            std::weak_ptr<void> alive = lifetime;
-            autoSaver->saveNow([this, alive, path, documentPath, page](bool) {
-                if (!alive.expired()) {
-                    closeThenDelete(path, documentPath, page);
-                }
-            });
-            return;
-        }
-        closeThenDelete(path, {}, page);
-    }
-
-    /// Closes the open document, moves path to the trash and opens reopen (if any) again at the page
-    void closeThenDelete(const fs::path& path, const fs::path& reopen, int page) {
-        std::weak_ptr<void> alive = lifetime;
-        control->close(
-                [this, alive, path, reopen, page](bool closed) {
-                    if (alive.expired() || !closed) {
-                        return;
-                    }
+        // The user deletes the open document on purpose: its unsaved changes are discarded instead of saving them
+        // (which would write the deleted file again). If only its PDF goes, the annotations are kept.
+        const auto open = control->getDocument()->getFilepath();
+        const bool deletesDocument = !open.empty() && Util::isChildOrEquivalent(open, path);
+        withOpenDocumentClosed(
+                {path},
+                [this, path, deletesDocument](const fs::path& open) -> std::optional<fs::path> {
                     trash(path);
-                    std::error_code error;
-                    if (!reopen.empty() && fs::exists(reopen, error)) {
-                        control->openFileWithoutSavingTheCurrentDocument(reopen, false, page, [](bool) {});
-                    } else {
-                        control->newFile();
-                    }
-                    refresh(true);
+                    return deletesDocument ? fs::path() : open;
                 },
-                true, false, true);
+                deletesDocument);
     }
 
     auto trash(const fs::path& path) -> bool {

@@ -168,37 +168,122 @@ TEST_F(AnnotationFilesTest, documentFollowsItsRenamedPdf) {
     EXPECT_GT(doc->getPdfPageCount(), 0U);
 }
 
-TEST_F(AnnotationFilesTest, renamedDocumentGroupStaysLinked) {
-    // Renaming a document with its source and exported PDF, as the project explorer does
+namespace {
+/// Saves a document annotating pdf to xopp, recording exportName, like the fork does when annotating a PDF
+void saveAnnotation(const fs::path& xopp, const fs::path& pdf, const std::string& exportName) {
+    DocumentHandler handler;
+    Document doc(&handler);
+    ASSERT_TRUE(doc.readPdf(pdf, true, false));
+    doc.setFilepath(xopp);
+    SaveHandler saver;
+    saver.prepareSave(&doc, xopp);
+    saver.setExportFilename(exportName);
+    saver.saveTo(xopp);
+    ASSERT_TRUE(saver.getErrorMessage().empty()) << saver.getErrorMessage();
+}
+
+/// Performs the moves of a group and records the new names, as the project explorer does
+void applyGroup(const AnnotationFiles::DocumentGroup& group, const Settings& settings) {
+    for (const auto& [from, to]: group.moves) {
+        fs::rename(from, to);
+    }
+    if (group.newSource || group.newExportName) {
+        ASSERT_EQ(AnnotationFiles::relinkDocument(group.newXopp, group.newSource, group.newExportName, settings), "");
+    }
+}
+
+/// The document loads with its PDF background
+void expectLoadsWithPdf(const fs::path& xopp) {
+    LoadHandler loader;
+    auto doc = loader.loadDocument(xopp);
+    ASSERT_TRUE(doc);
+    EXPECT_TRUE(loader.getMissingPdfFilename().empty()) << loader.getMissingPdfFilename();
+    EXPECT_GT(doc->getPdfPageCount(), 0U);
+}
+}  // namespace
+
+TEST_F(AnnotationFilesTest, renamingADocumentRenamesItsFiles) {
     fs::copy_file(GET_TESTFILE(u8"packaged_xopp/pdfBackground/old.xopp.bg.pdf"), dir / "VO8.pdf");
     std::ofstream(dir / "VO8_annotated.pdf") << "x";
-    {
-        DocumentHandler handler;
-        Document doc(&handler);
-        ASSERT_TRUE(doc.readPdf(dir / "VO8.pdf", true, false));
-        doc.setFilepath(dir / "VO8.xopp");
-        SaveHandler saver;
-        saver.prepareSave(&doc, dir / "VO8.xopp");
-        saver.setExportFilename("VO8_annotated.pdf");
-        saver.saveTo(dir / "VO8.xopp");
-        ASSERT_TRUE(saver.getErrorMessage().empty()) << saver.getErrorMessage();
-    }
-    for (const auto& [from, to]:
-         {std::pair{"VO8.xopp", "VO8 Induktion.xopp"}, std::pair{"VO8.pdf", "VO8 Induktion.pdf"},
-          std::pair{"VO8_annotated.pdf", "VO8 Induktion_annotated.pdf"}}) {
-        fs::rename(dir / from, dir / to);
-    }
-    const auto xopp = dir / "VO8 Induktion.xopp";
-    EXPECT_EQ(AnnotationFiles::relinkDocument(xopp, dir / "VO8 Induktion.pdf",
-                                              std::string("VO8 Induktion_annotated.pdf"), *settings),
-              "");
+    saveAnnotation(dir / "VO8.xopp", dir / "VO8.pdf", "VO8_annotated.pdf");
 
-    EXPECT_EQ(AnnotationFiles::recordedSourcePdf(xopp).filename(), "VO8 Induktion.pdf");
-    EXPECT_EQ(AnnotationFiles::recordedExportFilename(xopp), "VO8 Induktion_annotated.pdf");
-    EXPECT_EQ(AnnotationFiles::exportPathForFile(xopp, *settings).filename(), "VO8 Induktion_annotated.pdf");
-    const auto found = AnnotationFiles::documentForSource(dir / "VO8 Induktion.pdf");
+    const auto newXopp = dir / "VO8 Induktion.xopp";
+    const auto group = AnnotationFiles::groupForRename(dir / "VO8.xopp", newXopp, *settings);
+    EXPECT_EQ(group.moves.size(), 3U);
+    EXPECT_FALSE(AnnotationFiles::groupConflict(group));
+    applyGroup(group, *settings);
+
+    EXPECT_TRUE(fs::exists(dir / "VO8 Induktion.pdf"));
+    EXPECT_TRUE(fs::exists(dir / "VO8 Induktion_annotated.pdf"));
+    EXPECT_FALSE(fs::exists(dir / "VO8.pdf"));
+    EXPECT_EQ(AnnotationFiles::recordedSourcePdf(newXopp).filename(), "VO8 Induktion.pdf");
+    EXPECT_EQ(AnnotationFiles::exportPathForFile(newXopp, *settings).filename(), "VO8 Induktion_annotated.pdf");
+    expectLoadsWithPdf(newXopp);
+}
+
+TEST_F(AnnotationFilesTest, renamingADocumentKeepsADifferentlyNamedPdf) {
+    // e.g. the PDF from the course keeps its name; the export name follows even without an exported PDF
+    fs::copy_file(GET_TESTFILE(u8"packaged_xopp/pdfBackground/old.xopp.bg.pdf"), dir / "Kurs.pdf");
+    saveAnnotation(dir / "Notes.xopp", dir / "Kurs.pdf", "Notes_annotated.pdf");
+
+    const auto group = AnnotationFiles::groupForRename(dir / "Notes.xopp", dir / "Mitschrift.xopp", *settings);
+    EXPECT_EQ(group.moves.size(), 1U);
+    EXPECT_FALSE(group.newSource);
+    ASSERT_TRUE(group.newExportName);
+    EXPECT_EQ(*group.newExportName, "Mitschrift_annotated.pdf");
+    applyGroup(group, *settings);
+
+    EXPECT_TRUE(fs::exists(dir / "Kurs.pdf"));
+    EXPECT_EQ(AnnotationFiles::recordedExportFilename(dir / "Mitschrift.xopp"), "Mitschrift_annotated.pdf");
+    expectLoadsWithPdf(dir / "Mitschrift.xopp");
+}
+
+TEST_F(AnnotationFilesTest, renamesThatWouldOverwriteFilesAreConflicts) {
+    fs::copy_file(GET_TESTFILE(u8"packaged_xopp/pdfBackground/old.xopp.bg.pdf"), dir / "VO8.pdf");
+    saveAnnotation(dir / "VO8.xopp", dir / "VO8.pdf", "VO8_annotated.pdf");
+    // The document and its PDF would both become "Foo.pdf"
+    EXPECT_TRUE(AnnotationFiles::groupConflict(
+            AnnotationFiles::groupForRename(dir / "VO8.xopp", dir / "Foo.pdf", *settings)));
+    // The source PDF would replace an existing file
+    std::ofstream(dir / "Other.pdf") << "x";
+    EXPECT_EQ(AnnotationFiles::groupConflict(
+                      AnnotationFiles::groupForRename(dir / "VO8.xopp", dir / "Other.xopp", *settings)),
+              std::optional<std::string>("Other.pdf"));
+}
+
+TEST_F(AnnotationFilesTest, movingADocumentMovesItsFiles) {
+    fs::copy_file(GET_TESTFILE(u8"packaged_xopp/pdfBackground/old.xopp.bg.pdf"), dir / "VO8.pdf");
+    std::ofstream(dir / "VO8_annotated.pdf") << "x";
+    saveAnnotation(dir / "VO8.xopp", dir / "VO8.pdf", "VO8_annotated.pdf");
+    fs::create_directory(dir / "Archiv");
+
+    const auto group = AnnotationFiles::groupForMove(dir / "VO8.xopp", dir / "Archiv", *settings);
+    EXPECT_EQ(group.moves.size(), 3U);
+    EXPECT_FALSE(AnnotationFiles::groupConflict(group));
+    applyGroup(group, *settings);
+
+    EXPECT_TRUE(fs::exists(dir / "Archiv" / "VO8.pdf"));
+    EXPECT_TRUE(fs::exists(dir / "Archiv" / "VO8_annotated.pdf"));
+    EXPECT_EQ(AnnotationFiles::recordedExportFilename(dir / "Archiv" / "VO8.xopp"), "VO8_annotated.pdf");
+    expectLoadsWithPdf(dir / "Archiv" / "VO8.xopp");
+    const auto found = AnnotationFiles::documentForSource(dir / "Archiv" / "VO8.pdf");
     ASSERT_TRUE(found);
-    EXPECT_EQ(found->filename(), xopp.filename());
+    EXPECT_EQ(found->filename(), "VO8.xopp");
+}
+
+TEST_F(AnnotationFilesTest, movingADocumentKeepsAPdfItDoesNotOwn) {
+    // A differently named PDF stays; the moved document refers to it from its new folder
+    fs::copy_file(GET_TESTFILE(u8"packaged_xopp/pdfBackground/old.xopp.bg.pdf"), dir / "Kurs.pdf");
+    saveAnnotation(dir / "Notes.xopp", dir / "Kurs.pdf", "Notes_annotated.pdf");
+    fs::create_directories(dir / "Woche 1");
+
+    const auto group = AnnotationFiles::groupForMove(dir / "Notes.xopp", dir / "Woche 1", *settings);
+    EXPECT_EQ(group.moves.size(), 1U);
+    ASSERT_TRUE(group.newSource);
+    applyGroup(group, *settings);
+
+    EXPECT_TRUE(fs::exists(dir / "Kurs.pdf"));
+    expectLoadsWithPdf(dir / "Woche 1" / "Notes.xopp");
 }
 
 TEST_F(AnnotationFilesTest, recoveryCopiesAreNotTheDocumentOfAPdf) {

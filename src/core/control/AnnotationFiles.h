@@ -79,6 +79,32 @@ std::string relinkSourcePdf(const std::filesystem::path& xopp, const std::filesy
 std::string relinkDocument(const std::filesystem::path& xopp, const std::optional<std::filesystem::path>& pdf,
                            const std::optional<std::string>& exportFilename, const Settings& settings);
 
+/// A document with the files that are renamed or moved along with it, and what it has to record afterwards
+struct DocumentGroup {
+    std::vector<std::pair<std::filesystem::path, std::filesystem::path>> moves;  ///< from, to; the document first
+    std::filesystem::path newXopp;
+    std::optional<std::filesystem::path> newSource;  ///< the background PDF to record, if it changes
+    std::optional<std::string> newExportName;        ///< the export file name to record, if it changes
+};
+
+/**
+ * Renaming a document: its source PDF moves along if it is named like the document (a PDF with another name keeps
+ * it), its exported PDF if its name starts with the document's name. The recorded export name follows the new name
+ * also if the exported PDF does not exist (yet).
+ */
+DocumentGroup groupForRename(const std::filesystem::path& oldXopp, const std::filesystem::path& newXopp,
+                             const Settings& settings);
+
+/**
+ * Moving a document to another folder: its source PDF moves along if it is named like the document (otherwise it
+ * stays, and the document records its path from the new place), its exported PDF always.
+ */
+DocumentGroup groupForMove(const std::filesystem::path& xopp, const std::filesystem::path& dir,
+                           const Settings& settings);
+
+/// The name of a target of the group that exists already or is the target of two moves, if any
+std::optional<std::string> groupConflict(const DocumentGroup& group);
+
 /// The .xopp document in the same folder whose exported PDF is pdf, if any
 std::optional<std::filesystem::path> documentForExport(const std::filesystem::path& pdf, const Settings& settings);
 

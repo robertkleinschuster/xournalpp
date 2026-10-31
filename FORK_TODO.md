@@ -30,17 +30,6 @@ highlighter or lasso nothing happens, on purpose, since every stroke over a link
   button in the popover or the toolbar while a jump is pending).
 - The PDF outline (bookmarks) is in the sidebar's second tab and works; consider a hint or making it easier to find.
 
-### Project explorer: move files
-
-Move files and folders to another folder of the project, by drag and drop in the tree (also by touch, e.g. after a
-long press) and with a "Move to…" entry in the context menu that offers the project's folders.
-
-- A document moves together with its group like when renaming: source PDF (if named like the document) and
-  exported PDF; the document records the new paths (`AnnotationFiles::relinkDocument`). An open document is saved,
-  closed and reopened, as in `renameDocumentGroup`. Undo the moves if one fails.
-- Moving a PDF that a document in another folder uses as background relinks that document.
-- Refuse targets that exist already and moving a folder into itself.
-
 ### Arrange pages
 
 Reorder pages like in a PDF tool instead of moving them step by step.

@@ -417,6 +417,69 @@ auto AnnotationFiles::relinkDocument(const fs::path& xopp, const std::optional<f
     return saver.getErrorMessage();
 }
 
+auto AnnotationFiles::groupForRename(const fs::path& oldXopp, const fs::path& newXopp, const Settings& settings)
+        -> DocumentGroup {
+    DocumentGroup group;
+    group.newXopp = newXopp;
+    group.moves.emplace_back(oldXopp, newXopp);
+    const auto dir = oldXopp.parent_path();
+    const auto oldStem = utf8(oldXopp.stem());
+    const auto newStem = utf8(newXopp.stem());
+    std::error_code error;
+    if (const auto source = recordedSourcePdf(oldXopp); !source.empty() && fs::exists(source, error) &&
+                                                        samePath(source.parent_path(), dir) &&
+                                                        utf8(source.stem()) == oldStem) {
+        group.newSource = dir / pathFromUtf8(newStem + utf8(source.extension()));
+        group.moves.emplace_back(source, *group.newSource);
+    }
+    const auto exported = exportPathForFile(oldXopp, settings);
+    const auto exportName = utf8(exported.filename());
+    if (!exported.empty() && exportName.rfind(oldStem, 0) == 0) {
+        group.newExportName = newStem + exportName.substr(oldStem.size());
+        if (fs::exists(exported, error)) {
+            group.moves.emplace_back(exported, dir / pathFromUtf8(*group.newExportName));
+        }
+    }
+    return group;
+}
+
+auto AnnotationFiles::groupForMove(const fs::path& xopp, const fs::path& dir, const Settings& settings)
+        -> DocumentGroup {
+    DocumentGroup group;
+    group.newXopp = dir / xopp.filename();
+    group.moves.emplace_back(xopp, group.newXopp);
+    std::error_code error;
+    if (const auto source = recordedSourcePdf(xopp); !source.empty() && fs::exists(source, error)) {
+        if (samePath(source.parent_path(), xopp.parent_path()) && source.stem() == xopp.stem()) {
+            group.newSource = dir / source.filename();
+            group.moves.emplace_back(source, *group.newSource);
+        } else {
+            group.newSource = source;  // stays, but its path relative to the document changes
+        }
+    }
+    if (const auto exported = exportPathForFile(xopp, settings); !exported.empty() && fs::exists(exported, error)) {
+        group.moves.emplace_back(exported, dir / exported.filename());
+    }
+    return group;
+}
+
+auto AnnotationFiles::groupConflict(const DocumentGroup& group) -> std::optional<std::string> {
+    std::vector<fs::path> targets;
+    std::error_code error;
+    for (const auto& [from, to]: group.moves) {
+        for (const auto& other: targets) {
+            if (samePath(other, to) || utf8(other.filename()) == utf8(to.filename())) {
+                return utf8(to.filename());
+            }
+        }
+        targets.push_back(to);
+        if (!samePath(from, to) && fs::exists(to, error)) {
+            return utf8(to.filename());
+        }
+    }
+    return std::nullopt;
+}
+
 auto AnnotationFiles::documentForExport(const fs::path& pdf, const Settings& settings) -> std::optional<fs::path> {
     std::error_code error;
     for (fs::directory_iterator it(pdf.parent_path(), error), end; !error && it != end; it.increment(error)) {

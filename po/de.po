@@ -5104,3 +5104,11 @@ msgstr "Wiederherstellen"
 #: src/core/gui/sidebar/ProjectExplorerSidebar.cpp
 msgid "The entry could not be restored."
 msgstr "Der Eintrag konnte nicht wiederhergestellt werden."
+
+#: src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "Move to…"
+msgstr "Verschieben nach…"
+
+#: src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "Move “{1}”"
+msgstr "„{1}“ verschieben"
