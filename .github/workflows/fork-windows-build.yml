@@ -8,7 +8,7 @@ jobs:
     uses: ./.github/workflows/make-installer-windows.yml
     with:
       runner: windows-latest
-      displayed_name: Xournal++ fork
+      displayed_name: Xournal Studio
       msystem: UCRT64
       msys_package_env: ucrt-x86_64
       publish_portable_version: true

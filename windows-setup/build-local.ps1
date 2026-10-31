@@ -1,6 +1,6 @@
 param(
     [string]$MsysRoot = 'C:\msys64',
-    [string]$InstallDirectory = (Join-Path $env:LOCALAPPDATA 'Programs\Xournal++ Fork'),
+    [string]$InstallDirectory = (Join-Path $env:LOCALAPPDATA 'Programs\Xournal Studio'),
     [switch]$SkipInstall
 )
 

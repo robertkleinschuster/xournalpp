@@ -14,10 +14,10 @@ BEGIN
 		BLOCK "040904E4"
 		BEGIN
 			VALUE "CompanyName", "The Xournal++ Team\0"
-			VALUE "FileDescription", "Xournal++\0"
+			VALUE "FileDescription", "Xournal Studio\0"
 			VALUE "FileVersion", "${PROJECT_VERSION}\0"
 			VALUE "ProductVersion", "${PROJECT_VERSION}\0"
-			VALUE "ProductName", "Xournal++\0"
+			VALUE "ProductName", "Xournal Studio\0"
 			VALUE "LegalCopyright", "\0"
 			VALUE "LegalTrademarks", "\0"
 			VALUE "Comments", "\0"

@@ -2265,14 +2265,14 @@ msgid "xoj-preview-extractor: successfully extracted"
 msgstr "xoj-preview-extractor: erfolgreich extrahiert"
 
 #: ../ui/about.glade:12
-msgid "About Xournal++"
-msgstr "Über Xournal++"
+msgid "About Xournal Studio"
+msgstr "Über Xournal Studio"
 
 #: ../ui/about.glade:93
-msgid "<span size=\"xx-large\" weight=\"bold\">Xournal++</span>\n"
-"<i>The next generation</i>"
-msgstr "<span size=\"xx-large\" weight=\"bold\">Xournal++</span>\n"
-"<i>Die nächste Generation</i>"
+msgid "<span size=\"xx-large\" weight=\"bold\">Xournal Studio</span>\n"
+"<i>Based on Xournal++</i>"
+msgstr "<span size=\"xx-large\" weight=\"bold\">Xournal Studio</span>\n"
+"<i>Basiert auf Xournal++</i>"
 
 #: ../ui/about.glade:133
 msgid "Icon Designers"

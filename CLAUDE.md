@@ -9,7 +9,7 @@ This is a personal fork of Xournal++ (C++20, GTK3, CMake) used on a Windows conv
 The build tree in `build/` is already configured with Ninja, `RelWithDebInfo`, and `-DENABLE_GTEST=ON -DDOWNLOAD_GTEST=on`.
 
 ```powershell
-# Incremental build + package + side-by-side install into %LOCALAPPDATA%\Programs\Xournal++ Fork
+# Incremental build + package + side-by-side install into %LOCALAPPDATA%\Programs\Xournal Studio
 windows-setup\build-local.ps1
 # Use this while the fork is running (installer refuses to overwrite locked files)
 windows-setup\build-local.ps1 -SkipInstall

@@ -1,4 +1,4 @@
-# Xournal++ Fork Work Log
+# Xournal Studio (Xournal++ Fork) Work Log
 
 ## Repository
 
@@ -11,6 +11,7 @@
 ## Fork-specific behavior
 
 - Keep the fork identity and configuration directory separate from upstream so both installations can run side by side.
+- The fork is named "Xournal Studio": window title, About dialog, exe version info, installation folder and Start menu entry (install-fork.ps1 removes the old "Xournal++ Fork" installation). Its icon (ui/pixmaps/com.github.xournalpp.xournalpp.svg, also the .exe icon) is the Xournal++ icon on a blue grid tile. The config folder stays xournalpp-fork so existing settings keep working.
 - Preserve the touch-sequence reset on window deactivation. It prevents stale touch state from breaking touchscreen scroll and pinch zoom.
 - Use graph paper as the default for new documents.
 - A PDF without its .xopp opens read-only (no files are created) with an info bar; only its "Enable Editing" button creates the .xopp next to the PDF or opens an existing one. Read-only is enforced in ActionDatabase (EDITING_ACTIONS), XojPageView's press handlers, PageBackgroundChangeController, drag and drop, and Control::close discards. The annotated PDF is only exported once the document has annotations (AnnotationFiles::hasAnnotations) or an export already exists.
