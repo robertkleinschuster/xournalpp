@@ -30,8 +30,9 @@ public:
     DocumentAutoSaver(const DocumentAutoSaver&) = delete;
     DocumentAutoSaver& operator=(const DocumentAutoSaver&) = delete;
 
-    /// Saves pending changes, then calls done. Calls done right away if there is nothing to save.
-    void saveNow(std::function<void()> done);
+    /// Saves pending changes, then calls done with whether they were saved (true right away if there is nothing to
+    /// save)
+    void saveNow(std::function<void(bool saved)> done);
 
 private:
     /// Whether the document has unsaved changes and a file it can be saved to without asking
@@ -48,7 +49,7 @@ private:
     gulong focusHandler = 0;
     bool saving = false;
     /// Callbacks of saveNow() waiting for the running save
-    std::vector<std::function<void()>> waiting;
+    std::vector<std::function<void(bool)>> waiting;
     /// Expires with this object, so a save finishing later does not touch it
     std::shared_ptr<int> lifetime = std::make_shared<int>(0);
 };

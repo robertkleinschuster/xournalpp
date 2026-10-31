@@ -85,24 +85,24 @@ void DocumentAutoSaver::saveInBackground() {
 void DocumentAutoSaver::startSave() {
     saving = true;
     std::weak_ptr<int> alive = lifetime;
-    control->save([this, alive](bool) {
+    control->save([this, alive](bool saved) {
         if (alive.expired()) {
             return;
         }
         saving = false;
         for (auto& callback: std::exchange(waiting, {})) {
-            callback();
+            callback(saved);
         }
     });
 }
 
-void DocumentAutoSaver::saveNow(std::function<void()> done) {
+void DocumentAutoSaver::saveNow(std::function<void(bool saved)> done) {
     if (saving) {
         waiting.push_back(std::move(done));
         return;
     }
     if (!hasChangesToSave()) {
-        done();
+        done(true);
         return;
     }
     waiting.push_back(std::move(done));

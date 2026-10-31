@@ -102,7 +102,7 @@ auto escape(const std::string& value) -> std::string {
     return result;
 }
 
-/// Recovery copies written by Xournal++ itself: ".<name>.autosave.xopp" and "<name>.xopp~" (backup while saving)
+/// Recovery copies written by Xournal++ itself: ".<name>.autosave.xopp" and "<name>.xopp~" (written while saving)
 auto isXournalBackup(const std::string& name) -> bool {
     constexpr std::string_view autosaveSuffix = ".autosave.xopp";
     return (name.size() > autosaveSuffix.size() && name.front() == '.' &&
@@ -462,11 +462,7 @@ public:
         if (type != DOCUMENT_CHANGE_COMPLETE || projectRoot.empty()) {
             return;
         }
-        // A PDF viewed read-only has no document file yet: remember the PDF itself
-        auto documentPath = control->getDocument()->getFilepath();
-        if (documentPath.empty()) {
-            documentPath = control->getDocument()->getPdfFilepath();
-        }
+        const auto documentPath = currentDocumentPath();
         std::error_code error;
         const auto absolute = documentPath.empty() ? fs::path() : fs::weakly_canonical(documentPath, error);
         if (absolute.empty() || error || !Util::isChildOrEquivalent(absolute, projectRoot)) {
@@ -1930,13 +1926,32 @@ private:
         gtk_widget_destroy(dialog);
     }
 
-    /// Opens a document like an IDE switches files: pending changes of the current one are saved first
+    /// The file of the open document. A PDF viewed read-only has no document file yet: the PDF itself
+    auto currentDocumentPath() const -> fs::path {
+        auto documentPath = control->getDocument()->getFilepath();
+        return documentPath.empty() ? control->getDocument()->getPdfFilepath() : documentPath;
+    }
+
+    /// Opens a document like an IDE switches files: pending changes of the current one are saved first. If that fails
+    /// (the error was shown), the current document stays open and selected, so its changes are not lost
     void openDocument(fs::path path) {
-        autoSaver->saveNow([this, path = std::move(path)] { control->openFile(path); });
+        autoSaver->saveNow([this, path = std::move(path)](bool saved) {
+            if (saved) {
+                control->openFile(path);
+            } else {
+                reveal(currentDocumentPath(), true);
+            }
+        });
     }
 
     void openReadOnly(fs::path pdf) {
-        autoSaver->saveNow([this, pdf = std::move(pdf)] { control->openPdfReadOnly(pdf); });
+        autoSaver->saveNow([this, pdf = std::move(pdf)](bool saved) {
+            if (saved) {
+                control->openPdfReadOnly(pdf);
+            } else {
+                reveal(currentDocumentPath(), true);
+            }
+        });
     }
 
     void showMessage(const char* message) {
