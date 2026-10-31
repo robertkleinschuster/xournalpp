@@ -37,7 +37,7 @@ using std::string;
 
 constexpr auto const* DEFAULT_FONT = "Sans";
 constexpr auto DEFAULT_FONT_SIZE = 12;
-constexpr auto DEFAULT_TOOLBAR = "Portrait";
+constexpr auto DEFAULT_TOOLBAR = "Xournal Studio";  // Fork
 
 #define SAVE_BOOL_PROP(var) xmlNode = saveProperty((const char*)#var, (var) ? "true" : "false", root)
 #define SAVE_STRING_PROP(var) xmlNode = saveProperty((const char*)#var, (var).empty() ? "" : (var).data(), root)
@@ -64,7 +64,7 @@ void Settings::loadDefault() {
     this->pressureGuessing = false;
     this->zoomGesturesEnabled = true;
 
-    this->maximized = false;
+    this->maximized = true;  // Fork
     this->showPairedPages = false;
     this->showPageShadow = true;
     this->presentationMode = false;
@@ -98,7 +98,7 @@ void Settings::loadDefault() {
     this->fullscreenActive = false;
 
     this->showSidebar = true;
-    this->sidebarWidth = 150;
+    this->sidebarWidth = 332;  // Fork: room for the project explorer
     this->sidebarNumberingStyle = SidebarNumberingStyle::DEFAULT;
 
     this->showToolbar = true;
@@ -111,22 +111,22 @@ void Settings::loadDefault() {
 
     this->menubarVisible = true;
 
-    this->autoloadMostRecent = false;
+    this->autoloadMostRecent = true;  // Fork: reopen the last document (of the project folder)
     this->autoloadPdfXoj = true;
 
     this->stylusCursorType = STYLUS_CURSOR_DOT;
     this->eraserVisibility = ERASER_VISIBILITY_ALWAYS;
-    this->iconTheme = ICON_THEME_COLOR;
-    this->themeVariant = THEME_VARIANT_USE_SYSTEM;
+    this->iconTheme = ICON_THEME_LUCIDE;            // Fork
+    this->themeVariant = THEME_VARIANT_FORCE_DARK;  // Fork
     this->highlightPosition = false;
     this->cursorHighlightColor = 0x80FFFF00;  // Yellow with 50% opacity
     this->cursorHighlightRadius = 30.0;
     this->cursorHighlightBorderColor = 0x800000FF;  // Blue with 50% opacity
     this->cursorHighlightBorderWidth = 0.0;
     this->useStockIcons = false;
-    this->scrollbarHideType = SCROLLBAR_HIDE_NONE;
+    this->scrollbarHideType = SCROLLBAR_HIDE_BOTH;  // Fork: nothing at the right edge, scrolling is by touch
     this->disableScrollbarFadeout = false;
-    this->disableAudio = false;
+    this->disableAudio = true;  // Fork: audio recording is not used; saves the device setup at startup
 
     // Set this for autosave frequency in minutes.
     this->autosaveTimeout = 3;
@@ -148,14 +148,14 @@ void Settings::loadDefault() {
     this->snapRotation = true;
     this->snapRotationTolerance = 0.30;
 
-    this->snapGrid = true;
+    this->snapGrid = false;  // Fork
     this->snapGridTolerance = 0.50;
     this->snapGridSize = DEFAULT_GRID_SIZE;
 
     this->strokeRecognizerMinSize = 40;
 
     this->touchDrawing = false;
-    this->gtkTouchInertialScrolling = true;
+    this->gtkTouchInertialScrolling = false;  // Fork: the fork lets the document glide on itself
 
     this->defaultSaveName = xoj::util::utf8(_("%F-Note-%H-%M")).str();
     this->defaultPdfExportName = xoj::util::utf8(_("%{name}_annotated")).str();
@@ -184,12 +184,12 @@ void Settings::loadDefault() {
     // Default config
     this->buttonConfig[BUTTON_DEFAULT] = std::make_unique<ButtonConfig>(TOOL_PEN, Colors::black, TOOL_SIZE_FINE,
                                                                         DRAWING_TYPE_DEFAULT, ERASER_TYPE_NONE);
-    // Pen button 1
-    this->buttonConfig[BUTTON_STYLUS_ONE] = std::make_unique<ButtonConfig>(TOOL_NONE, Colors::black, TOOL_SIZE_NONE,
+    // Pen button 1 - Fork: erases
+    this->buttonConfig[BUTTON_STYLUS_ONE] = std::make_unique<ButtonConfig>(TOOL_ERASER, Colors::black, TOOL_SIZE_NONE,
                                                                            DRAWING_TYPE_DEFAULT, ERASER_TYPE_NONE);
-    // Pen button 2
-    this->buttonConfig[BUTTON_STYLUS_TWO] = std::make_unique<ButtonConfig>(TOOL_NONE, Colors::black, TOOL_SIZE_NONE,
-                                                                           DRAWING_TYPE_DEFAULT, ERASER_TYPE_NONE);
+    // Pen button 2 - Fork: lasso selection (the barrel button Windows otherwise uses as right click)
+    this->buttonConfig[BUTTON_STYLUS_TWO] = std::make_unique<ButtonConfig>(
+            TOOL_SELECT_REGION, Colors::black, TOOL_SIZE_NONE, DRAWING_TYPE_DEFAULT, ERASER_TYPE_NONE);
 
     // default view modes
     this->activeViewMode = PresetViewModeIds::VIEW_MODE_DEFAULT;
@@ -213,7 +213,8 @@ void Settings::loadDefault() {
     this->backgroundColor = Colors::xopp_gainsboro02;
 
     // clang-format off
-	this->pageTemplateSettings.parse("xoj/template\ncopyLastPageSettings=true\nsize=595.275591x841.889764\nbackgroundType=graph\nbackgroundColor=#ffffff\n");
+	// Fork: new pages are empty graph pages in the size of the current page
+	this->pageTemplateSettings.parse("xoj/template\ncopyLastPageSize=true\ncopyLastPageSettings=false\nsize=595.275591x841.889764\nbackgroundType=graph\nbackgroundColor=#ffffff\n");
     // clang-format on
 
 #ifdef ENABLE_AUDIO
@@ -255,7 +256,7 @@ void Settings::loadDefault() {
      * Stabilizer related settings
      */
     this->stabilizerAveragingMethod = StrokeStabilizer::AveragingMethod::NONE;
-    this->stabilizerPreprocessor = StrokeStabilizer::Preprocessor::NONE;
+    this->stabilizerPreprocessor = StrokeStabilizer::Preprocessor::INERTIA;  // Fork: smoother handwriting
     this->stabilizerBuffersize = 20;
     this->stabilizerSigma = 0.5;
     this->stabilizerDeadzoneRadius = 1.3;

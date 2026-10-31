@@ -758,7 +758,7 @@ private:
     /**
      * If the page number is shown in titlebar
      */
-    bool pageNumberShownInTitlebar{};
+    bool pageNumberShownInTitlebar{true};  // Fork
 
     /**
      *  Hide the scrollbar
