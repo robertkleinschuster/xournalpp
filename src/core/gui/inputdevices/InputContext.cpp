@@ -12,6 +12,7 @@
 #include "control/Control.h"                            // for Control
 #include "control/DeviceListHelper.h"                   // for InputDevice
 #include "control/settings/Settings.h"                  // for Settings
+#include "control/zoom/ZoomControl.h"
 #include "gui/XournalView.h"                            // for XournalView
 #include "gui/dialog/DeviceTestingArea.h"               // for DeviceTestingArea
 #include "gui/inputdevices/GeometryToolInputHandler.h"  // for GeometryToolInputHandler
@@ -177,6 +178,16 @@ auto InputContext::handle(GdkEvent* sourceEvent) -> bool {
 
     // Deactivate touchscreen when a pen event occurs
     this->handRecognition->event(event.deviceClass);
+
+    // Fork: writing or clicking must not happen on a document that still glides after a swipe
+    if (event.type == BUTTON_PRESS_EVENT &&
+        (event.deviceClass == INPUT_DEVICE_PEN || event.deviceClass == INPUT_DEVICE_ERASER ||
+         event.deviceClass == INPUT_DEVICE_MOUSE)) {
+        this->touchHandler->stopGliding();
+        if (auto* view = this->getView(); view && view->getControl()) {
+            view->getControl()->getZoomControl()->stopTouchpadGliding();
+        }
+    }
 
     // separate events to appropriate handlers
     // handle geometry tool

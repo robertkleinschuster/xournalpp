@@ -84,6 +84,8 @@ public:
 
     /// Clear active touch sequences when the application loses its input focus.
     void resetTouchSequence();
+    /// Fork: stops the document gliding after a swipe
+    void stopGliding();
 
 private:
     /// Fork: drops touches the system no longer knows about (Windows only), before handling the new touch current

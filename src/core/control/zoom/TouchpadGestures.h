@@ -39,6 +39,9 @@ public:
      */
     bool consumeSynthesizedScroll(double dx, double dy);
 
+    /// Stops the document gliding after a swipe, e.g. when the pen touches down
+    void stopGliding();
+
     struct Impl;
 
 private:

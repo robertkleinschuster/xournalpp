@@ -540,3 +540,9 @@ void ZoomControl::pageSelected(size_t page) {
     }
     updateZoomFitValue(this->current_page);
 }
+
+void ZoomControl::stopTouchpadGliding() {
+    if (touchpadGestures) {
+        touchpadGestures->stopGliding();
+    }
+}

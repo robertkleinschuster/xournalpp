@@ -316,6 +316,8 @@ void TouchInputHandler::zoomEnd() {
 
 void TouchInputHandler::onBlock() { resetTouchSequence(); }
 
+void TouchInputHandler::stopGliding() { momentum.stop(); }
+
 void TouchInputHandler::onUnblock() { resetTouchSequence(); }
 
 void TouchInputHandler::resetTouchSequence() {

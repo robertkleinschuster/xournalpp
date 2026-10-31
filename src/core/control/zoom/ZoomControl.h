@@ -71,6 +71,9 @@ public:
      * Zoom so that the page fits the current size of the window
      */
     void setZoomFitMode(bool isZoomFitMode);
+
+    /// Fork: stops the document gliding after a touchpad swipe
+    void stopTouchpadGliding();
     bool isZoomFitMode() const;
 
     /**

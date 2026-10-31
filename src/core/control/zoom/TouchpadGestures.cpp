@@ -607,6 +607,8 @@ auto TouchpadGestures::consumeSynthesizedScroll(double, double dy) -> bool {
     return impl->consumeSynthesizedScroll(dy);
 }
 
+void TouchpadGestures::stopGliding() { impl->stopInertia(); }
+
 #else
 
 struct TouchpadGestures::Impl {};
@@ -614,6 +616,8 @@ struct TouchpadGestures::Impl {};
 TouchpadGestures::TouchpadGestures(ZoomControl*, XournalView*, GtkWidget*) {}
 
 auto TouchpadGestures::consumeSynthesizedScroll(double, double) -> bool { return false; }
+
+void TouchpadGestures::stopGliding() {}
 
 #endif
 
