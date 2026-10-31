@@ -8,6 +8,7 @@
 
 #include <control/tools/TextEditor.h>
 
+#include "control/AnnotationFiles.h"
 #include "control/AudioController.h"
 #include "control/Control.h"
 #include "control/NavigationHistory.h"
@@ -120,14 +121,21 @@ struct ActionProperties<Action::SAVE> {
     // Fork: an explicit save also exports the annotated PDF
     static void callback(GSimpleAction*, GVariant*, Control* ctrl) {
         const bool changed = ctrl->getUndoRedoHandler()->isChanged();
-        const auto path = ctrl->getDocument()->getFilepath();
-        std::error_code error;
-        if (!changed && !path.empty() && fs::exists(path, error)) {
-            // Nothing to save: rewriting the file would only make its export look outdated
-            ctrl->notifyUserSaved(true, false);
-            return;
-        }
-        ctrl->save([ctrl, changed](bool saved) { ctrl->notifyUserSaved(saved, changed); });
+        Document* doc = ctrl->getDocument();
+        doc->lock_shared();
+        const auto xopp = doc->getFilepath();
+        const auto pdf = AnnotationFiles::exportPath(*doc, *ctrl->getSettings());
+        doc->unlock_shared();
+        // Like upstream, an unchanged document is written as well: e.g. layer visibility has no undo entry and a
+        // .xoj becomes a .xopp. An export that was up to date then stays up to date instead of being redone.
+        const bool exportUpToDate = !changed && AnnotationFiles::isExportUpToDate(xopp, pdf);
+        ctrl->save([ctrl, changed, exportUpToDate, pdf](bool saved) {
+            if (saved && exportUpToDate) {
+                std::error_code error;
+                fs::last_write_time(pdf, fs::file_time_type::clock::now(), error);
+            }
+            ctrl->notifyUserSaved(saved, changed);
+        });
     }
 };
 

@@ -257,6 +257,19 @@ auto AnnotationFiles::exportPath(const Document& doc, const Settings& settings) 
     return safeTarget(std::move(target), xopp, doc.getPdfFilepath());
 }
 
+auto AnnotationFiles::isExportUpToDate(const fs::path& xopp, const fs::path& pdf) -> bool {
+    if (xopp.empty() || pdf.empty()) {
+        return false;
+    }
+    std::error_code error;
+    const auto saved = fs::last_write_time(xopp, error);
+    if (error) {
+        return false;
+    }
+    const auto exported = fs::last_write_time(pdf, error);
+    return !error && exported >= saved;
+}
+
 auto AnnotationFiles::exportPathForFile(const fs::path& xopp, const Settings& settings) -> fs::path {
     DocumentHandler handler;
     Document doc(&handler);

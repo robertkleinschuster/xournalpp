@@ -37,6 +37,9 @@ bool isRecoveryCopy(const std::filesystem::path& path);
  */
 std::filesystem::path exportPath(const Document& doc, const Settings& settings);
 
+/// Whether pdf exists and is not older than the document file xopp
+bool isExportUpToDate(const std::filesystem::path& xopp, const std::filesystem::path& pdf);
+
 /// exportPath() for a .xopp file on disk, without loading it
 std::filesystem::path exportPathForFile(const std::filesystem::path& xopp, const Settings& settings);
 
