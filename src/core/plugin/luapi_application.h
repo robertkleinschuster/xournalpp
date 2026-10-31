@@ -176,6 +176,18 @@ static std::tuple<std::optional<std::string>,       // Error
  */
 
 /**
+ * Fork: a PDF viewed read-only must not be changed by plugins either; its changes would be discarded on closing.
+ * Raises a Lua error (and highlights the read-only bar) if the document is read-only.
+ */
+static void checkEditable(lua_State* L) {
+    Control* control = Plugin::getPluginFromLua(L)->getControl();
+    if (control->isReadOnly()) {
+        control->notifyReadOnly();
+        luaL_error(L, "The document is read-only. Enable editing first.");
+    }
+}
+
+/**
  * Renames file 'from' to file 'to' in the file system.
  * Overwrites 'to' if it already exists.
  *
@@ -939,6 +951,7 @@ static int applib_setSidebarPageNo(lua_State* L) {
  * deletes the current layer
  */
 static int applib_layerAction(lua_State* L) {
+    checkEditable(L);
     Plugin* plugin = Plugin::getPluginFromLua(L);
 
     const char* actionStr = luaL_checkstring(L, 1);
@@ -1179,6 +1192,7 @@ static void addStrokeHelper(lua_State* L, std::unique_ptr<Stroke> stroke) {
  *        })
  */
 static int applib_addSplines(lua_State* L) {
+    checkEditable(L);
     Plugin* plugin = Plugin::getPluginFromLua(L);
     Control* ctrl = plugin->getControl();
     std::vector<const Element*> strokes;
@@ -1329,6 +1343,7 @@ static int applib_addSplines(lua_State* L) {
  * })
  */
 static int applib_addStrokes(lua_State* L) {
+    checkEditable(L);
     Plugin* plugin = Plugin::getPluginFromLua(L);
     Control* ctrl = plugin->getControl();
     std::vector<const Element*> strokes;
@@ -1505,6 +1520,7 @@ static int applib_addStrokes(lua_State* L) {
  * }
  */
 static int applib_addTexts(lua_State* L) {
+    checkEditable(L);
     Plugin* plugin = Plugin::getPluginFromLua(L);
     Control* control = plugin->getControl();
     PageRef const& page = control->getCurrentPage();
@@ -1814,6 +1830,7 @@ static int applib_getTexts(lua_State* L) {
  * }
  */
 static int applib_addLinks(lua_State* L) {
+    checkEditable(L);
     Plugin* plugin = Plugin::getPluginFromLua(L);
     Control* control = plugin->getControl();
     PageRef const& page = control->getCurrentPage();
@@ -2286,6 +2303,7 @@ static int applib_refreshPage(lua_State* L) {
  * changes the page background of the current page to graph paper
  */
 static int applib_changeCurrentPageBackground(lua_State* L) {
+    checkEditable(L);
     PageType pt;
     pt.format = PageTypeHandler::getPageTypeFormatForString(luaL_checkstring(L, 1));
     pt.config = luaL_optstring(L, 2, "");
@@ -2440,6 +2458,7 @@ static int applib_changeToolColor(lua_State* L) {
  * changes the page background to the 7th pdf page (absolute mode)
  */
 static int applib_changeBackgroundPdfPageNr(lua_State* L) {
+    checkEditable(L);
     Plugin* plugin = Plugin::getPluginFromLua(L);
 
     size_t nr = as_unsigned(luaL_checkinteger(L, 1));
@@ -3112,6 +3131,7 @@ static int applib_setCurrentPage(lua_State* L) {
  * adds 14.17*6 pt = 3cm to the height of the page (relative mode)
  **/
 static int applib_setPageSize(lua_State* L) {
+    checkEditable(L);
     Plugin* plugin = Plugin::getPluginFromLua(L);
     Control* control = plugin->getControl();
     Document* doc = control->getDocument();
@@ -3222,6 +3242,7 @@ static int applib_setLayerVisibility(lua_State* L) {
  * Changes current layer name to "Custom name 1"
  **/
 static int applib_setCurrentLayerName(lua_State* L) {
+    checkEditable(L);
     Plugin* plugin = Plugin::getPluginFromLua(L);
     Control* control = plugin->getControl();
 
@@ -3242,6 +3263,7 @@ static int applib_setCurrentLayerName(lua_State* L) {
  * Changes background name to "Custom name 1"
  **/
 static int applib_setBackgroundName(lua_State* L) {
+    checkEditable(L);
     Plugin* plugin = Plugin::getPluginFromLua(L);
     Control* control = plugin->getControl();
     PageRef const& page = control->getCurrentPage();
@@ -3497,6 +3519,7 @@ static int applib_openFile(lua_State* L) {
  * maxWidth=400}}}
  */
 static int applib_addImages(lua_State* L) {
+    checkEditable(L);
     Plugin* plugin = Plugin::getPluginFromLua(L);
     Control* control = plugin->getControl();
 
