@@ -13,6 +13,7 @@
 #include <regex>
 #include <sstream>
 #include <string>
+#include <thread>
 
 #include <gio/gio.h>
 #include <gtk/gtk.h>
@@ -105,10 +106,134 @@ static void activate(GtkApplication* app, std::string* str) {
     gtk_window_present(GTK_WINDOW(window));
 }
 
+#ifdef _WIN32
+namespace {
+/// Quotes an argument following the rules of CommandLineToArgvW
+auto quoteArgument(const std::wstring& arg) -> std::wstring {
+    if (!arg.empty() && arg.find_first_of(L" \t\n\v\"") == std::wstring::npos) {
+        return arg;
+    }
+    std::wstring quoted = L"\"";
+    for (auto it = arg.begin();; ++it) {
+        size_t backslashes = 0;
+        while (it != arg.end() && *it == L'\\') {
+            ++it;
+            ++backslashes;
+        }
+        if (it == arg.end()) {
+            quoted.append(backslashes * 2, L'\\');
+            break;
+        }
+        quoted.append(*it == L'"' ? backslashes * 2 + 1 : backslashes, L'\\');
+        quoted.push_back(*it);
+    }
+    quoted.push_back(L'"');
+    return quoted;
+}
+
+auto readAll(HANDLE handle) -> std::string {
+    std::string result;
+    char buffer[4096];
+    DWORD read = 0;
+    while (ReadFile(handle, buffer, sizeof(buffer), &read, nullptr) && read > 0) {
+        result.append(buffer, read);
+    }
+    return result;
+}
+
+struct ChildResult {
+    bool started = false;
+    DWORD pid = 0;
+    DWORD exitCode = 1;
+    std::string output;
+    std::string error;
+};
+
+/**
+ * Fork: runs xournalpp directly with CreateProcessW. GSubprocess goes through an extra helper process
+ * (gspawn-win64-helper) on Windows, which delays every start from the Start menu.
+ */
+auto runDirectly(const fs::path& exe) -> ChildResult {
+    ChildResult result;
+    std::wstring commandLine = quoteArgument(exe.wstring());
+    int nArgs = 0;
+    if (LPWSTR* args = CommandLineToArgvW(GetCommandLineW(), &nArgs)) {
+        for (int i = 1; i < nArgs; i++) {
+            commandLine += L" " + quoteArgument(args[i]);
+        }
+        LocalFree(args);
+    }
+    SetEnvironmentVariableW(L"G_MESSAGES_DEBUG", L"" G_LOG_DOMAIN);  // Print xopp debug messages
+
+    SECURITY_ATTRIBUTES attributes{sizeof(SECURITY_ATTRIBUTES), nullptr, TRUE};
+    HANDLE outRead = nullptr, outWrite = nullptr, errRead = nullptr, errWrite = nullptr;
+    if (!CreatePipe(&outRead, &outWrite, &attributes, 0) || !CreatePipe(&errRead, &errWrite, &attributes, 0)) {
+        return result;
+    }
+    SetHandleInformation(outRead, HANDLE_FLAG_INHERIT, 0);
+    SetHandleInformation(errRead, HANDLE_FLAG_INHERIT, 0);
+    STARTUPINFOW startup{};
+    startup.cb = sizeof(startup);
+    startup.dwFlags = STARTF_USESTDHANDLES;
+    startup.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+    startup.hStdOutput = outWrite;
+    startup.hStdError = errWrite;
+    PROCESS_INFORMATION process{};
+    result.started = CreateProcessW(nullptr, commandLine.data(), nullptr, nullptr, TRUE, 0, nullptr, nullptr, &startup,
+                                    &process);
+    CloseHandle(outWrite);
+    CloseHandle(errWrite);
+    if (result.started) {
+        result.pid = process.dwProcessId;
+        std::cout << "Xournal++ started with PID: " << result.pid << std::endl;
+        std::thread errorReader([&] { result.error = readAll(errRead); });
+        result.output = readAll(outRead);
+        errorReader.join();
+        WaitForSingleObject(process.hProcess, INFINITE);
+        GetExitCodeProcess(process.hProcess, &result.exitCode);
+        CloseHandle(process.hProcess);
+        CloseHandle(process.hThread);
+    }
+    CloseHandle(outRead);
+    CloseHandle(errRead);
+    return result;
+}
+}  // namespace
+#endif
+
 auto main(int argc, char* argv[]) -> int {
     GError* err = nullptr;
     std::stringstream errorlog;
     errorlog.imbue(std::locale::classic());
+
+#ifdef _WIN32
+    const auto exe = Util::getExePath() / "xournalpp.exe";
+    errorlog << "Executing \"" << char_cast(exe.u8string().c_str()) << "\"" << std::endl;
+    auto child = runDirectly(exe);
+    int exitstatus = -1;
+    if (!child.started) {
+        printf("Failed to start\n");
+        errorlog << "Failed to start: error " << GetLastError() << std::endl;
+    } else {
+        errorlog << "Xournal++ started with PID: " << child.pid << std::endl;
+        exitstatus = static_cast<int>(child.exitCode);
+        if (exitstatus == 0) [[likely]] {
+            std::cout << "Execution completed normally" << std::endl;
+            return 0;
+        }
+        std::cout << "Exited with error status: " << exitstatus << std::endl;
+        errorlog << "Exited with error status: " << exitstatus << std::endl;
+        time_t lt = time(nullptr);
+        errorlog << "    Date: " << ctime(&lt) << std::endl;
+        errorlog << xoj::util::getVersionInfo();
+        errorlog << "  (The GDK backend is probably printed out below)\n";
+        errorlog << "\n*** Output: ***\n\n" << child.output;
+        errorlog << "\n\n*** Cerr: ***\n\n" << child.error;
+    }
+    (void)argc;
+    (void)argv;
+    (void)err;
+#else
 
     auto p = [&]() {
         static constexpr auto FLAGS = GSubprocessFlags(G_SUBPROCESS_FLAGS_STDOUT_PIPE
@@ -233,6 +358,8 @@ auto main(int argc, char* argv[]) -> int {
         errorlog << "\n\n*** Cerr: ***\n\n" << stderrBuffer.get();
 #endif
     }
+
+#endif
 
     GtkApplication* app = gtk_application_new(APPLICATION_ID, G_APPLICATION_FLAGS_NONE);
     g_signal_connect_data(app, "activate", xoj::util::wrap_for_g_callback_v<activate>, new std::string(errorlog.str()),
