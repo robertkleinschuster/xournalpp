@@ -53,5 +53,6 @@ private:
 public:
     // Opacity of the background
     static constexpr double SELECTION_OPACITY = 0.3;
+    static constexpr double AREA_OPACITY = 0.1;
 };
 };  // namespace xoj::view

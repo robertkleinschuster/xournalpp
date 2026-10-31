@@ -293,6 +293,10 @@ public:
     void serialize(ObjectOutputStream& out) const override;
     void readSerialized(ObjectInputStream& in) override;
 
+    /// Fork: serializes an element that is not part of the document as if it was a selection of only this element,
+    /// e.g. for the clipboard
+    static void serializeElement(ObjectOutputStream& out, const Element& element);
+
 
     /// Applies the transformation to the selected elements, empties the selection and return the modified elements
     InsertionOrder makeMoveEffective();

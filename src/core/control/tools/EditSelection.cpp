@@ -54,6 +54,14 @@ constexpr int ROTATE_PADDING = 8;
 /// Number of times to trigger edge pan timer per second
 constexpr unsigned int PAN_TIMER_RATE = 30;
 
+/// The selection box around elements with the given bounds: large enough so that anchors do not collapse even for
+/// horizontal/vertical strokes
+static auto paddedBounds(const Range& bounds) -> Rectangle<double> {
+    constexpr double PADDING = 12.;
+    return {bounds.minX - PADDING, bounds.minY - PADDING, bounds.getWidth() + 2 * PADDING,
+            bounds.getHeight() + 2 * PADDING};
+}
+
 namespace SelectionFactory {
 /// @return Bounds and SnappingBounds
 static auto computeBoxes(const InsertionOrder& elts) -> std::pair<Range, Range> {
@@ -221,12 +229,11 @@ EditSelection::EditSelection(Control* ctrl, InsertionOrder elts, const PageRef& 
         undo(ctrl->getUndoRedoHandler()),
         snappingHandler(ctrl->getSettings()) {
     snappingHandler.setPageRef(page);
-    // make the visible bounding box large enough so that anchors do not collapse even for horizontal/vertical strokes
-    const double PADDING = 12.;
-    x = bounds.minX - PADDING;
-    y = bounds.minY - PADDING;
-    width = bounds.getWidth() + 2 * PADDING;
-    height = bounds.getHeight() + 2 * PADDING;
+    const auto rect = paddedBounds(bounds);
+    x = rect.x;
+    y = rect.y;
+    width = rect.width;
+    height = rect.height;
 
     this->contents = std::make_unique<EditSelectionContents>(this->getRect(), this->snappedBounds, this->sourcePage,
                                                              this->sourceLayer, this->view);
@@ -1152,21 +1159,24 @@ void EditSelection::drawDeleteRect(cairo_t* cr, double x, double y, double zoom)
 
 auto EditSelection::getView() -> XojPageView* { return this->view; }
 
+static void serializeBounds(ObjectOutputStream& out, const Rectangle<double>& rect, const Rectangle<double>& snapped,
+                            double rotation) {
+    out.writeDouble(rect.x);
+    out.writeDouble(rect.y);
+    out.writeDouble(rect.width);
+    out.writeDouble(rect.height);
+
+    out.writeDouble(snapped.x);
+    out.writeDouble(snapped.y);
+    out.writeDouble(snapped.width);
+    out.writeDouble(snapped.height);
+
+    out.writeDouble(rotation);
+}
+
 void EditSelection::serialize(ObjectOutputStream& out) const {
     out.writeObject("EditSelection");
-
-    out.writeDouble(this->x);
-    out.writeDouble(this->y);
-    out.writeDouble(this->width);
-    out.writeDouble(this->height);
-
-    out.writeDouble(this->snappedBounds.x);
-    out.writeDouble(this->snappedBounds.y);
-    out.writeDouble(this->snappedBounds.width);
-    out.writeDouble(this->snappedBounds.height);
-
-    out.writeDouble(this->rotation);
-
+    serializeBounds(out, this->getRect(), this->snappedBounds, this->rotation);
     this->contents->serialize(out);
     out.endObject();
 
@@ -1174,6 +1184,20 @@ void EditSelection::serialize(ObjectOutputStream& out) const {
     for (const Element* e: this->getElementsView()) {
         e->serialize(out);
     }
+}
+
+void EditSelection::serializeElement(ObjectOutputStream& out, const Element& element) {
+    // The state of a new selection of the element, see the constructor
+    const Rectangle<double> rect = paddedBounds(Range(element.getBoundingBox()));
+    const Rectangle<double>& snapped = element.getSnappedBounds();
+
+    out.writeObject("EditSelection");
+    serializeBounds(out, rect, snapped, 0);
+    EditSelectionContents::serialize(out, rect, snapped, 0, rect.x, rect.y);
+    out.endObject();
+
+    out.writeInt(1);
+    element.serialize(out);
 }
 
 void EditSelection::readSerialized(ObjectInputStream& in) {

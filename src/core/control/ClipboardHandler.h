@@ -45,8 +45,9 @@ public:
     bool cut();
     bool copy();
 
-    /// Fork: copy a single element that is not part of the document, as if it was copied from a selection
-    void copyElement(const Element& element);
+    /// Fork: copy a single element that is not part of the document, as if it was copied from a selection.
+    /// Other applications get the given text and images of the element, which are only rendered when they ask.
+    void copyElement(const Element& element, std::string text);
 
     void setSelection(EditSelection* selection);
 

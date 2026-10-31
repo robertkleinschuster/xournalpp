@@ -23,7 +23,6 @@
 #include "model/PageRef.h"          // for PageRef
 #include "model/Point.h"            // for Point
 #include "model/Stroke.h"           // for Stroke, BUTT, StrokeTool::HIGHLIG...
-#include "model/TexImage.h"         // for TexImage
 #include "model/XojPage.h"          // for XojPage
 #include "undo/GroupUndoAction.h"   // for GroupUndoAction
 #include "undo/InsertUndoAction.h"  // for InsertUndoAction
@@ -162,7 +161,7 @@ void PdfFloatingToolbox::updateButtons() {
     }
     const auto area = this->pdfElemSelection->getSelectedArea();
     gtk_widget_set_visible(theMainWindow->get("pdfTbCopyArea"),
-                           selectionStyle == XojPdfPageSelectionStyle::Area && area.width >= 1 && area.height >= 1);
+                           this->pdfElemSelection->isAreaSelected() && area.width >= 1 && area.height >= 1);
 }
 
 void PdfFloatingToolbox::copyTextToClipboard() {
@@ -177,8 +176,9 @@ void PdfFloatingToolbox::copyAreaToClipboard() {
     if (!pdfPage) {
         return;
     }
-    if (auto image = PdfElemSelection::createAreaImage(*pdfPage, this->pdfElemSelection->getSelectedArea())) {
-        this->theMainWindow->getControl()->getClipboardHandler()->copyElement(*image);
+    if (auto element = PdfElemSelection::createAreaElement(*pdfPage, this->pdfElemSelection->getSelectedArea())) {
+        this->theMainWindow->getControl()->getClipboardHandler()->copyElement(
+                *element, this->pdfElemSelection->getSelectedText());
     }
 }
 

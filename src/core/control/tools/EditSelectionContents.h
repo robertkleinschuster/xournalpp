@@ -165,6 +165,11 @@ public:
     void serialize(ObjectOutputStream& out) const override;
     void readSerialized(ObjectInputStream& in) override;
 
+    /// Fork: writes what serialize() writes, for contents with the given state
+    static void serialize(ObjectOutputStream& out, const xoj::util::Rectangle<double>& originalBounds,
+                          const xoj::util::Rectangle<double>& lastSnappedBounds, double rotation, double relativeX,
+                          double relativeY);
+
 private:
     /**
      * The original dimensions to calculate the zoom factor for rescaling the items and the offset for moving the

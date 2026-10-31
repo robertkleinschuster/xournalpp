@@ -501,22 +501,28 @@ void EditSelectionContents::paint(cairo_t* cr, double x, double y, double rotati
 }
 
 void EditSelectionContents::serialize(ObjectOutputStream& out) const {
+    serialize(out, this->originalBounds, this->lastSnappedBounds, this->rotation, this->relativeX, this->relativeY);
+}
+
+void EditSelectionContents::serialize(ObjectOutputStream& out, const Rectangle<double>& originalBounds,
+                                      const Rectangle<double>& lastSnappedBounds, double rotation, double relativeX,
+                                      double relativeY) {
     out.writeObject("EditSelectionContents");
 
-    out.writeDouble(this->originalBounds.x);
-    out.writeDouble(this->originalBounds.y);
-    out.writeDouble(this->originalBounds.width);
-    out.writeDouble(this->originalBounds.height);
+    out.writeDouble(originalBounds.x);
+    out.writeDouble(originalBounds.y);
+    out.writeDouble(originalBounds.width);
+    out.writeDouble(originalBounds.height);
 
-    out.writeDouble(this->lastSnappedBounds.x);
-    out.writeDouble(this->lastSnappedBounds.y);
-    out.writeDouble(this->lastSnappedBounds.width);
-    out.writeDouble(this->lastSnappedBounds.height);
+    out.writeDouble(lastSnappedBounds.x);
+    out.writeDouble(lastSnappedBounds.y);
+    out.writeDouble(lastSnappedBounds.width);
+    out.writeDouble(lastSnappedBounds.height);
 
-    out.writeDouble(this->rotation);
+    out.writeDouble(rotation);
 
-    out.writeDouble(this->relativeX);
-    out.writeDouble(this->relativeY);
+    out.writeDouble(relativeX);
+    out.writeDouble(relativeY);
 
     out.endObject();
 }

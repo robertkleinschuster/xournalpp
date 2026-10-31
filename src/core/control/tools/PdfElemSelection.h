@@ -18,6 +18,7 @@
 #include <cairo.h>  // for cairo_region_t, cairo_t
 
 #include "control/ToolEnums.h"  // for ToolType
+#include "model/Element.h"      // for ElementPtr
 #include "model/OverlayBase.h"
 #include "pdf/base/XojPdfPage.h"  // for XojPdfPageSelectionStyle, XojPdfRec...
 #include "util/DispatchPool.h"
@@ -27,7 +28,6 @@
 
 class Range;
 class Control;
-class TexImage;
 
 namespace xoj::view {
 class PdfElementSelectionView;
@@ -73,12 +73,20 @@ public:
     /// Fork: the selected rectangle of an area selection, clipped to the page (may be empty)
     xoj::util::Rectangle<double> getSelectedArea() const;
 
+    /// Fork: true iff the selection was finalized as an area, which can be copied with its graphics
+    bool isAreaSelected() const { return areaSelected; }
+
     /// Fork: the PDF page the selection was made on (may be nullptr)
     const XojPdfPageSPtr& getPdfPage() const { return pdf; }
 
-    /// Fork: renders an area of a PDF page into a one-page PDF, so text, formulas and graphics stay vector graphics.
-    /// The result is placed at the area's position. Returns nullptr for an empty area or on failure.
-    static std::unique_ptr<TexImage> createAreaImage(const XojPdfPage& page, const xoj::util::Rectangle<double>& area);
+    /// Fork: creates an element showing an area of a PDF page, placed at the area's position. Usually it is a
+    /// TexImage holding a one-page PDF, so text, formulas and graphics stay vector graphics. If that PDF is larger
+    /// than AREA_VECTOR_SIZE_LIMIT (e.g. a scanned page, whose image is embedded completely) and a raster image of
+    /// the area is much smaller, it is that raster Image. Returns nullptr for an empty area or on failure.
+    static ElementPtr createAreaElement(const XojPdfPage& page, const xoj::util::Rectangle<double>& area);
+
+    static constexpr size_t AREA_VECTOR_SIZE_LIMIT = 256 * 1024;
+    static constexpr double AREA_RASTER_DPI = 300;
 
     const cairo_region_t* getSelectedRegion() const { return selectedTextRegion.get(); }
 
@@ -117,6 +125,8 @@ private:
     XojPdfRectangle bounds;
 
     bool finalized;
+
+    bool areaSelected = false;
 
     std::shared_ptr<xoj::util::DispatchPool<xoj::view::PdfElementSelectionView>> viewPool;
 };

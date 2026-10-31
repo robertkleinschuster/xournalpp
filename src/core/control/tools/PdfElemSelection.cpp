@@ -1,19 +1,21 @@
 #include "PdfElemSelection.h"
 
 #include <algorithm>  // for max, min
-#include <limits>   // for numeric_limits
-#include <memory>   // for __shared_ptr_access
-#include <utility>  // for move
+#include <limits>     // for numeric_limits
+#include <memory>     // for __shared_ptr_access
+#include <tuple>      // for tuple
+#include <utility>    // for move
 
 #include <cairo-pdf.h>  // for cairo_pdf_surface_create_for_stream
 #include <cairo.h>      // for cairo_line_to, cairo_region_destroy
-#include <gdk/gdk.h>  // for GdkRGBA, gdk_cairo_set_source_rgba
+#include <gdk/gdk.h>    // for GdkRGBA, gdk_cairo_set_source_rgba
 
 #include "control/Control.h"      // for Control
 #include "control/ToolHandler.h"  // for ToolHandler
 #include "gui/PageView.h"         // for XojPageView
 #include "gui/XournalView.h"      // for XournalView
 #include "model/Document.h"       // for Document
+#include "model/Image.h"          // for Image
 #include "model/PageRef.h"        // for PageRef
 #include "model/TexImage.h"       // for TexImage
 #include "model/XojPage.h"        // for XojPage
@@ -67,16 +69,12 @@ bool PdfElemSelection::finalizeSelection(XojPdfPageSelectionStyle style) {
                            strict_cast<gint>(this->selectedText.length()));
 
     if (style == XojPdfPageSelectionStyle::Area) {
-        // Fork: an area can also be copied with its graphics, so keep showing the whole area, even without text
+        // Fork: an area can also be copied with its graphics, so it counts even without text
+        this->areaSelected = true;
         const auto area = getSelectedArea();
-        cairo_rectangle_int_t rect;
-        rect.x = floor_cast<int>(area.x);
-        rect.y = floor_cast<int>(area.y);
-        rect.width = ceil_cast<int>(area.x + area.width) - rect.x;
-        rect.height = ceil_cast<int>(area.y + area.height) - rect.y;
-        this->selectedTextRegion.reset(cairo_region_create_rectangle(&rect), xoj::util::adopt);
         return area.width >= 1 && area.height >= 1;
     }
+    this->areaSelected = false;
     return !this->selectedTextRects.empty();
 }
 
@@ -91,20 +89,17 @@ auto PdfElemSelection::getSelectedArea() const -> xoj::util::Rectangle<double> {
     return {x1, y1, x2 - x1, y2 - y1};
 }
 
-static auto pdfWriteFunction(std::string* data, const unsigned char* bytes, unsigned int length) -> cairo_status_t {
+static auto writeToString(std::string* data, const unsigned char* bytes, unsigned int length) -> cairo_status_t {
     data->append(reinterpret_cast<const char*>(bytes), length);
     return CAIRO_STATUS_SUCCESS;
 }
 
-auto PdfElemSelection::createAreaImage(const XojPdfPage& page, const xoj::util::Rectangle<double>& area)
-        -> std::unique_ptr<TexImage> {
-    if (area.width < 1 || area.height < 1) {
-        return nullptr;
-    }
-
+/// Renders the area into a one-page PDF. Text, formulas and graphics stay vector graphics, but the PDF contains all
+/// of the page's content (clipped to the area), e.g. the complete image of a scanned page.
+static auto renderAreaPdf(const XojPdfPage& page, const xoj::util::Rectangle<double>& area) -> std::string {
     std::string data;
-    cairo_surface_t* surface = cairo_pdf_surface_create_for_stream(
-            reinterpret_cast<cairo_write_func_t>(pdfWriteFunction), &data, area.width, area.height);
+    cairo_surface_t* surface = cairo_pdf_surface_create_for_stream(reinterpret_cast<cairo_write_func_t>(writeToString),
+                                                                   &data, area.width, area.height);
     cairo_t* cr = cairo_create(surface);
     cairo_translate(cr, -area.x, -area.y);
     cairo_rectangle(cr, area.x, area.y, area.width, area.height);
@@ -113,10 +108,54 @@ auto PdfElemSelection::createAreaImage(const XojPdfPage& page, const xoj::util::
     cairo_destroy(cr);
     cairo_surface_finish(surface);
     cairo_surface_destroy(surface);
+    return data;
+}
+
+/// Renders the area into a PNG with the given resolution. Returns the PNG data and its size in pixels.
+static auto renderAreaPng(const XojPdfPage& page, const xoj::util::Rectangle<double>& area, double dpi)
+        -> std::tuple<std::string, int, int> {
+    const double factor = dpi / 72.0;
+    const int width = std::max(1, ceil_cast<int>(area.width * factor));
+    const int height = std::max(1, ceil_cast<int>(area.height * factor));
+    cairo_surface_t* surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width, height);
+    cairo_t* cr = cairo_create(surface);
+    cairo_scale(cr, factor, factor);
+    cairo_translate(cr, -area.x, -area.y);
+    page.render(cr);
+    cairo_destroy(cr);
+
+    std::string data;
+    if (cairo_surface_write_to_png_stream(surface, reinterpret_cast<cairo_write_func_t>(writeToString), &data) !=
+        CAIRO_STATUS_SUCCESS) {
+        data.clear();
+    }
+    cairo_surface_destroy(surface);
+    return {std::move(data), width, height};
+}
+
+auto PdfElemSelection::createAreaElement(const XojPdfPage& page, const xoj::util::Rectangle<double>& area)
+        -> ElementPtr {
+    if (area.width < 1 || area.height < 1) {
+        return nullptr;
+    }
+
+    std::string pdf = renderAreaPdf(page, area);
+
+    if (pdf.size() > AREA_VECTOR_SIZE_LIMIT) {
+        // Probably a large image, of which only a part is needed: use a raster image of the area if it is much smaller
+        auto [png, width, height] = renderAreaPng(page, area, AREA_RASTER_DPI);
+        if (!png.empty() && 2 * png.size() < pdf.size()) {
+            auto image = std::make_unique<Image>();
+            image->setImage(std::move(png));
+            image->setTransformation(xoj::util::Matrix::SCALING(area.width / width, area.height / height));
+            image->move(area.x, area.y);
+            return image;
+        }
+    }
 
     // A TexImage displays and stores PDF data; without LaTeX source it is not opened in the LaTeX editor.
     auto image = std::make_unique<TexImage>();
-    if (GError* err = nullptr; !image->loadData(std::move(data), &err)) {
+    if (GError* err = nullptr; !image->loadData(std::move(pdf), &err)) {
         g_warning("Could not copy the PDF area: %s", err ? err->message : "invalid PDF data");
         g_clear_error(&err);
         return nullptr;
@@ -135,12 +174,18 @@ XojPdfPageSelectionStyle PdfElemSelection::selectionStyleForToolType(ToolType ty
 }
 
 Range PdfElemSelection::getRegionBbox() const {
+    Range rg;
     if (this->selectedTextRegion && cairo_region_num_rectangles(this->selectedTextRegion.get()) > 0) {
         cairo_rectangle_int_t bbox{};
         cairo_region_get_extents(this->selectedTextRegion.get(), &bbox);
-        return Range(bbox.x, bbox.y, bbox.x + bbox.width, bbox.y + bbox.height);
+        rg = Range(bbox.x, bbox.y, bbox.x + bbox.width, bbox.y + bbox.height);
     }
-    return Range();  // empty range
+    if (this->areaSelected) {
+        const auto area = getSelectedArea();
+        // Includes the area's outline
+        rg = rg.unite(Range(area.x - 2, area.y - 2, area.x + area.width + 2, area.y + area.height + 2));
+    }
+    return rg;
 }
 
 void PdfElemSelection::currentPos(double x, double y, XojPdfPageSelectionStyle style) {
@@ -148,10 +193,13 @@ void PdfElemSelection::currentPos(double x, double y, XojPdfPageSelectionStyle s
         return;
     }
 
+    // The area of a finalized area selection depends on the bounds, so get its old extent first
+    Range rg = getRegionBbox();
+    this->areaSelected = false;
+
     // Update the end position
     this->bounds.x2 = x;
     this->bounds.y2 = y;
-    Range rg = getRegionBbox();
 
     // Repaint the selected text area
     switch (style) {
@@ -180,6 +228,10 @@ void PdfElemSelection::currentPos(double x, double y, XojPdfPageSelectionStyle s
 }
 
 auto PdfElemSelection::contains(double x, double y) -> bool {
+    if (this->areaSelected) {
+        const auto area = getSelectedArea();
+        return x >= area.x && x <= area.x + area.width && y >= area.y && y <= area.y + area.height;
+    }
     if (!this->selectedTextRegion) {
         return false;
     }

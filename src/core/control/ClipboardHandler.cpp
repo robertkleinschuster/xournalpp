@@ -1,7 +1,8 @@
 #include "ClipboardHandler.h"
 
-#include <algorithm>  // for max
-#include <set>        // for multiset, operator!=
+#include <algorithm>   // for max
+#include <functional>  // for function
+#include <set>         // for multiset, operator!=
 #include <utility>  // for move
 #include <vector>   // for vector
 
@@ -73,6 +74,53 @@ auto ElementCompareFunc(const Element* a, const Element* b) -> bool {
 static GdkAtom atomSvg1 = gdk_atom_intern_static_string("image/svg");
 static GdkAtom atomSvg2 = gdk_atom_intern_static_string("image/svg+xml");
 
+static auto svgWriteFunction(GString* string, const unsigned char* data, unsigned int length) -> cairo_status_t {
+    g_string_append_len(string, reinterpret_cast<const gchar*>(data), length);
+    return CAIRO_STATUS_SUCCESS;
+}
+
+using DrawFunction = std::function<void(cairo_t*)>;
+
+/// Renders a drawing of the given area into an image with 300 DPI
+static auto renderPng(const xoj::util::Rectangle<double>& area, const DrawFunction& draw) -> GdkPixbuf* {
+    double dpiFactor = 1.0 / Util::DPI_NORMALIZATION_FACTOR * 300.0;
+
+    int width = std::max(1, static_cast<int>(area.width * dpiFactor));
+    int height = std::max(1, static_cast<int>(area.height * dpiFactor));
+    cairo_surface_t* surfacePng = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width, height);
+    cairo_t* crPng = cairo_create(surfacePng);
+    cairo_scale(crPng, dpiFactor, dpiFactor);
+
+    cairo_translate(crPng, -area.x, -area.y);
+    draw(crPng);
+
+    cairo_destroy(crPng);
+
+    GdkPixbuf* image = gdk_pixbuf_get_from_surface(surfacePng, 0, 0, width, height);
+
+    cairo_surface_destroy(surfacePng);
+    return image;
+}
+
+/// Renders a drawing of the given area into an SVG
+static auto renderSvg(const xoj::util::Rectangle<double>& area, const DrawFunction& draw) -> string {
+    GString* svgString = g_string_sized_new(1048576);  // 1MB
+
+    cairo_surface_t* surfaceSVG = cairo_svg_surface_create_for_stream(
+            reinterpret_cast<cairo_write_func_t>(svgWriteFunction), svgString, area.width, area.height);
+    cairo_t* crSVG = cairo_create(surfaceSVG);
+
+    cairo_translate(crSVG, -area.x, -area.y);
+    draw(crSVG);
+
+    cairo_surface_destroy(surfaceSVG);
+    cairo_destroy(crSVG);
+
+    string svg(svgString->str, svgString->len);
+    g_string_free(svgString, true);
+    return svg;
+}
+
 // The contents of the clipboard
 class ClipboardContents {
 public:
@@ -83,8 +131,17 @@ public:
         this->str = str;
     }
 
+    /// Fork: the contents of a single element, whose images are only rendered when another application asks for them
+    ClipboardContents(string text, ElementPtr element, GString* str) {
+        this->text = std::move(text);
+        this->element = std::move(element);
+        this->str = str;
+    }
+
     ~ClipboardContents() {
-        g_object_unref(this->image);
+        if (this->image) {
+            g_object_unref(this->image);
+        }
         g_string_free(this->str, true);
     }
 
@@ -98,8 +155,10 @@ public:
         } else if (target == gdk_atom_intern_static_string("image/png") ||
                    target == gdk_atom_intern_static_string("image/jpeg") ||
                    target == gdk_atom_intern_static_string("image/gif")) {
+            contents->renderImages();
             gtk_selection_data_set_pixbuf(selection, contents->image);
         } else if (atomSvg1 == target || atomSvg2 == target) {
+            contents->renderImages();
             gtk_selection_data_set(selection, target, 8, reinterpret_cast<guchar const*>(contents->svg.c_str()),
                                    static_cast<gint>(contents->svg.length()));
         } else if (atomXournal == target) {
@@ -110,17 +169,53 @@ public:
 
     static void clearFunction(GtkClipboard* clipboard, ClipboardContents* contents) { delete contents; }
 
+    /// Puts the contents on the clipboard, which takes ownership of them
+    static void setClipboard(GtkClipboard* clipboard, ClipboardContents* contents) {
+        GtkTargetList* list = gtk_target_list_new(nullptr, 0);
+        GtkTargetEntry* targets = nullptr;
+        int n_targets = 0;
+
+        // if we have text elements...
+        if (!contents->text.empty()) {
+            gtk_target_list_add_text_targets(list, 0);
+        }
+        // we always copy an image to clipboard
+        gtk_target_list_add_image_targets(list, 0, true);
+        gtk_target_list_add(list, atomSvg1, 0, 0);
+        gtk_target_list_add(list, atomSvg2, 0, 0);
+        gtk_target_list_add(list, atomXournal, 0, 0);
+
+        targets = gtk_target_table_new_from_list(list, &n_targets);
+
+        gtk_clipboard_set_with_data(clipboard, targets, static_cast<guint>(n_targets),
+                                    reinterpret_cast<GtkClipboardGetFunc>(ClipboardContents::getFunction),
+                                    reinterpret_cast<GtkClipboardClearFunc>(ClipboardContents::clearFunction),
+                                    contents);
+        gtk_clipboard_set_can_store(clipboard, nullptr, 0);
+
+        gtk_target_table_free(targets, n_targets);
+        gtk_target_list_unref(list);
+    }
+
 private:
+    void renderImages() {
+        if (!this->element) {
+            return;
+        }
+        auto view = xoj::view::ElementView::createFromElement(this->element.get());
+        auto draw = [&view](cairo_t* cr) { view->draw(xoj::view::Context::createDefault(cr)); };
+        const xoj::util::Rectangle<double> area = this->element->getBoundingBox();
+        this->image = renderPng(area, draw);
+        this->svg = renderSvg(area, draw);
+        this->element.reset();
+    }
+
     string text;
-    GdkPixbuf* image;
+    GdkPixbuf* image = nullptr;
     string svg;
     GString* str;
+    ElementPtr element;  ///< Not rendered yet
 };
-
-static auto svgWriteFunction(GString* string, const unsigned char* data, unsigned int length) -> cairo_status_t {
-    g_string_append_len(string, reinterpret_cast<const gchar*>(data), length);
-    return CAIRO_STATUS_SUCCESS;
-}
 
 auto ClipboardHandler::copy() -> bool {
     if (!this->selection) {
@@ -158,144 +253,34 @@ auto ClipboardHandler::copy() -> bool {
     }
 
     /////////////////////////////////////////////////////////////////
-    // prepare image contents: PNG
+    // prepare image contents: PNG and SVG
     /////////////////////////////////////////////////////////////////
 
-    double dpiFactor = 1.0 / Util::DPI_NORMALIZATION_FACTOR * 300.0;
-
-    int width = static_cast<int>(selection->getWidth() * dpiFactor);
-    int height = static_cast<int>(selection->getHeight() * dpiFactor);
-    cairo_surface_t* surfacePng = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width, height);
-    cairo_t* crPng = cairo_create(surfacePng);
-    cairo_scale(crPng, dpiFactor, dpiFactor);
-
-    cairo_translate(crPng, -selection->getOriginalXOnView(), -selection->getOriginalYOnView());
-
+    const xoj::util::Rectangle<double> area{selection->getOriginalXOnView(), selection->getOriginalYOnView(),
+                                            selection->getWidth(), selection->getHeight()};
     xoj::view::ElementContainerView view(this->selection);
-    view.draw(xoj::view::Context::createDefault(crPng));
+    auto draw = [&view](cairo_t* cr) { view.draw(xoj::view::Context::createDefault(cr)); };
 
-    cairo_destroy(crPng);
-
-    GdkPixbuf* image = gdk_pixbuf_get_from_surface(surfacePng, 0, 0, width, height);
-
-    cairo_surface_destroy(surfacePng);
-
-    /////////////////////////////////////////////////////////////////
-    // prepare image contents: SVG
-    /////////////////////////////////////////////////////////////////
-
-    GString* svgString = g_string_sized_new(1048576);  // 1MB
-
-    cairo_surface_t* surfaceSVG =
-            cairo_svg_surface_create_for_stream(reinterpret_cast<cairo_write_func_t>(svgWriteFunction), svgString,
-                                                selection->getWidth(), selection->getHeight());
-    cairo_t* crSVG = cairo_create(surfaceSVG);
-
-    cairo_translate(crSVG, -selection->getOriginalXOnView(), -selection->getOriginalYOnView());
-    view.draw(xoj::view::Context::createDefault(crSVG));
-
-    cairo_surface_destroy(surfaceSVG);
-    cairo_destroy(crSVG);
+    GdkPixbuf* image = renderPng(area, draw);
+    string svg = renderSvg(area, draw);
 
     /////////////////////////////////////////////////////////////////
     // copy to clipboard
     /////////////////////////////////////////////////////////////////
 
-    GtkTargetList* list = gtk_target_list_new(nullptr, 0);
-    GtkTargetEntry* targets = nullptr;
-    int n_targets = 0;
-
-    // if we have text elements...
-    if (!text.empty()) {
-        gtk_target_list_add_text_targets(list, 0);
-    }
-    // we always copy an image to clipboard
-    gtk_target_list_add_image_targets(list, 0, true);
-    gtk_target_list_add(list, atomSvg1, 0, 0);
-    gtk_target_list_add(list, atomSvg2, 0, 0);
-    gtk_target_list_add(list, atomXournal, 0, 0);
-
-    targets = gtk_target_table_new_from_list(list, &n_targets);
-
-    auto* contents = new ClipboardContents(text, image, svgString->str, out.stealData());
-
-    gtk_clipboard_set_with_data(this->clipboard, targets, static_cast<guint>(n_targets),
-                                reinterpret_cast<GtkClipboardGetFunc>(ClipboardContents::getFunction),
-                                reinterpret_cast<GtkClipboardClearFunc>(ClipboardContents::clearFunction), contents);
-    gtk_clipboard_set_can_store(this->clipboard, nullptr, 0);
-
-    gtk_target_table_free(targets, n_targets);
-    gtk_target_list_unref(list);
-
-    g_string_free(svgString, true);
+    ClipboardContents::setClipboard(this->clipboard,
+                                    new ClipboardContents(text, image, std::move(svg), out.stealData()));
 
     return true;
 }
 
-void ClipboardHandler::copyElement(const Element& element) {
-    const xoj::util::Rectangle<double> bounds = element.getBoundingBox();
-    const xoj::util::Rectangle<double> snapped = element.getSnappedBounds();
-
-    // Same layout as EditSelection::serialize(), with the padding of the EditSelection constructor
-    const double PADDING = 12.;
-    const xoj::util::Rectangle<double> rect{bounds.x - PADDING, bounds.y - PADDING, bounds.width + 2 * PADDING,
-                                            bounds.height + 2 * PADDING};
-
+void ClipboardHandler::copyElement(const Element& element, std::string text) {
     ObjectOutputStream out(new BinObjectEncoding());
     out.writeString(PROJECT_STRING);
+    EditSelection::serializeElement(out, element);
 
-    out.writeObject("EditSelection");
-    for (double d: {rect.x, rect.y, rect.width, rect.height, snapped.x, snapped.y, snapped.width, snapped.height}) {
-        out.writeDouble(d);
-    }
-    out.writeDouble(0);  // rotation
-
-    out.writeObject("EditSelectionContents");
-    for (double d: {rect.x, rect.y, rect.width, rect.height, snapped.x, snapped.y, snapped.width, snapped.height}) {
-        out.writeDouble(d);
-    }
-    out.writeDouble(0);  // rotation
-    out.writeDouble(rect.x);
-    out.writeDouble(rect.y);
-    out.endObject();
-
-    out.endObject();
-
-    out.writeInt(1);
-    element.serialize(out);
-
-    // A PNG for pasting into other applications
-    const double dpiFactor = 1.0 / Util::DPI_NORMALIZATION_FACTOR * 300.0;
-    const int width = std::max(1, static_cast<int>(bounds.width * dpiFactor));
-    const int height = std::max(1, static_cast<int>(bounds.height * dpiFactor));
-    cairo_surface_t* surfacePng = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width, height);
-    cairo_t* crPng = cairo_create(surfacePng);
-    cairo_set_source_rgb(crPng, 1, 1, 1);
-    cairo_paint(crPng);
-    cairo_scale(crPng, dpiFactor, dpiFactor);
-    cairo_translate(crPng, -bounds.x, -bounds.y);
-    xoj::view::ElementView::createFromElement(&element)->draw(xoj::view::Context::createDefault(crPng));
-    cairo_destroy(crPng);
-
-    GdkPixbuf* image = gdk_pixbuf_get_from_surface(surfacePng, 0, 0, width, height);
-    cairo_surface_destroy(surfacePng);
-
-    GtkTargetList* list = gtk_target_list_new(nullptr, 0);
-    gtk_target_list_add_image_targets(list, 0, true);
-    gtk_target_list_add(list, atomXournal, 0, 0);
-
-    int n_targets = 0;
-    GtkTargetEntry* targets = gtk_target_table_new_from_list(list, &n_targets);
-
-    auto* contents = new ClipboardContents("", image, "", out.stealData());
-
-    gtk_clipboard_set_with_data(this->clipboard, targets, static_cast<guint>(n_targets),
-                                reinterpret_cast<GtkClipboardGetFunc>(ClipboardContents::getFunction),
-                                reinterpret_cast<GtkClipboardClearFunc>(ClipboardContents::clearFunction), contents);
-    gtk_clipboard_set_can_store(this->clipboard, nullptr, 0);
-
-    gtk_target_table_free(targets, n_targets);
-    gtk_target_list_unref(list);
+    ClipboardContents::setClipboard(this->clipboard,
+                                    new ClipboardContents(std::move(text), element.clone(), out.stealData()));
 }
 
 void ClipboardHandler::setSelection(EditSelection* selection) {
