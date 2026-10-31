@@ -68,8 +68,9 @@ bool PdfElemSelection::finalizeSelection(XojPdfPageSelectionStyle style) {
     gtk_clipboard_set_text(gtk_clipboard_get(GDK_SELECTION_PRIMARY), this->selectedText.c_str(),
                            strict_cast<gint>(this->selectedText.length()));
 
-    if (style == XojPdfPageSelectionStyle::Area) {
-        // Fork: an area can also be copied with its graphics, so it counts even without text
+    if (style == XojPdfPageSelectionStyle::Area && this->toolType == TOOL_COPY_PDF_AREA) {
+        // Fork: an area is copied with its graphics, so it counts even without text. Selecting text in a rectangle
+        // still needs text, like upstream.
         this->areaSelected = true;
         const auto area = getSelectedArea();
         return area.width >= 1 && area.height >= 1;
