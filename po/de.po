@@ -5080,3 +5080,11 @@ msgstr "Suche läuft …"
 #: src/core/gui/sidebar/ProjectExplorerSidebar.cpp
 msgid "“{1}” could not be updated to use the renamed PDF."
 msgstr "„{1}“ konnte nicht auf das umbenannte PDF umgestellt werden."
+
+#: src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "A document keeps its file extension."
+msgstr "Ein Dokument behält seine Dateiendung."
+
+#: src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "Some files could not be renamed back."
+msgstr "Einige Dateien konnten nicht zurückbenannt werden."

@@ -277,8 +277,6 @@ public:
         createSyncButton();
         gtk_box_pack_start(GTK_BOX(searchRow), syncButton, false, false, 0);
         gtk_box_pack_start(GTK_BOX(root), searchRow, false, false, 0);
-        createActionRow();
-        gtk_box_pack_start(GTK_BOX(root), actionRow, false, false, 0);
 
         folderIcon = g_themed_icon_new("folder-symbolic");
         folderOpenIcon = g_themed_icon_new("folder-open-symbolic");
@@ -327,7 +325,6 @@ public:
                              if (self->updatingTree) {
                                  return;
                              }
-                             self->updateActionRow();
                              if (auto selected = self->selectedPath(); !selected.empty()) {
                                  self->selectedFile = selected;
                                  self->scheduleSave();
@@ -336,8 +333,11 @@ public:
                          this);
 
         longPress = gtk_gesture_long_press_new(GTK_WIDGET(tree));
-        gtk_gesture_single_set_touch_only(GTK_GESTURE_SINGLE(longPress), true);
+        // Windows delivers taps as emulated mouse events, so the gesture cannot be touch only; onLongPress() ignores
+        // the mouse, which opens the menu with a right click
+        gtk_gesture_single_set_touch_only(GTK_GESTURE_SINGLE(longPress), false);
         g_signal_connect(longPress, "pressed", G_CALLBACK(onLongPress), this);
+        g_signal_connect(longPress, "end", G_CALLBACK(onLongPressEnd), this);
 
         scrolled = gtk_scrolled_window_new(nullptr, nullptr);
         gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scrolled), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
@@ -826,63 +826,9 @@ private:
                 this);
     }
 
-    // --- Action row ---
-
-    /// Fork: fixed buttons for the explorer's file actions (also in the context menu), large enough for a finger
-    void createActionRow() {
-        actionRow = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 2);
-        g_object_set(actionRow, "margin-start", 6, "margin-end", 6, "margin-bottom", 4, nullptr);
-        auto addButton = [this](const char* icon, const char* tooltip, void (*callback)(GtkButton*, gpointer)) {
-            GtkWidget* button = gtk_button_new_from_icon_name(icon, GTK_ICON_SIZE_LARGE_TOOLBAR);
-            gtk_button_set_relief(GTK_BUTTON(button), GTK_RELIEF_NONE);
-            gtk_widget_set_tooltip_text(button, tooltip);
-            gtk_widget_set_size_request(button, 40, 36);
-            g_signal_connect(button, "clicked", G_CALLBACK(callback), this);
-            gtk_box_pack_start(GTK_BOX(actionRow), button, false, false, 0);
-            return button;
-        };
-        addButton(
-                "document-new-symbolic", _("New Document"), +[](GtkButton*, gpointer data) {
-                    auto* self = static_cast<ProjectExplorerSidebar*>(data);
-                    const auto target = self->selectedTarget();
-                    self->createDocument(self->targetDirectory(utf8(target.path), target.kind));
-                });
-        addButton(
-                "folder-new-symbolic", _("New Folder"), +[](GtkButton*, gpointer data) {
-                    auto* self = static_cast<ProjectExplorerSidebar*>(data);
-                    const auto target = self->selectedTarget();
-                    self->createFolder(self->targetDirectory(utf8(target.path), target.kind));
-                });
-        renameButton = addButton(
-                "document-edit-symbolic", _("Rename…"), +[](GtkButton*, gpointer data) {
-                    auto* self = static_cast<ProjectExplorerSidebar*>(data);
-                    if (const auto target = self->selectedTarget(); self->canModify(target)) {
-                        self->renameEntry(target.path, target.kind, target.owner);
-                    }
-                });
-        deleteButton = addButton(
-                "edit-delete-symbolic", _("Delete"), +[](GtkButton*, gpointer data) {
-                    auto* self = static_cast<ProjectExplorerSidebar*>(data);
-                    if (const auto target = self->selectedTarget(); self->canModify(target)) {
-                        self->deleteEntry(target.path, target.kind == KIND_DIRECTORY);
-                    }
-                });
-        updateActionRow();
-    }
-
-    void updateActionRow() {
-        if (!renameButton) {
-            return;
-        }
-        const bool modifiable = canModify(selectedTarget());
-        gtk_widget_set_sensitive(renameButton, modifiable);
-        gtk_widget_set_sensitive(deleteButton, modifiable);
-    }
-
     void updateView() {
         const bool hasProject = !projectRoot.empty();
         gtk_widget_set_visible(searchRow, hasProject);
-        gtk_widget_set_visible(actionRow, hasProject);
         gtk_widget_set_visible(scrolled, hasProject);
         gtk_widget_set_visible(emptyView, !hasProject);
     }
@@ -1558,13 +1504,26 @@ private:
     }
 
     static void onLongPress(GtkGesture* gesture, gdouble x, gdouble y, ProjectExplorerSidebar* self) {
+        GdkDevice* device = gtk_gesture_get_device(gesture);
+        const auto source = device ? gdk_device_get_source(device) : GDK_SOURCE_MOUSE;
+        if (source != GDK_SOURCE_TOUCHSCREEN && source != GDK_SOURCE_PEN && source != GDK_SOURCE_ERASER) {
+            return;
+        }
         gint binX = 0;
         gint binY = 0;
         gtk_tree_view_convert_widget_to_bin_window_coords(self->tree, static_cast<gint>(x), static_cast<gint>(y), &binX,
                                                           &binY);
-        // Claim the touch sequence so the release does not also activate the row
+        // Claim the sequence so the release does not also activate the row
         gtk_gesture_set_state(gesture, GTK_EVENT_SEQUENCE_CLAIMED);
-        self->showContextMenu(binX, binY, nullptr);
+        self->longPressAt = std::pair{binX, binY};
+    }
+
+    /// Opens the context menu once the finger is lifted: under a finger still on the screen, lifting it would
+    /// activate the menu entry below it
+    static void onLongPressEnd(GtkGesture*, GdkEventSequence*, ProjectExplorerSidebar* self) {
+        if (auto at = std::exchange(self->longPressAt, std::nullopt)) {
+            self->showContextMenu(at->first, at->second, nullptr);
+        }
     }
 
     // --- Context menu ---
@@ -2009,13 +1968,22 @@ private:
                 continue;
             }
             // Fork: a document is renamed together with its source PDF (if named like it) and exported PDF
-            if (kind == KIND_DOCUMENT && Util::hasXournalFileExt(oldPath) && oldPath.extension() == ".xopp") {
-                renameDocumentGroup(oldPath, newPath);
+            if (kind == KIND_DOCUMENT && isXoppFile(oldPath)) {
+                if (!isXoppFile(newPath)) {
+                    showError(_("A document keeps its file extension."), utf8(oldPath.extension()));
+                    continue;
+                }
+                auto group = documentGroup(oldPath, newPath);
+                if (auto problem = groupConflict(group)) {
+                    showError(_("An entry with this name already exists."), *problem);
+                    continue;
+                }
+                renameDocumentGroup(oldPath, std::move(group));
                 return;
             }
             // Fork: renaming the exported PDF keeps it the export of its document
             if (kind == KIND_NESTED && !owner.empty() && Util::hasPdfFileExt(oldPath) &&
-                AnnotationFiles::exportPathForFile(owner, *control->getSettings()) == oldPath) {
+                isSameFile(AnnotationFiles::exportPathForFile(owner, *control->getSettings()), oldPath)) {
                 renameExport(owner, oldPath, newPath);
                 return;
             }
@@ -2042,76 +2010,134 @@ private:
         return a == b || fs::equivalent(a, b, error);
     }
 
-    /// Renames the files (in this order), undoing the renames done so far if one fails; returns whether all worked
-    auto renameAll(const std::vector<std::pair<fs::path, fs::path>>& moves) -> bool {
+    static auto isXoppFile(const fs::path& path) -> bool {
+        gchar* folded = g_utf8_casefold(utf8(path.extension()).c_str(), -1);
+        const bool xopp = std::strcmp(folded, ".xopp") == 0;
+        g_free(folded);
+        return xopp;
+    }
+
+    /// Renames the files (in this order). If one fails, the renames done so far are undone. Returns the done renames,
+    /// or nullopt on failure.
+    auto renameAll(const std::vector<std::pair<fs::path, fs::path>>& moves)
+            -> std::optional<std::vector<std::pair<fs::path, fs::path>>> {
         std::vector<std::pair<fs::path, fs::path>> done;
         for (const auto& [from, to]: moves) {
             std::error_code error;
             fs::rename(from, to, error);
             if (error) {
-                for (auto it = done.rbegin(); it != done.rend(); ++it) {
-                    std::error_code undoError;
-                    fs::rename(it->second, it->first, undoError);
-                }
-                showError(_("The entry could not be renamed."), utf8(from.filename()) + ": " + error.message());
-                return false;
+                const auto message = utf8(from.filename()) + ": " + error.message();
+                undoRenames(done);
+                showError(_("The entry could not be renamed."), message);
+                return std::nullopt;
             }
             done.emplace_back(from, to);
         }
         for (const auto& [from, to]: done) {
             movedEntry(from, to);
         }
-        return true;
+        return done;
     }
 
+    /// Renames back, in reverse order; reports files that could not be renamed back
+    void undoRenames(const std::vector<std::pair<fs::path, fs::path>>& done) {
+        std::string failed;
+        for (auto it = done.rbegin(); it != done.rend(); ++it) {
+            std::error_code error;
+            fs::rename(it->second, it->first, error);
+            if (error) {
+                failed += utf8(it->second.filename()) + " → " + utf8(it->first.filename()) + ": " + error.message() +
+                          "\n";
+            }
+        }
+        if (!failed.empty()) {
+            showError(_("Some files could not be renamed back."), failed);
+        }
+    }
+
+    /// A document with the files that are renamed along with it
+    struct DocumentGroup {
+        std::vector<std::pair<fs::path, fs::path>> moves;  ///< the document first
+        std::optional<fs::path> newSource;
+        std::optional<std::string> newExportName;
+        fs::path newXopp;
+    };
+
     /**
-     * Renames a document together with the files that belong to it, so that everything stays consistent: its source
-     * PDF if it is named like the document (a PDF with another name keeps it), and its exported PDF if its name starts
-     * with the document's name. The document records the new names. An open document is saved and closed first (its
-     * files cannot be renamed while open) and opened again at the same page.
+     * The renames for renaming a document: its source PDF if it is named like the document (a PDF with another name
+     * keeps it), and its exported PDF if its name starts with the document's name. The recorded export name follows
+     * the new name also if the exported PDF does not exist (yet).
      */
-    void renameDocumentGroup(const fs::path& oldXopp, const fs::path& newXopp) {
+    auto documentGroup(const fs::path& oldXopp, const fs::path& newXopp) const -> DocumentGroup {
+        DocumentGroup group;
+        group.newXopp = newXopp;
+        group.moves.emplace_back(oldXopp, newXopp);
         const auto dir = oldXopp.parent_path();
         const auto oldStem = utf8(oldXopp.stem());
         const auto newStem = utf8(newXopp.stem());
-        std::vector<std::pair<fs::path, fs::path>> moves{{oldXopp, newXopp}};
-        std::optional<fs::path> newSource;
-        std::optional<std::string> newExportName;
         std::error_code error;
         if (const auto source = AnnotationFiles::recordedSourcePdf(oldXopp);
             !source.empty() && fs::exists(source, error) && isSameFile(source.parent_path(), dir) &&
             utf8(source.stem()) == oldStem) {
-            newSource = dir / pathFromUtf8((newStem + utf8(source.extension())).c_str());
-            moves.emplace_back(source, *newSource);
+            group.newSource = dir / pathFromUtf8((newStem + utf8(source.extension())).c_str());
+            group.moves.emplace_back(source, *group.newSource);
         }
-        if (const auto exported = AnnotationFiles::exportPathForFile(oldXopp, *control->getSettings());
-            !exported.empty() && fs::exists(exported, error)) {
-            const auto name = utf8(exported.filename());
-            if (name.rfind(oldStem, 0) == 0) {
-                newExportName = newStem + name.substr(oldStem.size());
-                moves.emplace_back(exported, dir / pathFromUtf8(newExportName->c_str()));
+        const auto exported = AnnotationFiles::exportPathForFile(oldXopp, *control->getSettings());
+        const auto exportName = utf8(exported.filename());
+        if (!exported.empty() && exportName.rfind(oldStem, 0) == 0) {
+            group.newExportName = newStem + exportName.substr(oldStem.size());
+            if (fs::exists(exported, error)) {
+                group.moves.emplace_back(exported, dir / pathFromUtf8(group.newExportName->c_str()));
             }
         }
-        for (const auto& [from, to]: moves) {
-            if (!isSameFile(from, to) && fs::exists(to, error)) {
-                showError(_("An entry with this name already exists."), utf8(to.filename()));
-                return;
-            }
-        }
+        return group;
+    }
 
-        auto perform = [this, moves, newXopp, newSource, newExportName]() -> bool {
-            if (!renameAll(moves)) {
-                return false;
-            }
-            if (newSource || newExportName) {
-                if (auto problem =
-                            AnnotationFiles::relinkDocument(newXopp, newSource, newExportName, *control->getSettings());
-                    !problem.empty()) {
-                    showError(FC(_F("“{1}” could not be updated to use the renamed PDF.") % utf8(newXopp.filename())),
-                              problem);
+    /// The name of a target that exists already or is the target of two renames, if any
+    auto groupConflict(const DocumentGroup& group) const -> std::optional<std::string> {
+        std::vector<fs::path> targets;
+        std::error_code error;
+        for (const auto& [from, to]: group.moves) {
+            for (const auto& other: targets) {
+                if (isSameFile(other, to) || utf8(other.filename()) == utf8(to.filename())) {
+                    return utf8(to.filename());
                 }
             }
-            showEntry(newXopp);
+            targets.push_back(to);
+            if (!isSameFile(from, to) && fs::exists(to, error)) {
+                return utf8(to.filename());
+            }
+        }
+        return std::nullopt;
+    }
+
+    /**
+     * Renames a document together with its files (see documentGroup()), so that everything stays consistent; the
+     * document records the new names. If recording them fails, the renames are undone. An open document is saved
+     * (asking like Save does) and closed first, since its files cannot be renamed while open, and opened again at the
+     * same page.
+     */
+    void renameDocumentGroup(const fs::path& oldXopp, DocumentGroup group) {
+        auto perform = [this, group]() -> bool {
+            auto done = renameAll(group.moves);
+            if (!done) {
+                return false;
+            }
+            if (group.newSource || group.newExportName) {
+                if (auto problem = AnnotationFiles::relinkDocument(group.newXopp, group.newSource, group.newExportName,
+                                                                   *control->getSettings());
+                    !problem.empty()) {
+                    undoRenames(*done);
+                    for (const auto& [from, to]: *done) {
+                        movedEntry(to, from);
+                    }
+                    showError(FC(_F("“{1}” could not be updated to use the renamed PDF.") %
+                                 utf8(group.newXopp.filename())),
+                              problem);
+                    return false;
+                }
+            }
+            showEntry(group.newXopp);
             return true;
         };
 
@@ -2121,15 +2147,9 @@ private:
         }
         // The open document: save it, close it, rename, open it again at the same page
         const auto page = static_cast<int>(control->getCurrentPageNo());
+        const auto newXopp = group.newXopp;
         std::weak_ptr<void> alive = lifetime;
-        autoSaver->saveNow([this, alive, perform, oldXopp, newXopp, page](bool saved) {
-            if (alive.expired()) {
-                return;
-            }
-            if (!saved) {
-                showError(_("The document could not be saved."), {});
-                return;
-            }
+        auto closeAndRename = [this, alive, perform, oldXopp, newXopp, page]() {
             control->close(
                     [this, alive, perform, oldXopp, newXopp, page](bool closed) {
                         if (alive.expired() || !closed) {
@@ -2139,20 +2159,45 @@ private:
                         control->openFileWithoutSavingTheCurrentDocument(reopen, false, page, [](bool) {});
                     },
                     true, false, true);
+        };
+        if (!control->getUndoRedoHandler()->isChanged()) {
+            closeAndRename();
+            return;
+        }
+        // A regular save (not the automatic one, which skips files it must not overwrite): nothing is discarded
+        control->save([alive, closeAndRename](bool saved) {
+            if (!alive.expired() && saved) {
+                closeAndRename();
+            }
         });
     }
 
     /// Renames the exported PDF of a document, which records the new name so it keeps exporting there
     void renameExport(const fs::path& xopp, const fs::path& oldPdf, const fs::path& newPdf) {
-        if (!renameAll({{oldPdf, newPdf}})) {
+        auto relink = [this, xopp, oldPdf, newPdf]() {
+            if (!renameAll({{oldPdf, newPdf}})) {
+                return;
+            }
+            if (auto problem = AnnotationFiles::relinkDocument(xopp, std::nullopt, utf8(newPdf.filename()),
+                                                               *control->getSettings());
+                !problem.empty()) {
+                showError(FC(_F("“{1}” could not be updated to use the renamed PDF.") % utf8(xopp.filename())),
+                          problem);
+            }
+            showEntry(newPdf);
+        };
+        // The document records the name in its file: save an open document first, so that rewriting its file does not
+        // happen behind unsaved changes (the next save reads the recorded name from the file)
+        if (isSameFile(control->getDocument()->getFilepath(), xopp) && control->getUndoRedoHandler()->isChanged()) {
+            std::weak_ptr<void> alive = lifetime;
+            control->save([alive, relink](bool saved) {
+                if (!alive.expired() && saved) {
+                    relink();
+                }
+            });
             return;
         }
-        if (auto problem = AnnotationFiles::relinkDocument(xopp, std::nullopt, utf8(newPdf.filename()),
-                                                           *control->getSettings());
-            !problem.empty()) {
-            showError(FC(_F("“{1}” could not be updated to use the renamed PDF.") % utf8(xopp.filename())), problem);
-        }
-        showEntry(newPdf);
+        relink();
     }
 
     void relinkSourcePdf(const fs::path& xopp, const fs::path& pdf) {
@@ -2221,6 +2266,56 @@ private:
             return;
         }
 
+        Document* document = control->getDocument();
+        document->lock_shared();
+        const auto documentPath = document->getFilepath();
+        const auto pdfPath = document->getPdfFilepath();
+        document->unlock_shared();
+        const bool deletesDocument = !documentPath.empty() && Util::isChildOrEquivalent(documentPath, path);
+        const bool deletesPdf = !pdfPath.empty() && Util::isChildOrEquivalent(pdfPath, path);
+        if (!deletesDocument && !deletesPdf) {
+            trash(path);
+            refresh(true);
+            return;
+        }
+        // Files of the open document cannot be deleted while it is open (the PDF is in use): close it first. The user
+        // deletes it on purpose, so its unsaved changes are discarded instead of offering to save (which would write
+        // the deleted file again), and it is not exported on closing.
+        const auto page = static_cast<int>(control->getCurrentPageNo());
+        if (!deletesDocument) {
+            // Only its PDF goes: keep the annotations
+            std::weak_ptr<void> alive = lifetime;
+            autoSaver->saveNow([this, alive, path, documentPath, page](bool) {
+                if (!alive.expired()) {
+                    closeThenDelete(path, documentPath, page);
+                }
+            });
+            return;
+        }
+        closeThenDelete(path, {}, page);
+    }
+
+    /// Closes the open document, moves path to the trash and opens reopen (if any) again at the page
+    void closeThenDelete(const fs::path& path, const fs::path& reopen, int page) {
+        std::weak_ptr<void> alive = lifetime;
+        control->close(
+                [this, alive, path, reopen, page](bool closed) {
+                    if (alive.expired() || !closed) {
+                        return;
+                    }
+                    trash(path);
+                    std::error_code error;
+                    if (!reopen.empty() && fs::exists(reopen, error)) {
+                        control->openFileWithoutSavingTheCurrentDocument(reopen, false, page, [](bool) {});
+                    } else {
+                        control->newFile();
+                    }
+                    refresh(true);
+                },
+                true, false, true);
+    }
+
+    auto trash(const fs::path& path) -> bool {
         GFile* file = g_file_new_for_path(utf8(path).c_str());
         GError* error = nullptr;
         const bool trashed = g_file_trash(file, nullptr, &error);
@@ -2228,22 +2323,8 @@ private:
         if (!trashed) {
             showError(_("The entry could not be moved to the trash."), error->message);
             g_error_free(error);
-            return;
         }
-        // The open document no longer exists on disk: replace it with a new, empty one
-        const auto documentPath = control->getDocument()->getFilepath();
-        if (!documentPath.empty() && Util::isChildOrEquivalent(documentPath, path)) {
-            // The user deleted it on purpose: discard its unsaved changes instead of offering to save (which would
-            // write the deleted file again) and do not export it on closing
-            control->close(
-                    [ctrl = control](bool closed) {
-                        if (closed) {
-                            ctrl->newFile();
-                        }
-                    },
-                    true, false, true);
-        }
-        refresh(true);
+        return trashed;
     }
 
     static auto onKeyPress(GtkWidget*, GdkEventKey* event, ProjectExplorerSidebar* self) -> gboolean {
@@ -2321,9 +2402,6 @@ private:
     GtkWidget* scrolled{};
     GtkWidget* emptyView{};
     GtkWidget* searchRow{};
-    GtkWidget* actionRow{};
-    GtkWidget* renameButton{};
-    GtkWidget* deleteButton{};
     GtkWidget* syncButton{};
     GtkWidget* syncIcon{};
     GtkWidget* syncSpinner{};
@@ -2362,6 +2440,7 @@ private:
         }
     }
     GtkGesture* longPress{};
+    std::optional<std::pair<gint, gint>> longPressAt;  ///< where a long press was recognized, until it ends
     fs::path projectRoot;
     std::string query;
     bool searching = false;
