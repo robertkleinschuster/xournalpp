@@ -511,8 +511,7 @@ auto XojPageView::onButtonDoublePressEvent(const PositionInputData& pos) -> bool
                 // Simulate a button press; there's too many things that we
                 // could forget to do if we manually call startText
                 this->onButtonPressEvent(pos);
-            } else if (elemType == ELEMENT_TEXIMAGE && !static_cast<const TexImage*>(object)->getText().empty()) {
-                // Fork: a copied PDF area is a TexImage without LaTeX source, it cannot be edited
+            } else if (elemType == ELEMENT_TEXIMAGE && static_cast<const TexImage*>(object)->hasLatexSource()) {
                 // Open latex dialog... but only after the buttonReleaseEvent
                 this->inLatexDoubleClick = true;
                 // Make sure the buttonReleaseEvent corresponding to this device gets processed

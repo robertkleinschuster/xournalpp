@@ -61,6 +61,9 @@ public:
     void setText(std::string text);
     std::string getText() const;
 
+    /// Fork: false for a copied PDF area, which is stored as a TexImage without LaTeX source and cannot be edited
+    bool hasLatexSource() const { return !text.empty(); }
+
     auto cloneTexImage() const -> std::unique_ptr<TexImage>;
     auto clone() const -> ElementPtr override;
 

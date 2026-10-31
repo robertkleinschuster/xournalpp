@@ -62,7 +62,7 @@ TEST(PdfAreaCopy, keepsAreaSizeAndPosition) {
 
     auto image = PdfElemSelection::createAreaImage(*page, {30, 40, 200, 120});
     ASSERT_TRUE(image);
-    EXPECT_TRUE(image->getText().empty());
+    EXPECT_FALSE(image->hasLatexSource());
 
     const auto box = image->getBoundingBox();
     EXPECT_NEAR(box.x, 30, 1e-6);
@@ -104,7 +104,7 @@ TEST(PdfAreaCopy, survivesClipboardSerialization) {
     pasted.readSerialized(in);
     g_string_free(data, true);
 
-    EXPECT_TRUE(pasted.getText().empty());
+    EXPECT_FALSE(pasted.hasLatexSource());
     EXPECT_EQ(pasted.getBinaryData(), image->getBinaryData());
     EXPECT_NEAR(pasted.getBoundingBox().width, page->getWidth(), 1e-6);
     EXPECT_EQ(countPaintedPixels(pasted), countPaintedPixels(*image));

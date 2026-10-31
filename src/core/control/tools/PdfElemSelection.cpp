@@ -109,7 +109,7 @@ auto PdfElemSelection::createAreaImage(const XojPdfPage& page, const xoj::util::
     cairo_translate(cr, -area.x, -area.y);
     cairo_rectangle(cr, area.x, area.y, area.width, area.height);
     cairo_clip(cr);
-    page.renderForPrinting(cr);
+    page.render(cr);  // like on screen: renderForPrinting() leaves out annotations not flagged for printing
     cairo_destroy(cr);
     cairo_surface_finish(surface);
     cairo_surface_destroy(surface);

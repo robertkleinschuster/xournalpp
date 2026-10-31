@@ -71,6 +71,9 @@ public:
 private:
     void show();
 
+    /// Fork: show only the buttons that apply to the current selection
+    void updateButtons();
+
     static gboolean getOverlayPosition(GtkOverlay* overlay, GtkWidget* widget, GdkRectangle* allocation,
                                        PdfFloatingToolbox* self);
 

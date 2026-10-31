@@ -149,13 +149,20 @@ void PdfFloatingToolbox::strikethroughCb(GtkButton* button, PdfFloatingToolbox* 
 void PdfFloatingToolbox::show() {
     gtk_widget_hide(this->floatingToolbox);  // force showing in new position
     gtk_widget_show_all(this->floatingToolbox);
+    updateButtons();
+}
 
-    // Fork: marking text changes the document, copying it does not
+void PdfFloatingToolbox::updateButtons() {
+    // Fork: marking text changes the document, copying it does not. An area may contain no text, only graphics.
+    const bool hasText = !this->pdfElemSelection->getSelectedTextRects().empty();
     const bool editable = !theMainWindow->getControl()->isReadOnly();
+    gtk_widget_set_visible(theMainWindow->get("pdfTbCopyText"), hasText);
     for (const char* id: {"pdfTbHighlight", "pdfTbUnderline", "pdfTbStrikethrough"}) {
-        gtk_widget_set_visible(theMainWindow->get(id), editable);
+        gtk_widget_set_visible(theMainWindow->get(id), hasText && editable);
     }
-    gtk_widget_set_visible(theMainWindow->get("pdfTbCopyArea"), selectionStyle == XojPdfPageSelectionStyle::Area);
+    const auto area = this->pdfElemSelection->getSelectedArea();
+    gtk_widget_set_visible(theMainWindow->get("pdfTbCopyArea"),
+                           selectionStyle == XojPdfPageSelectionStyle::Area && area.width >= 1 && area.height >= 1);
 }
 
 void PdfFloatingToolbox::copyTextToClipboard() {
@@ -259,8 +266,7 @@ void PdfFloatingToolbox::switchSelectTypeCb(GtkButton* button, PdfFloatingToolbo
     pft->pdfElemSelection->setToolType(type);
     pft->selectionStyle = PdfElemSelection::selectionStyleForToolType(type);
     pft->pdfElemSelection->finalizeSelectionAndRepaint(pft->selectionStyle);
-    gtk_widget_set_visible(pft->theMainWindow->get("pdfTbCopyArea"),
-                           pft->selectionStyle == XojPdfPageSelectionStyle::Area);
+    pft->updateButtons();
 }
 
 bool PdfFloatingToolbox::isHidden() const { return !gtk_widget_is_visible(this->floatingToolbox); }
