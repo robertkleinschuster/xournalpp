@@ -39,7 +39,8 @@ public:
 public:
     /// Prepare an XML tree corresponding to the document - Needs read-only access to the Document
     void prepareSave(const Document* doc, const fs::path& target);
-    /// Writes the XML to the given path. Does not access the Document instance
+    /// Writes the XML to the given path. Does not access the Document instance. Fork: the file is replaced only once
+    /// the new content is complete; on failure the previous file is kept
     void saveTo(const fs::path& filepath, ProgressListener* listener = nullptr);
     /**
      * Writes the XML to the given stream. Does not access the Document instance with the following exception:

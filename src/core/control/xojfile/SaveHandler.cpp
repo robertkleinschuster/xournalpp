@@ -407,19 +407,35 @@ void SaveHandler::writeBackgroundName(XmlNode* background, ConstPageRef p) {
 }
 
 void SaveHandler::saveTo(const fs::path& filepath, ProgressListener* listener) {
-    GzOutputStream out(filepath);
+    // Fork: write a temporary file and replace the file only once it is complete, so a failed save (or a crash while
+    // saving) keeps the previous version. The "~" suffix hides it from the project explorer and git.
+    auto tempfile = fs::path{filepath} += "~";
+    {
+        GzOutputStream out(tempfile);
 
-    if (!out.getLastError().empty()) {
-        this->errorMessage = out.getLastError();
-        return;
+        if (!out.getLastError().empty()) {
+            this->errorMessage = out.getLastError();
+            return;
+        }
+
+        saveTo(&out, filepath, listener);
+
+        out.close();
+
+        if (this->errorMessage.empty()) {
+            this->errorMessage = out.getLastError();
+        }
     }
 
-    saveTo(&out, filepath, listener);
-
-    out.close();
-
-    if (this->errorMessage.empty()) {
-        this->errorMessage = out.getLastError();
+    std::error_code error;
+    if (!this->errorMessage.empty()) {
+        fs::remove(tempfile, error);
+        return;
+    }
+    fs::rename(tempfile, filepath, error);
+    if (error) {
+        this->errorMessage = FS(_F("Could not replace \"{1}\": {2}") % filepath.u8string() % error.message());
+        fs::remove(tempfile, error);
     }
 }
 

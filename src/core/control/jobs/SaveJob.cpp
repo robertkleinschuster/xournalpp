@@ -114,23 +114,7 @@ auto SaveJob::save() -> bool {
     h.setExportFilename(AnnotationFiles::exportFilenameForSave(*doc, target, *control->getSettings()));
     doc->unlock_shared();
 
-    auto const createBackup = doc->shouldCreateBackupOnSave();
-
-    if (createBackup) {
-        try {
-            // Note: The backup must be created for the target as this is the filepath
-            // which will be written to. Do not use the `filepath` variable!
-            Util::safeRenameFile(target, fs::path{target} += "~");
-        } catch (const fs::filesystem_error& fe) {
-            g_warning("Could not create backup! Failed with %s", fe.what());
-            this->lastError = FS(_F("Save file error, can't backup: {1}") % std::string(fe.what()));
-            if (!control->getWindow()) {
-                g_error("%s", this->lastError.c_str());
-            }
-            return false;
-        }
-    }
-
+    // Fork: no backup copy is needed, the file is only replaced once the new version is complete
     h.saveTo(target, this->control);
 
     doc->lock();
@@ -144,15 +128,6 @@ auto SaveJob::save() -> bool {
             g_error("%s", this->lastError.c_str());
         }
         return false;
-    } else if (createBackup) {
-        try {
-            // If a backup was created it can be removed now since no error occured during the save
-            fs::remove(fs::path{target} += "~");
-        } catch (const fs::filesystem_error& fe) {
-            g_warning("Could not delete backup! Failed with %s", fe.what());
-        }
-    } else {
-        doc->setCreateBackupOnSave(true);
     }
 
     return true;
