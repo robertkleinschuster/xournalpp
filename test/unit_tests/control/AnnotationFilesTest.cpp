@@ -168,6 +168,39 @@ TEST_F(AnnotationFilesTest, documentFollowsItsRenamedPdf) {
     EXPECT_GT(doc->getPdfPageCount(), 0U);
 }
 
+TEST_F(AnnotationFilesTest, renamedDocumentGroupStaysLinked) {
+    // Renaming a document with its source and exported PDF, as the project explorer does
+    fs::copy_file(GET_TESTFILE(u8"packaged_xopp/pdfBackground/old.xopp.bg.pdf"), dir / "VO8.pdf");
+    std::ofstream(dir / "VO8_annotated.pdf") << "x";
+    {
+        DocumentHandler handler;
+        Document doc(&handler);
+        ASSERT_TRUE(doc.readPdf(dir / "VO8.pdf", true, false));
+        doc.setFilepath(dir / "VO8.xopp");
+        SaveHandler saver;
+        saver.prepareSave(&doc, dir / "VO8.xopp");
+        saver.setExportFilename("VO8_annotated.pdf");
+        saver.saveTo(dir / "VO8.xopp");
+        ASSERT_TRUE(saver.getErrorMessage().empty()) << saver.getErrorMessage();
+    }
+    for (const auto& [from, to]:
+         {std::pair{"VO8.xopp", "VO8 Induktion.xopp"}, std::pair{"VO8.pdf", "VO8 Induktion.pdf"},
+          std::pair{"VO8_annotated.pdf", "VO8 Induktion_annotated.pdf"}}) {
+        fs::rename(dir / from, dir / to);
+    }
+    const auto xopp = dir / "VO8 Induktion.xopp";
+    EXPECT_EQ(AnnotationFiles::relinkDocument(xopp, dir / "VO8 Induktion.pdf",
+                                              std::string("VO8 Induktion_annotated.pdf"), *settings),
+              "");
+
+    EXPECT_EQ(AnnotationFiles::recordedSourcePdf(xopp).filename(), "VO8 Induktion.pdf");
+    EXPECT_EQ(AnnotationFiles::recordedExportFilename(xopp), "VO8 Induktion_annotated.pdf");
+    EXPECT_EQ(AnnotationFiles::exportPathForFile(xopp, *settings).filename(), "VO8 Induktion_annotated.pdf");
+    const auto found = AnnotationFiles::documentForSource(dir / "VO8 Induktion.pdf");
+    ASSERT_TRUE(found);
+    EXPECT_EQ(found->filename(), xopp.filename());
+}
+
 TEST_F(AnnotationFilesTest, recoveryCopiesAreNotTheDocumentOfAPdf) {
     fs::copy_file(GET_TESTFILE(u8"packaged_xopp/pdfBackground/old.xopp.bg.pdf"), dir / "Lecture.pdf");
     DocumentHandler handler;

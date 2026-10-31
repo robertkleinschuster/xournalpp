@@ -277,6 +277,8 @@ public:
         createSyncButton();
         gtk_box_pack_start(GTK_BOX(searchRow), syncButton, false, false, 0);
         gtk_box_pack_start(GTK_BOX(root), searchRow, false, false, 0);
+        createActionRow();
+        gtk_box_pack_start(GTK_BOX(root), actionRow, false, false, 0);
 
         folderIcon = g_themed_icon_new("folder-symbolic");
         folderOpenIcon = g_themed_icon_new("folder-open-symbolic");
@@ -325,6 +327,7 @@ public:
                              if (self->updatingTree) {
                                  return;
                              }
+                             self->updateActionRow();
                              if (auto selected = self->selectedPath(); !selected.empty()) {
                                  self->selectedFile = selected;
                                  self->scheduleSave();
@@ -823,9 +826,63 @@ private:
                 this);
     }
 
+    // --- Action row ---
+
+    /// Fork: fixed buttons for the explorer's file actions (also in the context menu), large enough for a finger
+    void createActionRow() {
+        actionRow = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 2);
+        g_object_set(actionRow, "margin-start", 6, "margin-end", 6, "margin-bottom", 4, nullptr);
+        auto addButton = [this](const char* icon, const char* tooltip, void (*callback)(GtkButton*, gpointer)) {
+            GtkWidget* button = gtk_button_new_from_icon_name(icon, GTK_ICON_SIZE_LARGE_TOOLBAR);
+            gtk_button_set_relief(GTK_BUTTON(button), GTK_RELIEF_NONE);
+            gtk_widget_set_tooltip_text(button, tooltip);
+            gtk_widget_set_size_request(button, 40, 36);
+            g_signal_connect(button, "clicked", G_CALLBACK(callback), this);
+            gtk_box_pack_start(GTK_BOX(actionRow), button, false, false, 0);
+            return button;
+        };
+        addButton(
+                "document-new-symbolic", _("New Document"), +[](GtkButton*, gpointer data) {
+                    auto* self = static_cast<ProjectExplorerSidebar*>(data);
+                    const auto target = self->selectedTarget();
+                    self->createDocument(self->targetDirectory(utf8(target.path), target.kind));
+                });
+        addButton(
+                "folder-new-symbolic", _("New Folder"), +[](GtkButton*, gpointer data) {
+                    auto* self = static_cast<ProjectExplorerSidebar*>(data);
+                    const auto target = self->selectedTarget();
+                    self->createFolder(self->targetDirectory(utf8(target.path), target.kind));
+                });
+        renameButton = addButton(
+                "document-edit-symbolic", _("Rename…"), +[](GtkButton*, gpointer data) {
+                    auto* self = static_cast<ProjectExplorerSidebar*>(data);
+                    if (const auto target = self->selectedTarget(); self->canModify(target)) {
+                        self->renameEntry(target.path, target.kind, target.owner);
+                    }
+                });
+        deleteButton = addButton(
+                "edit-delete-symbolic", _("Delete"), +[](GtkButton*, gpointer data) {
+                    auto* self = static_cast<ProjectExplorerSidebar*>(data);
+                    if (const auto target = self->selectedTarget(); self->canModify(target)) {
+                        self->deleteEntry(target.path, target.kind == KIND_DIRECTORY);
+                    }
+                });
+        updateActionRow();
+    }
+
+    void updateActionRow() {
+        if (!renameButton) {
+            return;
+        }
+        const bool modifiable = canModify(selectedTarget());
+        gtk_widget_set_sensitive(renameButton, modifiable);
+        gtk_widget_set_sensitive(deleteButton, modifiable);
+    }
+
     void updateView() {
         const bool hasProject = !projectRoot.empty();
         gtk_widget_set_visible(searchRow, hasProject);
+        gtk_widget_set_visible(actionRow, hasProject);
         gtk_widget_set_visible(scrolled, hasProject);
         gtk_widget_set_visible(emptyView, !hasProject);
     }
@@ -1317,6 +1374,30 @@ private:
 
     // --- Selection and navigation ---
 
+    /// The selected entry: its path, kind and, for a nested PDF, the document it belongs to
+    struct Target {
+        fs::path path;
+        gint kind = KIND_PLACEHOLDER;
+        fs::path owner;
+    };
+
+    auto selectedTarget() const -> Target {
+        GtkTreeIter iter;
+        if (!tree || !gtk_tree_selection_get_selected(gtk_tree_view_get_selection(tree), nullptr, &iter)) {
+            return {};
+        }
+        Target target{pathFromUtf8(pathAt(&iter).c_str()), kindAt(&iter), {}};
+        if (target.kind == KIND_NESTED) {
+            target.owner = owningDocument(&iter);
+        }
+        return target;
+    }
+
+    /// Whether the entry can be renamed or deleted (not the project folder itself)
+    auto canModify(const Target& target) const -> bool {
+        return target.kind != KIND_PLACEHOLDER && !target.path.empty() && target.path != projectRoot;
+    }
+
     auto selectedPath() -> std::string {
         GtkTreeIter iter;
         if (!gtk_tree_selection_get_selected(gtk_tree_view_get_selection(tree), nullptr, &iter) ||
@@ -1525,7 +1606,7 @@ private:
         const bool isRoot = !target.empty() && pathFromUtf8(target.c_str()) == projectRoot;
         if (kind != KIND_PLACEHOLDER && !isRoot) {
             addMenuItem(menu, _("Rename…"),
-                        [this, target, kind] { renameEntry(pathFromUtf8(target.c_str()), kind == KIND_DOCUMENT); });
+                        [this, target, kind, document] { renameEntry(pathFromUtf8(target.c_str()), kind, document); });
             addMenuItem(menu, _("Delete"),
                         [this, target, kind] { deleteEntry(pathFromUtf8(target.c_str()), kind == KIND_DIRECTORY); });
             addMenuSeparator(menu);
@@ -1908,7 +1989,9 @@ private:
         }
     }
 
-    void renameEntry(const fs::path& oldPath, bool document) {
+    /// owner: for a nested PDF (kind KIND_NESTED), the document it belongs to
+    void renameEntry(const fs::path& oldPath, gint kind, const fs::path& owner = {}) {
+        const bool document = kind == KIND_DOCUMENT || kind == KIND_NESTED;
         std::string name = utf8(oldPath.filename());
         while (true) {
             auto entered = askForName(_("Rename"), _("Rename"), name);
@@ -1924,6 +2007,17 @@ private:
             if (auto problem = checkName(name, newPath, oldPath)) {
                 showError(problem->first, problem->second);
                 continue;
+            }
+            // Fork: a document is renamed together with its source PDF (if named like it) and exported PDF
+            if (kind == KIND_DOCUMENT && Util::hasXournalFileExt(oldPath) && oldPath.extension() == ".xopp") {
+                renameDocumentGroup(oldPath, newPath);
+                return;
+            }
+            // Fork: renaming the exported PDF keeps it the export of its document
+            if (kind == KIND_NESTED && !owner.empty() && Util::hasPdfFileExt(oldPath) &&
+                AnnotationFiles::exportPathForFile(owner, *control->getSettings()) == oldPath) {
+                renameExport(owner, oldPath, newPath);
+                return;
             }
             // Fork: the document annotating a renamed PDF keeps using it as background
             const auto annotating =
@@ -1941,6 +2035,124 @@ private:
             showEntry(newPath);
             return;
         }
+    }
+
+    static auto isSameFile(const fs::path& a, const fs::path& b) -> bool {
+        std::error_code error;
+        return a == b || fs::equivalent(a, b, error);
+    }
+
+    /// Renames the files (in this order), undoing the renames done so far if one fails; returns whether all worked
+    auto renameAll(const std::vector<std::pair<fs::path, fs::path>>& moves) -> bool {
+        std::vector<std::pair<fs::path, fs::path>> done;
+        for (const auto& [from, to]: moves) {
+            std::error_code error;
+            fs::rename(from, to, error);
+            if (error) {
+                for (auto it = done.rbegin(); it != done.rend(); ++it) {
+                    std::error_code undoError;
+                    fs::rename(it->second, it->first, undoError);
+                }
+                showError(_("The entry could not be renamed."), utf8(from.filename()) + ": " + error.message());
+                return false;
+            }
+            done.emplace_back(from, to);
+        }
+        for (const auto& [from, to]: done) {
+            movedEntry(from, to);
+        }
+        return true;
+    }
+
+    /**
+     * Renames a document together with the files that belong to it, so that everything stays consistent: its source
+     * PDF if it is named like the document (a PDF with another name keeps it), and its exported PDF if its name starts
+     * with the document's name. The document records the new names. An open document is saved and closed first (its
+     * files cannot be renamed while open) and opened again at the same page.
+     */
+    void renameDocumentGroup(const fs::path& oldXopp, const fs::path& newXopp) {
+        const auto dir = oldXopp.parent_path();
+        const auto oldStem = utf8(oldXopp.stem());
+        const auto newStem = utf8(newXopp.stem());
+        std::vector<std::pair<fs::path, fs::path>> moves{{oldXopp, newXopp}};
+        std::optional<fs::path> newSource;
+        std::optional<std::string> newExportName;
+        std::error_code error;
+        if (const auto source = AnnotationFiles::recordedSourcePdf(oldXopp);
+            !source.empty() && fs::exists(source, error) && isSameFile(source.parent_path(), dir) &&
+            utf8(source.stem()) == oldStem) {
+            newSource = dir / pathFromUtf8((newStem + utf8(source.extension())).c_str());
+            moves.emplace_back(source, *newSource);
+        }
+        if (const auto exported = AnnotationFiles::exportPathForFile(oldXopp, *control->getSettings());
+            !exported.empty() && fs::exists(exported, error)) {
+            const auto name = utf8(exported.filename());
+            if (name.rfind(oldStem, 0) == 0) {
+                newExportName = newStem + name.substr(oldStem.size());
+                moves.emplace_back(exported, dir / pathFromUtf8(newExportName->c_str()));
+            }
+        }
+        for (const auto& [from, to]: moves) {
+            if (!isSameFile(from, to) && fs::exists(to, error)) {
+                showError(_("An entry with this name already exists."), utf8(to.filename()));
+                return;
+            }
+        }
+
+        auto perform = [this, moves, newXopp, newSource, newExportName]() -> bool {
+            if (!renameAll(moves)) {
+                return false;
+            }
+            if (newSource || newExportName) {
+                if (auto problem =
+                            AnnotationFiles::relinkDocument(newXopp, newSource, newExportName, *control->getSettings());
+                    !problem.empty()) {
+                    showError(FC(_F("“{1}” could not be updated to use the renamed PDF.") % utf8(newXopp.filename())),
+                              problem);
+                }
+            }
+            showEntry(newXopp);
+            return true;
+        };
+
+        if (!isSameFile(control->getDocument()->getFilepath(), oldXopp)) {
+            perform();
+            return;
+        }
+        // The open document: save it, close it, rename, open it again at the same page
+        const auto page = static_cast<int>(control->getCurrentPageNo());
+        std::weak_ptr<void> alive = lifetime;
+        autoSaver->saveNow([this, alive, perform, oldXopp, newXopp, page](bool saved) {
+            if (alive.expired()) {
+                return;
+            }
+            if (!saved) {
+                showError(_("The document could not be saved."), {});
+                return;
+            }
+            control->close(
+                    [this, alive, perform, oldXopp, newXopp, page](bool closed) {
+                        if (alive.expired() || !closed) {
+                            return;
+                        }
+                        const auto reopen = perform() ? newXopp : oldXopp;
+                        control->openFileWithoutSavingTheCurrentDocument(reopen, false, page, [](bool) {});
+                    },
+                    true, false, true);
+        });
+    }
+
+    /// Renames the exported PDF of a document, which records the new name so it keeps exporting there
+    void renameExport(const fs::path& xopp, const fs::path& oldPdf, const fs::path& newPdf) {
+        if (!renameAll({{oldPdf, newPdf}})) {
+            return;
+        }
+        if (auto problem = AnnotationFiles::relinkDocument(xopp, std::nullopt, utf8(newPdf.filename()),
+                                                           *control->getSettings());
+            !problem.empty()) {
+            showError(FC(_F("“{1}” could not be updated to use the renamed PDF.") % utf8(xopp.filename())), problem);
+        }
+        showEntry(newPdf);
     }
 
     void relinkSourcePdf(const fs::path& xopp, const fs::path& pdf) {
@@ -2042,15 +2254,14 @@ private:
         if (!gtk_tree_selection_get_selected(gtk_tree_view_get_selection(self->tree), nullptr, &iter)) {
             return false;
         }
-        const auto kind = self->kindAt(&iter);
-        const auto path = pathFromUtf8(self->pathAt(&iter).c_str());
-        if (kind == KIND_PLACEHOLDER || path == self->projectRoot) {
+        const auto target = self->selectedTarget();
+        if (!self->canModify(target)) {
             return false;
         }
         if (event->keyval == GDK_KEY_F2) {
-            self->renameEntry(path, kind == KIND_DOCUMENT);
+            self->renameEntry(target.path, target.kind, target.owner);
         } else {
-            self->deleteEntry(path, kind == KIND_DIRECTORY);
+            self->deleteEntry(target.path, target.kind == KIND_DIRECTORY);
         }
         return true;
     }
@@ -2110,6 +2321,9 @@ private:
     GtkWidget* scrolled{};
     GtkWidget* emptyView{};
     GtkWidget* searchRow{};
+    GtkWidget* actionRow{};
+    GtkWidget* renameButton{};
+    GtkWidget* deleteButton{};
     GtkWidget* syncButton{};
     GtkWidget* syncIcon{};
     GtkWidget* syncSpinner{};
