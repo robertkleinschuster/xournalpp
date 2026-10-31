@@ -42,7 +42,10 @@ GzOutputStream::~GzOutputStream() {
 auto GzOutputStream::getLastError() const -> const std::string& { return this->error; }
 
 void GzOutputStream::write(const char* data, size_t len) {
-    xoj_assert(len != 0 && this->fp);
+    xoj_assert(this->fp);
+    if (len == 0) {  // e.g. an empty attribute value. gzwrite() returns 0 for it, so there is nothing to write
+        return;
+    }
     auto written = gzwrite(this->fp, data, strict_cast<unsigned int>(len));
     if (as_unsigned(written) != len) {
         int errnum = 0;

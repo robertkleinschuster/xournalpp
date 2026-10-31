@@ -20,9 +20,16 @@
 
 #include "control/tools/EditSelection.h"
 #include "control/tools/PdfElemSelection.h"
+#include "control/xojfile/LoadHandler.h"
+#include "control/xojfile/SaveHandler.h"
+#include "model/Document.h"
+#include "model/DocumentHandler.h"
 #include "model/Image.h"
+#include "model/Layer.h"
 #include "model/TexImage.h"
+#include "model/XojPage.h"
 #include "pdf/base/XojPdfDocument.h"
+#include "util/PathUtil.h"
 #include "util/serializing/BinObjectEncoding.h"
 #include "util/serializing/ObjectInputStream.h"
 #include "util/serializing/ObjectOutputStream.h"
@@ -208,4 +215,33 @@ TEST(PdfAreaCopy, smallAreaOfScannedPageIsRaster) {
     EXPECT_LT(image.getBinaryData().size(), PdfElemSelection::AREA_VECTOR_SIZE_LIMIT);
     expectBox(image, 100, 200, 60, 40);
     EXPECT_EQ(countPaintedPixels(image), 60 * 40);
+}
+
+TEST(PdfAreaCopy, documentWithAreaCanBeSavedAndLoaded) {
+    auto page = loadTestPage();
+    ASSERT_TRUE(page);
+    auto element = PdfElemSelection::createAreaElement(*page, {30, 40, 200, 120});
+    ASSERT_TRUE(element);
+
+    DocumentHandler handler;
+    Document doc(&handler);
+    doc.addPage(std::make_shared<XojPage>(595.0, 842.0));
+    doc.getPage(0)->getSelectedLayer()->addElement(std::move(element));
+
+    // The area has no LaTeX source, so its text attribute is empty
+    const auto file = Util::getTmpDirSubfolder() / "pdf-area.xopp";
+    SaveHandler saver;
+    saver.prepareSave(&doc, file);
+    saver.saveTo(file);
+    ASSERT_EQ(saver.getErrorMessage(), "");
+
+    std::unique_ptr<Document> loaded;
+    ASSERT_NO_THROW(loaded = LoadHandler{}.loadDocument(file));
+    fs::remove(file);
+    ASSERT_TRUE(loaded);
+    const auto& elements = loaded->getPage(0)->getSelectedLayer()->getElementsView();
+    ASSERT_EQ(elements.size(), 1);
+    ASSERT_EQ(elements.front()->getType(), ELEMENT_TEXIMAGE);
+    EXPECT_FALSE(static_cast<const TexImage*>(elements.front())->hasLatexSource());
+    expectBox(*elements.front(), 30, 40, 200, 120);
 }
