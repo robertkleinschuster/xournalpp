@@ -2,6 +2,7 @@
 
 #ifdef _WIN32
 
+#include <cstdint>
 #include <cstdio>
 #include <string>
 
@@ -19,7 +20,11 @@ auto openLog() -> FILE* {
         if (!fs::exists(Util::getConfigFile("input-debug"), error)) {
             return nullptr;
         }
-        return _wfopen(Util::getConfigFile("input-debug.log").c_str(), L"a");
+        // Start over once it is large, so the log cannot grow without limit while diagnostics stay switched on
+        constexpr std::uintmax_t MAX_LOG_SIZE = 5 * 1024 * 1024;
+        const auto path = Util::getConfigFile("input-debug.log");
+        const auto size = fs::file_size(path, error);
+        return _wfopen(path.c_str(), !error && size > MAX_LOG_SIZE ? L"w" : L"a");
     }();
     return log;
 }
