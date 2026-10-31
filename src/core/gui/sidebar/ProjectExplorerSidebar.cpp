@@ -1,5 +1,6 @@
 #include "ProjectExplorerSidebar.h"
 
+#include <atomic>
 #include <cstring>
 #include <filesystem>
 #include <functional>
@@ -9,6 +10,7 @@
 #include <set>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <vector>
 
 #include "control/AnnotationFiles.h"
@@ -383,6 +385,7 @@ public:
     }
 
     ~ProjectExplorerSidebar() override {
+        cancelSearch();
         if (saveSource) {
             g_source_remove(saveSource);
             saveState();
@@ -604,6 +607,7 @@ private:
     // --- Building ---
 
     void buildTree() {
+        cancelSearch();
         searching = !query.empty();
         updatingTree = true;
         clearMonitors();
@@ -626,45 +630,99 @@ private:
         updatingTree = false;
     }
 
+    struct SearchMatch {
+        fs::path path;
+        bool directory;
+        std::string markup;
+    };
+
+    /// Searches the project folder on a worker thread (it may be large), then shows the matches below the root row
     void fillSearchResults(GtkTreeIter* rootIter) {
-        std::map<std::string, GtkTreeIter> directories{{utf8(projectRoot), *rootIter}};
-        size_t results = 0;
-        std::error_code error;
-        for (fs::recursive_directory_iterator it(projectRoot, fs::directory_options::skip_permission_denied, error),
-             end;
-             !error && it != end; it.increment(error)) {
-            const auto& path = it->path();
-            std::error_code itemError;
-            const bool directory = it->is_directory(itemError);
-            if (isIgnored(path)) {
-                if (directory) {
+        cancelSearch();
+        searchCancelled = std::make_shared<std::atomic<bool>>(false);
+        appendInfoRow(rootIter, _("Searching…"));
+
+        struct Search {
+            std::weak_ptr<int> alive;
+            ProjectExplorerSidebar* self;
+            std::shared_ptr<std::atomic<bool>> cancelled;
+            fs::path root;
+            std::string query;
+            std::vector<SearchMatch> matches;
+        };
+        auto* search = new Search{lifetime, this, searchCancelled, projectRoot, query, {}};
+        std::thread([search] {
+            std::error_code error;
+            for (fs::recursive_directory_iterator
+                         it(search->root, fs::directory_options::skip_permission_denied, error),
+                 end;
+                 !error && it != end && !*search->cancelled; it.increment(error)) {
+                const auto& path = it->path();
+                std::error_code itemError;
+                const bool directory = it->is_directory(itemError);
+                if (isIgnored(path)) {
+                    if (directory) {
+                        it.disable_recursion_pending();
+                    }
+                    continue;
+                }
+                if (it.depth() >= MAX_SEARCH_DEPTH) {
                     it.disable_recursion_pending();
                 }
-                continue;
+                if (!directory && !it->is_regular_file(itemError)) {
+                    continue;
+                }
+                if (auto markup = highlightMatch(utf8(path.filename()), search->query)) {
+                    search->matches.push_back({path, directory, std::move(*markup)});
+                    if (search->matches.size() >= MAX_SEARCH_RESULTS) {
+                        break;
+                    }
+                }
             }
-            if (it.depth() >= MAX_SEARCH_DEPTH) {
-                it.disable_recursion_pending();
-            }
-            if (!directory && !it->is_regular_file(itemError)) {
-                continue;
-            }
-            const auto name = utf8(path.filename());
-            const auto markup = highlightMatch(name, query);
-            if (!markup) {
-                continue;
-            }
-            auto* parentIter = ensureDirectory(path.parent_path(), directories);
-            auto iter = appendNode(parentIter, path, name, kindFor(path, directory), *markup, false);
-            if (directory) {
-                directories[utf8(path)] = iter;
-            }
-            if (++results >= MAX_SEARCH_RESULTS) {
-                break;
+            g_idle_add(
+                    +[](gpointer data) -> gboolean {
+                        std::unique_ptr<Search> search(static_cast<Search*>(data));
+                        if (!search->alive.expired() && !*search->cancelled) {
+                            search->self->showSearchResults(search->matches);
+                        }
+                        return G_SOURCE_REMOVE;
+                    },
+                    search);
+        }).detach();
+    }
+
+    void cancelSearch() {
+        if (searchCancelled) {
+            *searchCancelled = true;
+            searchCancelled.reset();
+        }
+    }
+
+    void showSearchResults(const std::vector<SearchMatch>& matches) {
+        searchCancelled.reset();
+        GtkTreeIter rootIter;
+        if (!searching || !gtk_tree_model_get_iter_first(model(), &rootIter)) {
+            return;
+        }
+        updatingTree = true;
+        GtkTreeIter child;
+        while (gtk_tree_model_iter_children(model(), &child, &rootIter)) {
+            gtk_tree_store_remove(store, &child);  // the "Searching…" row
+        }
+        std::map<std::string, GtkTreeIter> directories{{utf8(projectRoot), rootIter}};
+        for (const auto& match: matches) {
+            auto* parentIter = ensureDirectory(match.path.parent_path(), directories);
+            auto iter = appendNode(parentIter, match.path, utf8(match.path.filename()),
+                                   kindFor(match.path, match.directory), match.markup, false);
+            if (match.directory) {
+                directories[utf8(match.path)] = iter;
             }
         }
-        if (results == 0) {
-            appendInfoRow(rootIter, _("No matching files"));
+        if (matches.empty()) {
+            appendInfoRow(&rootIter, _("No matching files"));
         }
+        gtk_tree_view_expand_all(tree);
+        updatingTree = false;
     }
 
     auto ensureDirectory(const fs::path& dir, std::map<std::string, GtkTreeIter>& directories) -> GtkTreeIter* {
@@ -1979,6 +2037,8 @@ private:
     GtkWidget* syncLabel{};
     /// Expires when the explorer is destroyed, so late git results are dropped
     std::shared_ptr<int> lifetime = std::make_shared<int>(0);
+    /// Set when the running search is outdated (the query changed or the explorer is gone)
+    std::shared_ptr<std::atomic<bool>> searchCancelled;
     bool gitRepo = false;
     bool gitBusy = false;
     bool gitRefreshPending = false;
