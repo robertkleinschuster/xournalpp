@@ -7,19 +7,20 @@
 #include <gio/gio.h>                // for g_cancellable_is_...
 #include <gtk/gtkcssprovider.h>     // for gtk_css_provider_...
 
-#include "control/AudioController.h"                    // for AudioController
-#include "control/Control.h"                            // for Control
-#include "control/DeviceListHelper.h"                   // for getSourceMapping
-#include "control/ScrollHandler.h"                      // for ScrollHandler
-#include "control/actions/ActionDatabase.h"             // for ActionDatabase
-#include "control/jobs/XournalScheduler.h"              // for XournalScheduler
-#include "control/layer/LayerController.h"              // for LayerController
-#include "control/settings/Settings.h"                  // for Settings
-#include "control/settings/SettingsEnums.h"             // for SCROLLBAR_HIDE_HO...
-#include "control/zoom/ZoomControl.h"                   // for ZoomControl
-#include "gui/FloatingToolbox.h"                        // for FloatingToolbox
-#include "gui/GladeGui.h"                               // for GladeGui
-#include "gui/PdfFloatingToolbox.h"                     // for PdfFloatingToolbox
+#include "control/AudioController.h"         // for AudioController
+#include "control/Control.h"                 // for Control
+#include "control/DeviceListHelper.h"        // for getSourceMapping
+#include "control/ScrollHandler.h"           // for ScrollHandler
+#include "control/actions/ActionDatabase.h"  // for ActionDatabase
+#include "control/jobs/XournalScheduler.h"   // for XournalScheduler
+#include "control/layer/LayerController.h"   // for LayerController
+#include "control/settings/Settings.h"       // for Settings
+#include "control/settings/SettingsEnums.h"  // for SCROLLBAR_HIDE_HO...
+#include "control/zoom/ZoomControl.h"        // for ZoomControl
+#include "gui/FloatingToolbox.h"             // for FloatingToolbox
+#include "gui/GladeGui.h"                    // for GladeGui
+#include "gui/PdfFloatingToolbox.h"          // for PdfFloatingToolbox
+#include "gui/PenFeedbackFix.h"
 #include "gui/SearchBar.h"                              // for SearchBar
 #include "gui/inputdevices/InputEvents.h"               // for INPUT_DEVICE_TOUC...
 #include "gui/menus/menubar/Menubar.h"                  // for Menubar
@@ -89,6 +90,7 @@ MainWindow::MainWindow(GladeSearchpath* gladeSearchPath, Control* control, GtkAp
     // Window handler
     g_signal_connect(this->window, "delete-event", xoj::util::wrap_for_g_callback_v<deleteEventCallback>,
                      this->control);
+    PenFeedbackFix::apply(this->window);  // Fork: no Windows pen flicks or press-and-hold while writing
     g_signal_connect(this->window, "notify::is-active", G_CALLBACK(+[](GObject* object, GParamSpec*, gpointer self) {
                          auto* win = static_cast<MainWindow*>(self);
                          if (!gtk_window_is_active(GTK_WINDOW(object)) && win->xournal) {
