@@ -149,6 +149,12 @@ void Sidebar::updateVisibleTabs() {
         i++;
     }
 
+    // Fork: keep the tab the user chose (e.g. the page previews) while it still applies, instead of switching to the
+    // first tab - the project explorer - whenever a document is opened
+    if (this->currentTabIdx < this->tabs.size() && this->tabs[this->currentTabIdx]->hasData()) {
+        selected = this->currentTabIdx;
+    }
+
     setSelectedTab(selected);
 }
 
