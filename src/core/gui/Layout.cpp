@@ -32,9 +32,14 @@ constexpr auto const XOURNAL_PADDING = 10;
 constexpr auto const XOURNAL_ROOM_FOR_SHADOW = 3;
 
 /**
- * Padding between the pages
+ * Padding between the pages. Fork: room for the page number shown below each page (XournalWidget)
  */
-constexpr auto const XOURNAL_PADDING_BETWEEN = 15;
+constexpr auto const XOURNAL_PADDING_BETWEEN = 26;
+
+/**
+ * Fork: room for the page number below the last page
+ */
+constexpr auto const XOURNAL_PAGE_NUMBER_ROOM = 18;
 
 
 Layout::Layout(XournalView* view, ScrollHandling* scrollHandling): view(view), scrollHandling(scrollHandling) {
@@ -339,7 +344,7 @@ void Layout::computePrecalculated() {
 
     auto* settings = view->getControl()->getSettings();
     pc.paddingTop = XOURNAL_PADDING;
-    pc.paddingBottom = XOURNAL_PADDING;
+    pc.paddingBottom = XOURNAL_PADDING + XOURNAL_PAGE_NUMBER_ROOM;
     if (settings->getUnlimitedScrolling()) {
         pc.paddingTop += round_cast<int>(gtk_adjustment_get_page_size(scrollHandling->getVertical()));
         pc.paddingBottom = pc.paddingTop;

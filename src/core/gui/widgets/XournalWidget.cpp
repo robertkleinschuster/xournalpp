@@ -3,10 +3,12 @@
 #include <algorithm>  // for max
 #include <cmath>      // for NAN
 #include <optional>   // for optional
+#include <string>     // for to_string
 #include <vector>     // for vector
 
 #include <cairo.h>    // for cairo_restore, cairo_save
 #include <gdk/gdk.h>  // for GdkRectangle, GdkWindowAttr
+#include <pango/pangocairo.h>
 
 #include "control/Control.h"                // for Control
 #include "control/settings/Settings.h"      // for Settings
@@ -277,6 +279,26 @@ void gtk_xournal_repaint_area(GtkWidget* widget, int x1, int y1, int x2, int y2)
     gtk_widget_queue_draw_area(widget, minX, minY, width, height);
 }
 
+/// Fork: the page number, small and dimmed, centered in the gap below the page
+static void gtk_xournal_draw_page_number(cairo_t* cr, size_t index, size_t count, int left, int top, int width,
+                                         int height, Color background) {
+    const auto label = std::to_string(index + 1) + " / " + std::to_string(count);
+    PangoLayout* layout = pango_cairo_create_layout(cr);
+    PangoFontDescription* font = pango_font_description_from_string("Sans Bold 9");
+    pango_layout_set_font_description(layout, font);
+    pango_font_description_free(font);
+    pango_layout_set_text(layout, label.c_str(), -1);
+    int textWidth = 0, textHeight = 0;
+    pango_layout_get_pixel_size(layout, &textWidth, &textHeight);
+    // Light text on a dark background and the other way round
+    const double luminance = (0.299 * background.red + 0.587 * background.green + 0.114 * background.blue) / 255.0;
+    const double gray = luminance < 0.5 ? 1.0 : 0.0;
+    cairo_set_source_rgba(cr, gray, gray, gray, 0.7);
+    cairo_move_to(cr, left + (width - textWidth) / 2.0, top + height + 4);
+    pango_cairo_show_layout(cr, layout);
+    g_object_unref(layout);
+}
+
 static auto gtk_xournal_draw(GtkWidget* widget, cairo_t* cr) -> gboolean {
     g_return_val_if_fail(widget != nullptr, false);
     g_return_val_if_fail(GTK_IS_XOURNAL(widget), false);
@@ -306,8 +328,8 @@ static auto gtk_xournal_draw(GtkWidget* widget, cairo_t* cr) -> gboolean {
     Util::cairo_set_source_rgbi(cr, settings->getBackgroundColor());
     cairo_paint(cr);
 
-    // Add a padding for the shadow of the pages
-    clip.addPadding(10);
+    // Add a padding for the shadow of the pages (Fork: and the page numbers below them)
+    clip.addPadding(30);
 
     const auto& views = xournal->view->getViewPages();
     // Store the pages to release the layout mutex ASAP
@@ -327,6 +349,8 @@ static auto gtk_xournal_draw(GtkWidget* widget, cairo_t* cr) -> gboolean {
 
         pv->paintPage(cr, nullptr);
         cairo_restore(cr);
+
+        gtk_xournal_draw_page_number(cr, index, views.size(), pos.x, pos.y, pw, ph, settings->getBackgroundColor());
     }
 
     if (xournal->selection) {
