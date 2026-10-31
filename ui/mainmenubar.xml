@@ -18,10 +18,6 @@
      <attribute name="label" translatable="yes">Open Project Folder...</attribute>
      <attribute name="action">win.open-project-folder</attribute>
     </item>
-    <item>
-     <attribute name="label" translatable="yes">Project Explorer</attribute>
-     <attribute name="action">win.project-explorer</attribute>
-    </item>
     <submenu id="menuFileRecent">
      <!-- Filled dynamically -->
      <attribute name="label" translatable="yes">Recent _Documents</attribute>
