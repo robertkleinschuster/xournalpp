@@ -20,6 +20,7 @@ namespace ProjectGit {
 
 struct CommandResult {
     bool success = false;
+    bool timedOut = false;
     std::string output;
     std::string error;
 };
@@ -30,9 +31,10 @@ bool isAvailable();
 /**
  * Runs git with the given arguments in dir on a worker thread, without opening a console window.
  * The callback is invoked on the main thread, but only if owner is still alive by then.
+ * After timeoutSeconds, git and everything it started (e.g. ssh waiting for a passphrase) is terminated.
  */
 void run(const std::filesystem::path& dir, std::vector<std::string> args, std::weak_ptr<void> owner,
-         std::function<void(CommandResult)> callback);
+         std::function<void(CommandResult)> callback, unsigned timeoutSeconds = 600);
 
 enum class FileState { Unchanged, Added, Modified };
 

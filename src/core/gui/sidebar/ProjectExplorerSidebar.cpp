@@ -930,15 +930,17 @@ private:
             return;
         }
         fetchRunning = true;
-        ProjectGit::run(gitToplevel, {"-c", "credential.interactive=false", "fetch", "--quiet"}, lifetime,
-                        [this](auto) {
-                            fetchRunning = false;
-                            if (std::exchange(syncAfterFetch, false)) {
-                                beginSync();
-                            } else {
-                                refreshGit();
-                            }
-                        });
+        ProjectGit::run(
+                gitToplevel, {"-c", "credential.interactive=false", "fetch", "--quiet"}, lifetime,
+                [this](auto) {
+                    fetchRunning = false;
+                    if (std::exchange(syncAfterFetch, false)) {
+                        beginSync();
+                    } else {
+                        refreshGit();
+                    }
+                },
+                120);  // e.g. ssh waiting for a passphrase nobody can enter
     }
 
     void startSync() {
@@ -1033,10 +1035,17 @@ private:
         const auto before = documentPath.empty() ? fs::file_time_type() : fs::last_write_time(documentPath, error);
         ProjectGit::run(gitToplevel, {"pull", "--rebase"}, lifetime, [this, documentPath, before](auto pulled) {
             if (!pulled.success) {
-                // Leave the repository as before the pull; the local commit is kept
-                ProjectGit::run(gitToplevel, {"rebase", "--abort"}, lifetime, [this, pulled](auto) {
-                    finishSync(_("Remote changes could not be merged with yours. Your changes are committed locally, "
-                                 "but not uploaded. Please resolve the conflict with a git tool."),
+                // A conflict needs a git tool; other failures (no network, no access) only need to be reported
+                const bool conflict = pulled.output.find("CONFLICT") != std::string::npos ||
+                                      pulled.error.find("CONFLICT") != std::string::npos ||
+                                      pulled.error.find("could not apply") != std::string::npos;
+                // Leave the repository as before the pull (if a rebase started at all); the local commit is kept
+                ProjectGit::run(gitToplevel, {"rebase", "--abort"}, lifetime, [this, pulled, conflict](auto) {
+                    finishSync(conflict ? _("Remote changes could not be merged with yours. Your changes are "
+                                            "committed locally, but not uploaded. Please resolve the conflict with a "
+                                            "git tool.") :
+                                          _("Remote changes could not be downloaded or applied. Your changes are "
+                                            "committed locally, but not uploaded."),
                                pulled.error);
                 });
                 return;

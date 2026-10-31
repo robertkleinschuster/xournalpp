@@ -5068,3 +5068,7 @@ msgstr "PDF-Bereich kopieren"
 #: src/core/control/xojfile/SaveHandler.cpp
 msgid "Could not replace \"{1}\": {2}"
 msgstr "\"{1}\" konnte nicht ersetzt werden: {2}"
+
+#: src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "Remote changes could not be downloaded or applied. Your changes are committed locally, but not uploaded."
+msgstr "Die entfernten Änderungen konnten nicht heruntergeladen oder übernommen werden. Ihre Änderungen sind lokal committet, aber nicht hochgeladen."

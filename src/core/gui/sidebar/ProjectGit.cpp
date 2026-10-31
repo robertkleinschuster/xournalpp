@@ -96,7 +96,7 @@ auto readAll(HANDLE handle) -> std::string {
     return result;
 }
 
-auto runSync(const std::string& git, const fs::path& dir, const std::vector<std::string>& args)
+auto runSync(const std::string& git, const fs::path& dir, const std::vector<std::string>& args, unsigned timeoutSeconds)
         -> ProjectGit::CommandResult {
     ProjectGit::CommandResult result;
     std::wstring commandLine = quoteArgument(widen(git));
@@ -136,10 +136,23 @@ auto runSync(const std::string& git, const fs::path& dir, const std::vector<std:
     startup.lpAttributeList = listReady ? attributeList : nullptr;
     PROCESS_INFORMATION process{};
     const auto workingDirectory = dir.wstring();
+    // git and its helpers (ssh, credential managers) are in one job, so a timeout can terminate all of them
+    HANDLE job = CreateJobObjectW(nullptr, nullptr);
+    if (job) {
+        JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
+        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        SetInformationJobObject(job, JobObjectExtendedLimitInformation, &limits, sizeof(limits));
+    }
     const bool started = listReady && input != INVALID_HANDLE_VALUE &&
                          CreateProcessW(nullptr, commandLine.data(), nullptr, nullptr, TRUE,
-                                        CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT, nullptr,
+                                        CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT | CREATE_SUSPENDED, nullptr,
                                         workingDirectory.c_str(), &startup.StartupInfo, &process);
+    if (started) {
+        if (job) {
+            AssignProcessToJobObject(job, process.hProcess);
+        }
+        ResumeThread(process.hThread);
+    }
     if (listReady) {
         DeleteProcThreadAttributeList(attributeList);
     }
@@ -151,17 +164,39 @@ auto runSync(const std::string& git, const fs::path& dir, const std::vector<std:
     if (!started) {
         CloseHandle(outRead);
         CloseHandle(errRead);
+        if (job) {
+            CloseHandle(job);
+        }
         result.error = "Could not start git";
         return result;
     }
 
     std::thread errorReader([&] { result.error = readAll(errRead); });
-    result.output = readAll(outRead);
+    std::thread outputReader([&] { result.output = readAll(outRead); });
+    if (WaitForSingleObject(process.hProcess, timeoutSeconds * 1000) == WAIT_TIMEOUT) {
+        result.timedOut = true;
+        if (job) {
+            TerminateJobObject(job, 1);
+        } else {
+            TerminateProcess(process.hProcess, 1);
+        }
+        WaitForSingleObject(process.hProcess, INFINITE);
+    }
+    // Helpers that git left running in the background would keep the pipes open
+    if (job) {
+        TerminateJobObject(job, 1);
+    }
+    outputReader.join();
     errorReader.join();
-    WaitForSingleObject(process.hProcess, INFINITE);
+    if (job) {
+        CloseHandle(job);
+    }
     DWORD exitCode = 1;
     GetExitCodeProcess(process.hProcess, &exitCode);
-    result.success = exitCode == 0;
+    result.success = exitCode == 0 && !result.timedOut;
+    if (result.timedOut) {
+        result.error += "\ngit did not finish in time and was stopped.";
+    }
     CloseHandle(process.hProcess);
     CloseHandle(process.hThread);
     CloseHandle(outRead);
@@ -169,7 +204,7 @@ auto runSync(const std::string& git, const fs::path& dir, const std::vector<std:
     return result;
 }
 #else
-auto runSync(const std::string& git, const fs::path& dir, const std::vector<std::string>& args)
+auto runSync(const std::string& git, const fs::path& dir, const std::vector<std::string>& args, unsigned)
         -> ProjectGit::CommandResult {
     ProjectGit::CommandResult result;
     std::vector<gchar*> argv{const_cast<gchar*>(git.c_str())};
@@ -221,7 +256,7 @@ auto parseCount(const std::string& header, const std::string& label) -> size_t {
 bool ProjectGit::isAvailable() { return findGit().has_value(); }
 
 void ProjectGit::run(const fs::path& dir, std::vector<std::string> args, std::weak_ptr<void> owner,
-                     std::function<void(CommandResult)> callback) {
+                     std::function<void(CommandResult)> callback, unsigned timeoutSeconds) {
     auto* pending = new PendingResult{std::move(owner), std::move(callback), {}};
     const auto& git = findGit();
     if (!git) {
@@ -237,8 +272,8 @@ void ProjectGit::run(const fs::path& dir, std::vector<std::string> args, std::we
                 pending);
         return;
     }
-    std::thread([pending, git = *git, dir, args = std::move(args)] {
-        pending->result = runSync(git, dir, args);
+    std::thread([pending, git = *git, dir, args = std::move(args), timeoutSeconds] {
+        pending->result = runSync(git, dir, args, timeoutSeconds);
         g_idle_add(
                 +[](gpointer data) -> gboolean {
                     std::unique_ptr<PendingResult> p(static_cast<PendingResult*>(data));
