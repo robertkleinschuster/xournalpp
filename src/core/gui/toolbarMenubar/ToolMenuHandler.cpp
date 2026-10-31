@@ -355,8 +355,8 @@ void ToolMenuHandler::initToolItems() {
      * ------------------------------------------------------------------------
      */
 
-    emplaceCustomItemWithPopover("INSERT_NEW_PAGE", Cat::TOOLS, Action::NEW_PAGE_AFTER, "page-add", _("Insert page"),
-                                 this->pageTypeSelectionPopup.get());
+    // Fork: a plain button inserting a page of the type set in the page template settings (no page type dropdown)
+    emplaceCustomItem("INSERT_NEW_PAGE", Cat::TOOLS, Action::NEW_PAGE_AFTER, "page-add", _("Insert page"));
     emplaceCustomItem("DELETE_CURRENT_PAGE", Cat::TOOLS, Action::DELETE_PAGE, "page-delete", _("Delete current page"));
 
     /*
