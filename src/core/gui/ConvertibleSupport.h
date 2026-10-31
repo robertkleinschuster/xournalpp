@@ -15,6 +15,7 @@ namespace ConvertibleSupport {
 
 /**
  * Fork, for convertibles like the ThinkPad X13 Yoga (Windows only, does nothing elsewhere):
+ *  - Tablet mode (the keyboard is folded away): toolbar buttons get a larger area to hit with a finger.
  *  - Portrait orientation: the sidebar is hidden to leave the narrow width to the page; it comes back in landscape.
  *  - In tablet mode, tapping a text field (search, rename, ...) with a finger or the pen opens the touch keyboard,
  *    which GTK 3 does not do by itself; it is closed again when the field loses focus.
