@@ -177,6 +177,19 @@ void MainWindow::populate(GladeSearchpath* gladeSearchPath) {
 
 GMenuModel* MainWindow::getMenuModel() const { return menubar->getModel(); }
 
+void MainWindow::moveMenubarToTitleBar() {
+    GtkWidget* header = gtk_header_bar_new();
+    gtk_header_bar_set_show_close_button(GTK_HEADER_BAR(header), true);
+    gtk_header_bar_set_decoration_layout(GTK_HEADER_BAR(header), "icon:minimize,maximize,close");
+    titleBarMenubar = gtk_menu_bar_new_from_model(getMenuModel());
+    gtk_header_bar_pack_start(GTK_HEADER_BAR(header), titleBarMenubar);
+    gtk_widget_show_all(header);
+    gtk_window_set_titlebar(GTK_WINDOW(this->window), header);
+    // The window's own menu bar below the title bar stays hidden; setMenubarVisible() toggles this one instead
+    gtk_application_window_set_show_menubar(GTK_APPLICATION_WINDOW(this->window), false);
+    gtk_widget_set_visible(titleBarMenubar, control->getSettings()->isMenubarVisible());
+}
+
 MainWindow::~MainWindow() {
     if (readOnlyHighlightSource) {
         g_source_remove(readOnlyHighlightSource);
@@ -772,6 +785,10 @@ void MainWindow::setToolbarVisible(bool visible) {
 }
 
 void MainWindow::setMenubarVisible(bool visible) {
+    if (titleBarMenubar) {
+        gtk_widget_set_visible(titleBarMenubar, visible);
+        return;
+    }
     gtk_application_window_set_show_menubar(GTK_APPLICATION_WINDOW(this->getWindow()), visible);
 }
 

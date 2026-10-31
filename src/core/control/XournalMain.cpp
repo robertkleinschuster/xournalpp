@@ -463,6 +463,7 @@ void on_startup(GApplication* application, XMPtr app_data) {
     }
 
     gtk_application_set_menubar(GTK_APPLICATION(application), app_data->win->getMenuModel());
+    app_data->win->moveMenubarToTitleBar();  // Fork: one row less, and a dark title bar with the dark theme
     // Do we want stuff in gtk_application_set_app_menu?
 
     app_data->win->show(nullptr);
