@@ -469,15 +469,22 @@ void MainWindow::createReadOnlyBar() {
     readOnlyBar = gtk_info_bar_new();
     gtk_info_bar_set_message_type(GTK_INFO_BAR(readOnlyBar), GTK_MESSAGE_INFO);
 
+    // Large enough to hit with a finger, and on the left: nothing to touch at the right edge, where a right hand rests
+    auto* button = gtk_button_new_with_label(_("Enable Editing"));
+    gtk_style_context_add_class(gtk_widget_get_style_context(button), "suggested-action");
+    gtk_widget_set_size_request(button, -1, 40);
+    gtk_widget_set_valign(button, GTK_ALIGN_CENTER);
+    g_signal_connect(button, "clicked", G_CALLBACK(+[](GtkButton*, gpointer bar) {
+                         gtk_info_bar_response(GTK_INFO_BAR(bar), GTK_RESPONSE_ACCEPT);
+                     }),
+                     readOnlyBar);
+    GtkWidget* content = gtk_info_bar_get_content_area(GTK_INFO_BAR(readOnlyBar));
+    gtk_container_add(GTK_CONTAINER(content), button);
+
     readOnlyLabel = gtk_label_new(nullptr);
     gtk_label_set_line_wrap(GTK_LABEL(readOnlyLabel), true);
     gtk_label_set_xalign(GTK_LABEL(readOnlyLabel), 0.0f);
-    gtk_container_add(GTK_CONTAINER(gtk_info_bar_get_content_area(GTK_INFO_BAR(readOnlyBar))), readOnlyLabel);
-
-    // Large enough to hit with a finger
-    auto* button = gtk_info_bar_add_button(GTK_INFO_BAR(readOnlyBar), _("Enable Editing"), GTK_RESPONSE_ACCEPT);
-    gtk_style_context_add_class(gtk_widget_get_style_context(button), "suggested-action");
-    gtk_widget_set_size_request(button, -1, 40);
+    gtk_container_add(GTK_CONTAINER(content), readOnlyLabel);
 
     g_signal_connect(readOnlyBar, "response", G_CALLBACK(+[](GtkInfoBar*, gint response, gpointer data) {
                          if (response == GTK_RESPONSE_ACCEPT) {
