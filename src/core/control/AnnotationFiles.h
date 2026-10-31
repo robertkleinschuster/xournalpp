@@ -72,6 +72,13 @@ std::string exportFilenameForSave(const Document& doc, const std::filesystem::pa
 std::string relinkSourcePdf(const std::filesystem::path& xopp, const std::filesystem::path& pdf,
                             const Settings& settings);
 
+/**
+ * Like relinkSourcePdf(), for each given part: the background PDF and/or the recorded export file name (a plain file
+ * name next to the document), e.g. after renaming them. Returns an error message, empty on success.
+ */
+std::string relinkDocument(const std::filesystem::path& xopp, const std::optional<std::filesystem::path>& pdf,
+                           const std::optional<std::string>& exportFilename, const Settings& settings);
+
 /// The .xopp document in the same folder whose exported PDF is pdf, if any
 std::optional<std::filesystem::path> documentForExport(const std::filesystem::path& pdf, const Settings& settings);
 

@@ -383,6 +383,12 @@ auto AnnotationFiles::exportFilenameForSave(const Document& doc, const fs::path&
 
 auto AnnotationFiles::relinkSourcePdf(const fs::path& xopp, const fs::path& pdf, const Settings& settings)
         -> std::string {
+    return relinkDocument(xopp, pdf, std::nullopt, settings);
+}
+
+auto AnnotationFiles::relinkDocument(const fs::path& xopp, const std::optional<fs::path>& pdf,
+                                     const std::optional<std::string>& exportFilename, const Settings& settings)
+        -> std::string {
     // Loading does not need the PDF: a missing one is only recorded, which is replaced here anyway
     std::unique_ptr<Document> doc;
     try {
@@ -394,12 +400,15 @@ auto AnnotationFiles::relinkSourcePdf(const fs::path& xopp, const fs::path& pdf,
     if (!doc || doc->getFilepath().empty()) {
         return "The document could not be loaded completely.";
     }
-    const auto exported = exportPathForFile(xopp, settings);
+    const auto exported =
+            exportFilename ? xopp.parent_path() / pathFromUtf8(*exportFilename) : exportPathForFile(xopp, settings);
     const bool exportUpToDate = isExportUpToDate(xopp, exported);
-    doc->setPdfAttributes(pdf, doc->isAttachPdf());
+    if (pdf) {
+        doc->setPdfAttributes(*pdf, doc->isAttachPdf());
+    }
     SaveHandler saver;
     saver.prepareSave(doc.get(), xopp);
-    saver.setExportFilename(recordedExportFilename(xopp));
+    saver.setExportFilename(exportFilename ? *exportFilename : recordedExportFilename(xopp));
     saver.saveTo(xopp);
     if (saver.getErrorMessage().empty() && exportUpToDate) {
         std::error_code error;  // the annotations did not change
