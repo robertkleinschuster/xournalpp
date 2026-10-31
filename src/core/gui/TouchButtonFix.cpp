@@ -1,6 +1,7 @@
 #include "TouchButtonFix.h"
 
 #include <cmath>
+#include <utility>
 
 #include <gtk/gtk.h>
 
@@ -167,9 +168,71 @@ auto handleMenuTouch(GdkEvent* event) -> bool {
     return true;
 }
 
+/// A tap emulated as mouse press was consumed by handleMenuPointer(); its release decides what happens
+bool menuPressConsumed = false;
+
+auto isFromTouchscreen(GdkEvent* event) -> bool {
+    GdkDevice* device = gdk_event_get_source_device(event);
+    return device && gdk_device_get_source(device) == GDK_SOURCE_TOUCHSCREEN;
+}
+
+/**
+ * Windows delivers taps on the menu bar as emulated mouse events from the touchscreen (enter, press, leave, release
+ * within milliseconds), not as touch events. While a menu was open, GTK opened the next menu on the "enter" already,
+ * and sometimes without closing the open one, so menus stayed open. While a menu of the menu bar is open, these
+ * events are therefore handled here outside the open menus: the release of a tap on another menu bar item opens its
+ * menu, a tap on the open item or beside the menus closes it. Taps on the open menus are left to GTK.
+ */
+auto handleMenuPointer(GdkEvent* event) -> bool {
+    switch (event->type) {
+        case GDK_BUTTON_PRESS:
+        case GDK_2BUTTON_PRESS:
+        case GDK_3BUTTON_PRESS:
+        case GDK_BUTTON_RELEASE:
+        case GDK_MOTION_NOTIFY:
+        case GDK_ENTER_NOTIFY:
+        case GDK_LEAVE_NOTIFY:
+            break;
+        default:
+            return false;
+    }
+    if (!isFromTouchscreen(event)) {
+        return false;
+    }
+    GtkMenuShell* bar = activeMenuBar();
+    if (!bar) {
+        if (event->type == GDK_BUTTON_RELEASE) {
+            menuPressConsumed = false;
+        }
+        return false;
+    }
+    double x = 0, y = 0;
+    gdk_event_get_root_coords(event, &x, &y);
+    if (isOnOpenMenu(x, y) && !(event->type == GDK_BUTTON_RELEASE && menuPressConsumed)) {
+        return false;  // a tap on the open menu itself
+    }
+    if (event->type == GDK_BUTTON_PRESS) {
+        menuPressConsumed = true;
+    } else if (event->type == GDK_BUTTON_RELEASE) {
+        if (!std::exchange(menuPressConsumed, false)) {
+            // The release of the tap that opened the menu: GTK keeps the menu open on it
+            return false;
+        }
+        GtkWidget* item = menuBarItemAt(bar, x, y);
+        if (item && gtk_menu_shell_get_selected_item(bar) != item) {
+            InputSafety::note("menu tap: open other menu bar item");
+            gtk_menu_shell_select_item(bar, item);  // opens its menu
+        } else {
+            InputSafety::note(item ? "menu tap: close (tap on open item)" : "menu tap: close (tap beside menus)");
+            gtk_menu_shell_deactivate(bar);
+        }
+    }
+    return true;
+}
+
 /// Returns true if the event was consumed
 auto handleTouch(GdkEvent* event) -> bool {
-    if (handleMenuTouch(event)) {
+    if (handleMenuPointer(event) || handleMenuTouch(event)) {
         return true;
     }
     switch (event->type) {
