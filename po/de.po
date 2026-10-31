@@ -5188,3 +5188,187 @@ msgstr "Diese Version kann keine Seiten aus anderen PDFs einfügen (QPDF fehlt).
 #: ../src/core/control/InsertPdfPages.cpp
 msgid "Please save the document first: the inserted pages are stored in a PDF next to it."
 msgstr "Bitte das Dokument zuerst speichern: Die eingefügten Seiten werden in einem PDF daneben abgelegt."
+
+#: ../src/core/gui/sidebar/TasksSidebar.cpp
+msgid "Overdue"
+msgstr "Überfällig"
+
+#: ../src/core/gui/sidebar/TasksSidebar.cpp
+msgid "Today"
+msgstr "Heute"
+
+#: ../src/core/gui/sidebar/TasksSidebar.cpp
+msgid "Upcoming"
+msgstr "Demnächst"
+
+#: ../src/core/gui/sidebar/TasksSidebar.cpp
+msgid "No date"
+msgstr "Ohne Datum"
+
+#: ../src/core/gui/sidebar/TasksSidebar.cpp
+msgid "Later"
+msgstr "Später"
+
+#: ../src/core/gui/sidebar/TasksSidebar.cpp
+msgid "Completed"
+msgstr "Erledigt"
+
+#: ../src/core/gui/sidebar/TasksSidebar.cpp
+msgid "Mon"
+msgstr "Mo."
+
+#: ../src/core/gui/sidebar/TasksSidebar.cpp
+msgid "Tue"
+msgstr "Di."
+
+#: ../src/core/gui/sidebar/TasksSidebar.cpp
+msgid "Wed"
+msgstr "Mi."
+
+#: ../src/core/gui/sidebar/TasksSidebar.cpp
+msgid "Thu"
+msgstr "Do."
+
+#: ../src/core/gui/sidebar/TasksSidebar.cpp
+msgid "Fri"
+msgstr "Fr."
+
+#: ../src/core/gui/sidebar/TasksSidebar.cpp
+msgid "Sat"
+msgstr "Sa."
+
+#: ../src/core/gui/sidebar/TasksSidebar.cpp
+msgid "Sun"
+msgstr "So."
+
+#: ../src/core/gui/sidebar/TasksSidebar.cpp
+msgid "Tomorrow"
+msgstr "Morgen"
+
+#: ../src/core/gui/sidebar/TasksSidebar.cpp
+msgid "Yesterday"
+msgstr "Gestern"
+
+#: ../src/core/gui/sidebar/TasksSidebar.cpp
+msgid "Remove link"
+msgstr "Verknüpfung entfernen"
+
+#: ../src/core/gui/sidebar/TasksSidebar.cpp
+msgid "New task, e.g. “Sheet 3 tomorrow 14:00 +GET”"
+msgstr "Neue Aufgabe, z. B. „Blatt 3 morgen 14:00 +GET“"
+
+#: ../src/core/gui/sidebar/TasksSidebar.cpp
+msgid "Add task"
+msgstr "Aufgabe hinzufügen"
+
+#: ../src/core/gui/sidebar/TasksSidebar.cpp
+msgid "Tasks"
+msgstr "Aufgaben"
+
+#: ../src/core/gui/sidebar/TasksSidebar.cpp
+msgid ", p. {1}"
+msgstr ", S. {1}"
+
+#: ../src/core/gui/sidebar/TasksSidebar.cpp
+msgid "Open a project folder in the project explorer to manage its tasks."
+msgstr "Im Projekt-Explorer einen Ordner öffnen, um seine Aufgaben zu verwalten."
+
+#: ../src/core/gui/sidebar/TasksSidebar.cpp
+msgid "No tasks yet. They are stored in todo.txt files in the project folder."
+msgstr "Noch keine Aufgaben. Sie werden in todo.txt-Dateien im Projektordner gespeichert."
+
+#: ../src/core/gui/sidebar/TasksSidebar.cpp
+msgid "The task could not be changed. The file may have been edited meanwhile."
+msgstr "Die Aufgabe konnte nicht geändert werden. Die Datei wurde möglicherweise inzwischen bearbeitet."
+
+#: ../src/core/gui/sidebar/TasksSidebar.cpp
+msgid "The linked document no longer exists."
+msgstr "Das verknüpfte Dokument existiert nicht mehr."
+
+#: ../src/core/gui/sidebar/TasksSidebar.cpp
+msgid "The task could not be saved."
+msgstr "Die Aufgabe konnte nicht gespeichert werden."
+
+#: ../src/core/gui/sidebar/TasksSidebar.cpp
+msgid "Linked to {1}"
+msgstr "Verknüpft mit {1}"
+
+#: ../src/core/gui/sidebar/TasksSidebar.cpp
+msgid "Edit…"
+msgstr "Bearbeiten…"
+
+#: ../src/core/gui/sidebar/TasksSidebar.cpp
+msgid "Postpone to Tomorrow"
+msgstr "Auf morgen verschieben"
+
+#: ../src/core/gui/sidebar/TasksSidebar.cpp
+msgid "Open Document"
+msgstr "Dokument öffnen"
+
+#: ../src/core/gui/sidebar/TasksSidebar.cpp
+msgid "Delete the task “{1}”?"
+msgstr "Die Aufgabe „{1}“ löschen?"
+
+#: ../src/core/gui/sidebar/TasksSidebar.cpp
+msgid "Edit Task"
+msgstr "Aufgabe bearbeiten"
+
+#: ../src/core/gui/sidebar/TasksSidebar.cpp
+msgid "Task"
+msgstr "Aufgabe"
+
+#: ../src/core/gui/sidebar/TasksSidebar.cpp
+msgid "Due date"
+msgstr "Fälligkeitsdatum"
+
+#: ../src/core/gui/sidebar/TasksSidebar.cpp
+msgid "Due"
+msgstr "Fällig"
+
+#: ../src/core/gui/sidebar/TasksSidebar.cpp
+msgid "e.g. 14:00"
+msgstr "z. B. 14:00"
+
+#: ../src/core/gui/sidebar/TasksSidebar.cpp
+msgid "Time"
+msgstr "Uhrzeit"
+
+#: ../src/core/gui/sidebar/TasksSidebar.cpp
+msgid "Daily"
+msgstr "Täglich"
+
+#: ../src/core/gui/sidebar/TasksSidebar.cpp
+msgid "Weekly"
+msgstr "Wöchentlich"
+
+#: ../src/core/gui/sidebar/TasksSidebar.cpp
+msgid "Every 2 weeks"
+msgstr "Alle 2 Wochen"
+
+#: ../src/core/gui/sidebar/TasksSidebar.cpp
+msgid "Monthly"
+msgstr "Monatlich"
+
+#: ../src/core/gui/sidebar/TasksSidebar.cpp
+msgid "Yearly"
+msgstr "Jährlich"
+
+#: ../src/core/gui/sidebar/TasksSidebar.cpp
+msgid "Repeat"
+msgstr "Wiederholen"
+
+#: ../src/core/gui/sidebar/TasksSidebar.cpp
+msgid "Please enter the time as HH:MM, e.g. 14:00."
+msgstr "Bitte die Uhrzeit als HH:MM eingeben, z. B. 14:00."
+
+#: ../src/core/gui/sidebar/TasksSidebar.cpp
+msgid "Please enter a task."
+msgstr "Bitte eine Aufgabe eingeben."
+
+#: ../ui/mainmenubar.xml
+msgid "New _Task for This Page…"
+msgstr "Neue _Aufgabe zu dieser Seite…"
+
+#: ../src/core/gui/sidebar/TasksSidebar.cpp
+msgid "Does not repeat"
+msgstr "Keine Wiederholung"

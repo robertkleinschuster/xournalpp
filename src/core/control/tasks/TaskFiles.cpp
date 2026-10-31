@@ -1,6 +1,8 @@
 #include "TaskFiles.h"
 
 #include <algorithm>  // for sort
+#include <cctype>     // for isxdigit
+#include <cstdio>     // for snprintf
 #include <fstream>    // for ifstream, ofstream
 #include <iterator>   // for istreambuf_iterator
 
@@ -162,4 +164,59 @@ auto TaskFiles::fileFor(const fs::path& document, const fs::path& root) -> fs::p
         }
     }
     return root / "todo.txt";
+}
+
+auto TaskFiles::documentLink(const fs::path& taskFile, const fs::path& document, int page) -> std::string {
+    auto relative = document.lexically_relative(taskFile.parent_path());
+    if (relative.empty()) {
+        relative = document;
+    }
+    const auto generic = relative.generic_u8string();  // forward slashes, as in other apps
+    std::string link;
+    for (char8_t c: generic) {
+        // Spaces would end the tag; % and # have a meaning in the link
+        if (c == ' ' || c == '%' || c == '#') {
+            char buffer[4];
+            std::snprintf(buffer, sizeof(buffer), "%%%02X", static_cast<unsigned char>(c));
+            link += buffer;
+        } else {
+            link += static_cast<char>(c);
+        }
+    }
+    if (page >= 0) {
+        link += "#p" + std::to_string(page + 1);
+    }
+    return link;
+}
+
+auto TaskFiles::resolveDocumentLink(const fs::path& taskFile, const std::string& value) -> std::optional<DocumentLink> {
+    DocumentLink link;
+    std::string path = value;
+    if (const size_t hash = path.rfind("#p"); hash != std::string::npos) {
+        try {
+            const int page = std::stoi(path.substr(hash + 2));
+            if (page > 0) {
+                link.page = page - 1;
+            }
+        } catch (const std::exception&) {
+            return std::nullopt;
+        }
+        path.erase(hash);
+    }
+    std::string decoded;
+    for (size_t i = 0; i < path.size(); i++) {
+        if (path[i] == '%' && i + 2 < path.size() && std::isxdigit(static_cast<unsigned char>(path[i + 1])) &&
+            std::isxdigit(static_cast<unsigned char>(path[i + 2]))) {
+            decoded += static_cast<char>(std::stoi(path.substr(i + 1, 2), nullptr, 16));
+            i += 2;
+        } else {
+            decoded += path[i];
+        }
+    }
+    if (decoded.empty()) {
+        return std::nullopt;
+    }
+    auto document = Util::fromUtf8(decoded);
+    link.document = document.is_absolute() ? document : (taskFile.parent_path() / document).lexically_normal();
+    return link;
 }

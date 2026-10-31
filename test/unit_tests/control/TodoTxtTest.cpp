@@ -171,3 +171,21 @@ TEST(TaskFiles, editsLinesAndKeepsTheRest) {
     EXPECT_EQ(TaskFiles::fileFor({}, dir), file);
     fs::remove_all(dir);
 }
+
+TEST(TaskFiles, linksDocumentsRelativeToTheTaskFile) {
+    const fs::path root = fs::temp_directory_path() / "uni";
+    const auto file = root / "GET" / "todo.txt";
+    const auto document = root / "GET" / "VO" / u8"VO8 Induktion #2.xopp";
+    const auto link = TaskFiles::documentLink(file, document, 11);
+    EXPECT_EQ(link, "VO/VO8%20Induktion%20%232.xopp#p12");
+    auto resolved = TaskFiles::resolveDocumentLink(file, link);
+    ASSERT_TRUE(resolved);
+    EXPECT_EQ(resolved->document, document);
+    EXPECT_EQ(resolved->page, 11);
+
+    resolved = TaskFiles::resolveDocumentLink(file, "../Mathe/Blatt.xopp");
+    ASSERT_TRUE(resolved);
+    EXPECT_EQ(resolved->document, root / "Mathe" / "Blatt.xopp");
+    EXPECT_EQ(resolved->page, -1);
+    EXPECT_EQ(TaskFiles::documentLink(file, root / "Notes.xopp", -1), "../Notes.xopp");
+}

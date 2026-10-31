@@ -17,6 +17,7 @@
 #include "control/AnnotationFiles.h"
 #include "control/Control.h"
 #include "control/DocumentAutoSaver.h"
+#include "control/ScrollHandler.h"  // for ScrollHandler
 #include "control/settings/PageTemplateSettings.h"
 #include "control/settings/Settings.h"
 #include "control/xojfile/SaveHandler.h"
@@ -465,6 +466,25 @@ public:
     bool hasData() override { return true; }
     GtkWidget* getWidget() override { return root; }
     void openProjectFolder() override { chooseFolder(); }
+
+    auto currentProject() const -> fs::path override { return projectRoot; }
+
+    void openDocumentAt(const fs::path& document, int page) override {
+        std::error_code error;
+        if (fs::equivalent(document, currentDocumentPath(), error)) {
+            if (page >= 0) {
+                control->getScrollHandler()->scrollToPage(static_cast<size_t>(page));
+            }
+            return;
+        }
+        autoSaver->saveNow([this, document, page](bool saved) {
+            if (saved) {
+                control->openFile(document, [](bool) {}, page);
+            } else {
+                reveal(currentDocumentPath(), true);
+            }
+        });
+    }
 
     auto lastDocument() const -> fs::path override {
         if (lastDocumentFile.empty() || projectRoot.empty()) {

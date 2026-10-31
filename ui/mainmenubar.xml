@@ -478,6 +478,11 @@
      <attribute name="action">win.insert-pdf-pages</attribute>
     </item>
     <item>
+     <attribute name="label" translatable="yes">New _Task for This Page…</attribute>
+     <attribute name="action">win.new-task-for-page</attribute>
+     <attribute name="accel">&lt;Ctrl&gt;&lt;Shift&gt;k</attribute>
+    </item>
+    <item>
      <attribute name="label" translatable="yes">Configure Page Template</attribute>
      <attribute name="action">win.configure-page-template</attribute>
     </item>

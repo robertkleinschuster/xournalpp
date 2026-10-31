@@ -599,6 +599,13 @@ struct ActionProperties<Action::INSERT_PDF_PAGES> {
     static void callback(GSimpleAction*, GVariant*, Control* ctrl) { InsertPdfPages::run(ctrl); }
 };
 template <>
+struct ActionProperties<Action::NEW_TASK_FOR_PAGE> {
+    static void callback(GSimpleAction*, GVariant*, Control* ctrl) {
+        const size_t page = ctrl->getCurrentPageNo();
+        ctrl->getSidebar()->addTaskForPage(ctrl->getDocument()->getFilepath(), page == npos ? 0 : page);
+    }
+};
+template <>
 struct ActionProperties<Action::CONFIGURE_PAGE_TEMPLATE> {
     static void callback(GSimpleAction*, GVariant*, Control* ctrl) { ctrl->paperTemplate(); }
 };

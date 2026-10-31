@@ -38,4 +38,16 @@ bool appendLine(const fs::path& path, const std::string& line);
 /// The task file for new tasks from a document: the nearest todo.txt up from its folder, else root/todo.txt
 fs::path fileFor(const fs::path& document, const fs::path& root);
 
+/// A document link (doc:path#pN) resolved: the document and the page (0-based, -1 if none)
+struct DocumentLink {
+    fs::path document;
+    int page = -1;
+};
+
+/// The value of a doc: tag linking the document (relative to the task file, spaces as %20) and its page (0-based)
+std::string documentLink(const fs::path& taskFile, const fs::path& document, int page);
+
+/// Resolves the value of a doc: tag of a task in taskFile
+std::optional<DocumentLink> resolveDocumentLink(const fs::path& taskFile, const std::string& value);
+
 }  // namespace TaskFiles

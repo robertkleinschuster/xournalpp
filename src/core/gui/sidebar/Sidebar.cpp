@@ -12,8 +12,10 @@
 #include "control/Control.h"                  // for Control
 #include "control/settings/Settings.h"        // for Settings
 #include "gui/GladeGui.h"                     // for GladeGui
+#include "gui/MainWindow.h"                   // for MainWindow
 #include "gui/sidebar/AbstractSidebarPage.h"  // for AbstractSidebar...
 #include "gui/sidebar/ProjectExplorerSidebar.h"
+#include "gui/sidebar/TasksSidebar.h"                // for createTasksSidebar
 #include "gui/sidebar/indextree/SidebarIndexPage.h"  // for SidebarIndexPage
 #include "model/Document.h"                          // for Document
 #include "model/XojPage.h"                           // for XojPage
@@ -40,6 +42,18 @@ void Sidebar::initTabs(GtkWidget* sidebarContents) {
     auto projectExplorer = createProjectExplorerSidebar(this->control);
     projectExplorerActions = dynamic_cast<ProjectExplorerSidebarActions*>(projectExplorer.get());
     addTab(std::move(projectExplorer));
+    // Fork: the tasks of the project folder, next to its files
+    auto tasks = createTasksSidebar(
+            this->control,
+            {[this] { return projectExplorerActions ? projectExplorerActions->currentProject() : fs::path(); },
+             [this](const fs::path& document, int page) {
+                 if (projectExplorerActions) {
+                     projectExplorerActions->openDocumentAt(document, page);
+                 }
+             }});
+    tasksActions = dynamic_cast<TasksSidebarActions*>(tasks.get());
+    tasksTabIndex = this->tabs.size();
+    addTab(std::move(tasks));
     addTab(std::make_unique<SidebarIndexPage>(this->control));
     addTab(std::make_unique<SidebarPreviewPages>(this->control));
     addTab(std::make_unique<SidebarPreviewLayers>(this->control, false));
@@ -122,6 +136,17 @@ void Sidebar::selectProjectExplorer() {
     if (!tabs.empty()) {
         setSelectedTab(0);
     }
+}
+
+void Sidebar::addTaskForPage(const fs::path& document, size_t page) {
+    if (!tasksActions) {
+        return;
+    }
+    if (!control->getWindow()->isSidebarVisible()) {
+        control->getWindow()->setSidebarVisible(true);
+    }
+    setSelectedTab(tasksTabIndex);
+    tasksActions->addTaskForPage(document, page);
 }
 
 void Sidebar::openProjectFolder() {
