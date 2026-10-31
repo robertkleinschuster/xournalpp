@@ -4,6 +4,18 @@ Feature ideas for this fork that are not implemented yet. See `AGENTS.md` for th
 
 ## Planned
 
+### Robust pen and touch input in GTK widgets
+
+GTK 3 on Windows handles pen and touch outside the canvas poorly: menu bar menus sometimes stay open when tapping
+the next menu or beside them, and tooltips shown while the pen hovers can stay on screen and block the window.
+`InputSafety` hides tooltips on pen/touch contact and when the pen leaves, and releases grabs of menus that are no
+longer shown; `TouchButtonFix` handles taps on buttons and the menu bar.
+
+- Diagnose with the input log: create an empty file `input-debug` in the config folder, reproduce, then read
+  `input-debug.log` there (pen, touch, menu and grab events).
+- Goal: no state in which a menu, tooltip or grab can block the window; menus switch and close reliably by touch
+  and pen.
+
 ### Arrange pages
 
 Reorder pages like in a PDF tool instead of moving them step by step.

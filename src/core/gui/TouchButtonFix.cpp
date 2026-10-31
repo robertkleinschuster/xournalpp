@@ -4,6 +4,8 @@
 
 #include <gtk/gtk.h>
 
+#include "gui/InputSafety.h"
+
 #ifdef _WIN32
 namespace {
 
@@ -142,14 +144,23 @@ auto handleMenuTouch(GdkEvent* event) -> bool {
         }
         GtkWidget* item = menuBarItemAt(bar, x, y);
         if (item && gtk_menu_shell_get_selected_item(bar) != item) {
+            InputSafety::note("menu touch: open other menu bar item");
             gtk_menu_shell_select_item(bar, item);  // opens its menu
         } else {
+            InputSafety::note(item ? "menu touch: close (tap on open item)" : "menu touch: close (tap beside menus)");
             gtk_menu_shell_deactivate(bar);
         }
         return true;
     }
     GtkMenuShell* bar = activeMenuBar();
-    if (!bar || isOnOpenMenu(x, y)) {
+    if (!bar) {
+        if (gtk_grab_get_current()) {
+            InputSafety::note("menu touch: grab held, but not by a menu of a menu bar");
+        }
+        return false;
+    }
+    if (isOnOpenMenu(x, y)) {
+        InputSafety::note("menu touch: on an open menu, left to GTK");
         return false;
     }
     menuTap = event->touch.sequence;
@@ -222,6 +233,7 @@ void TouchButtonFix::install() {
 #ifdef _WIN32
     gdk_event_handler_set(
             +[](GdkEvent* event, gpointer) {
+                InputSafety::handleEvent(event);
                 if (!handleTouch(event)) {
                     gtk_main_do_event(event);
                 }
