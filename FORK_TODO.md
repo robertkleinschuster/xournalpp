@@ -16,6 +16,19 @@ longer shown; `TouchButtonFix` handles taps on buttons and the menu bar.
 - Goal: no state in which a menu, tooltip or grab can block the window; menus switch and close reliably by touch
   and pen.
 
+### Clipboard buttons in the toolbar
+
+Copy and paste without a keyboard, e.g. to insert a copied PDF area with the pen or by touch in tablet mode.
+
+- Add COPY and PASTE (perhaps CUT) to the default "Xournal Studio" toolbar right next to the PDF tool, whose default
+  is Copy PDF Area: copy an area, then paste it with the button next to it. The items exist already (`CUT`, `COPY`,
+  `PASTE` in `ToolMenuHandler`); update `resources-templates/toolbar.ini.in`.
+- Paste should place the content where it is visible: in the middle of the visible part of the current page (or at
+  the last tap position) instead of at a position that may be scrolled out of view; check what upstream does for
+  pasting without a pointer position.
+- The buttons follow the clipboard state (paste disabled when there is nothing to paste); check this also works for
+  content copied in other applications (images, text).
+
 ### Project explorer: move files
 
 Move files and folders to another folder of the project, by drag and drop in the tree (also by touch, e.g. after a
