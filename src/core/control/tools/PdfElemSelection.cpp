@@ -5,7 +5,8 @@
 #include <memory>   // for __shared_ptr_access
 #include <utility>  // for move
 
-#include <cairo.h>    // for cairo_line_to, cairo_region_destroy
+#include <cairo-pdf.h>  // for cairo_pdf_surface_create_for_stream
+#include <cairo.h>      // for cairo_line_to, cairo_region_destroy
 #include <gdk/gdk.h>  // for GdkRGBA, gdk_cairo_set_source_rgba
 
 #include "control/Control.h"      // for Control
@@ -14,6 +15,7 @@
 #include "gui/XournalView.h"      // for XournalView
 #include "model/Document.h"       // for Document
 #include "model/PageRef.h"        // for PageRef
+#include "model/TexImage.h"       // for TexImage
 #include "model/XojPage.h"        // for XojPage
 #include "pdf/base/XojPdfPage.h"  // for XojPdfRectangle, XojPdfPageSelectio...
 #include "util/Assert.h"          // for xoj_assert
@@ -63,7 +65,64 @@ bool PdfElemSelection::finalizeSelection(XojPdfPageSelectionStyle style) {
     // Informs the windowing system of the selection -- i.e. for accessibility purposes
     gtk_clipboard_set_text(gtk_clipboard_get(GDK_SELECTION_PRIMARY), this->selectedText.c_str(),
                            strict_cast<gint>(this->selectedText.length()));
+
+    if (style == XojPdfPageSelectionStyle::Area) {
+        // Fork: an area can also be copied with its graphics, so keep showing the whole area, even without text
+        const auto area = getSelectedArea();
+        cairo_rectangle_int_t rect;
+        rect.x = floor_cast<int>(area.x);
+        rect.y = floor_cast<int>(area.y);
+        rect.width = ceil_cast<int>(area.x + area.width) - rect.x;
+        rect.height = ceil_cast<int>(area.y + area.height) - rect.y;
+        this->selectedTextRegion.reset(cairo_region_create_rectangle(&rect), xoj::util::adopt);
+        return area.width >= 1 && area.height >= 1;
+    }
     return !this->selectedTextRects.empty();
+}
+
+auto PdfElemSelection::getSelectedArea() const -> xoj::util::Rectangle<double> {
+    if (!this->pdf) {
+        return {};
+    }
+    const double x1 = std::clamp(std::min(bounds.x1, bounds.x2), 0.0, this->pdf->getWidth());
+    const double x2 = std::clamp(std::max(bounds.x1, bounds.x2), 0.0, this->pdf->getWidth());
+    const double y1 = std::clamp(std::min(bounds.y1, bounds.y2), 0.0, this->pdf->getHeight());
+    const double y2 = std::clamp(std::max(bounds.y1, bounds.y2), 0.0, this->pdf->getHeight());
+    return {x1, y1, x2 - x1, y2 - y1};
+}
+
+static auto pdfWriteFunction(std::string* data, const unsigned char* bytes, unsigned int length) -> cairo_status_t {
+    data->append(reinterpret_cast<const char*>(bytes), length);
+    return CAIRO_STATUS_SUCCESS;
+}
+
+auto PdfElemSelection::createAreaImage(const XojPdfPage& page, const xoj::util::Rectangle<double>& area)
+        -> std::unique_ptr<TexImage> {
+    if (area.width < 1 || area.height < 1) {
+        return nullptr;
+    }
+
+    std::string data;
+    cairo_surface_t* surface = cairo_pdf_surface_create_for_stream(
+            reinterpret_cast<cairo_write_func_t>(pdfWriteFunction), &data, area.width, area.height);
+    cairo_t* cr = cairo_create(surface);
+    cairo_translate(cr, -area.x, -area.y);
+    cairo_rectangle(cr, area.x, area.y, area.width, area.height);
+    cairo_clip(cr);
+    page.renderForPrinting(cr);
+    cairo_destroy(cr);
+    cairo_surface_finish(surface);
+    cairo_surface_destroy(surface);
+
+    // A TexImage displays and stores PDF data; without LaTeX source it is not opened in the LaTeX editor.
+    auto image = std::make_unique<TexImage>();
+    if (GError* err = nullptr; !image->loadData(std::move(data), &err)) {
+        g_warning("Could not copy the PDF area: %s", err ? err->message : "invalid PDF data");
+        g_clear_error(&err);
+        return nullptr;
+    }
+    image->move(area.x, area.y);
+    return image;
 }
 
 XojPdfPageSelectionStyle PdfElemSelection::selectionStyleForToolType(ToolType type) {

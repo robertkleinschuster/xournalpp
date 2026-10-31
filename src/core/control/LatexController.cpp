@@ -334,7 +334,10 @@ void LatexController::insertLatex(PageRef page, Control* ctrl, double x, double 
         if ((*e)->getType() == ELEMENT_TEXIMAGE || (*e)->getType() == ELEMENT_TEXT) {
             static_assert(std::is_base_of_v<RectangularElement, TexImage> &&
                           std::is_base_of_v<RectangularElement, Text>);
-            if ((*e)->hasBoundingBoxContaining(x, y)) {
+            // Fork: a copied PDF area is a TexImage without LaTeX source, do not replace it
+            const bool isPdfArea =
+                    (*e)->getType() == ELEMENT_TEXIMAGE && static_cast<const TexImage*>((*e).get())->getText().empty();
+            if (!isPdfArea && (*e)->hasBoundingBoxContaining(x, y)) {
                 self->selectedElem = static_cast<RectangularElement*>((*e).get());
                 break;
             }

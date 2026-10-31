@@ -65,6 +65,9 @@ public:
     /// Copy Selection to the Clipboard.
     void copyTextToClipboard();
 
+    /// Fork: copy the selected area with all its PDF content (as vector graphics) to the clipboard.
+    void copyAreaToClipboard();
+
 private:
     void show();
 
@@ -75,6 +78,7 @@ private:
     static void strikethroughCb(GtkButton* button, PdfFloatingToolbox* pft);
     static void underlineCb(GtkButton* button, PdfFloatingToolbox* pft);
     static void copyTextCb(GtkButton* button, PdfFloatingToolbox* pft);
+    static void copyAreaCb(GtkButton* button, PdfFloatingToolbox* pft);
     static void highlightCb(GtkButton* button, PdfFloatingToolbox* pft);
 
     void createStrokes(PdfMarkerStyle position, PdfMarkerStyle width, int markerOpacity);

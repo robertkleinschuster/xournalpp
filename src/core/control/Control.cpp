@@ -2733,6 +2733,8 @@ auto Control::getDocument() const -> Document* { return this->doc; }
 
 auto Control::getToolHandler() const -> ToolHandler* { return this->toolHandler; }
 
+auto Control::getClipboardHandler() const -> ClipboardHandler* { return this->clipboardHandler; }
+
 auto Control::getScheduler() const -> XournalScheduler* { return this->scheduler; }
 
 auto Control::getWindow() const -> MainWindow* { return this->win; }

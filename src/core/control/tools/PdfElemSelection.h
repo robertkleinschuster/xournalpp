@@ -11,6 +11,7 @@
 #pragma once
 
 #include <cstddef>  // for size_t
+#include <memory>   // for unique_ptr
 #include <string>   // for string
 #include <vector>   // for vector
 
@@ -20,11 +21,13 @@
 #include "model/OverlayBase.h"
 #include "pdf/base/XojPdfPage.h"  // for XojPdfPageSelectionStyle, XojPdfRec...
 #include "util/DispatchPool.h"
+#include "util/Rectangle.h"           // for Rectangle
 #include "util/Util.h"                // for npos
 #include "util/raii/CairoWrappers.h"  // for CairoRegionSPtr
 
 class Range;
 class Control;
+class TexImage;
 
 namespace xoj::view {
 class PdfElementSelectionView;
@@ -66,6 +69,16 @@ public:
 
     size_t getSelectionPageNr() const;
     void setToolType(ToolType toolType);
+
+    /// Fork: the selected rectangle of an area selection, clipped to the page (may be empty)
+    xoj::util::Rectangle<double> getSelectedArea() const;
+
+    /// Fork: the PDF page the selection was made on (may be nullptr)
+    const XojPdfPageSPtr& getPdfPage() const { return pdf; }
+
+    /// Fork: renders an area of a PDF page into a one-page PDF, so text, formulas and graphics stay vector graphics.
+    /// The result is placed at the area's position. Returns nullptr for an empty area or on failure.
+    static std::unique_ptr<TexImage> createAreaImage(const XojPdfPage& page, const xoj::util::Rectangle<double>& area);
 
     const cairo_region_t* getSelectedRegion() const { return selectedTextRegion.get(); }
 

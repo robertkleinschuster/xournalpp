@@ -11,7 +11,8 @@
 #include <glib-object.h>  // for G_CALLBACK, g_signal_connect
 #include <gtk/gtk.h>
 
-#include "control/Control.h"      // for Control
+#include "control/ClipboardHandler.h"  // for ClipboardHandler
+#include "control/Control.h"           // for Control
 #include "control/ToolEnums.h"    // for ToolType, TOOL_SELECT_PDF_TEXT_LI...
 #include "control/ToolHandler.h"  // for ToolHandler
 #include "control/tools/PdfElemSelection.h"
@@ -22,6 +23,7 @@
 #include "model/PageRef.h"          // for PageRef
 #include "model/Point.h"            // for Point
 #include "model/Stroke.h"           // for Stroke, BUTT, StrokeTool::HIGHLIG...
+#include "model/TexImage.h"         // for TexImage
 #include "model/XojPage.h"          // for XojPage
 #include "undo/GroupUndoAction.h"   // for GroupUndoAction
 #include "undo/InsertUndoAction.h"  // for InsertUndoAction
@@ -43,6 +45,7 @@ PdfFloatingToolbox::PdfFloatingToolbox(MainWindow* theMainWindow, GtkOverlay* ov
 
     g_signal_connect(theMainWindow->get("pdfTbHighlight"), "clicked", G_CALLBACK(this->highlightCb), this);
     g_signal_connect(theMainWindow->get("pdfTbCopyText"), "clicked", G_CALLBACK(this->copyTextCb), this);
+    g_signal_connect(theMainWindow->get("pdfTbCopyArea"), "clicked", G_CALLBACK(this->copyAreaCb), this);
     g_signal_connect(theMainWindow->get("pdfTbUnderline"), "clicked", G_CALLBACK(this->underlineCb), this);
     g_signal_connect(theMainWindow->get("pdfTbStrikethrough"), "clicked", G_CALLBACK(this->strikethroughCb), this);
     g_signal_connect(theMainWindow->get("pdfTbChangeType"), "clicked", G_CALLBACK(this->switchSelectTypeCb), this);
@@ -128,6 +131,11 @@ void PdfFloatingToolbox::copyTextCb(GtkButton* button, PdfFloatingToolbox* pft) 
     pft->userCancelSelection();
 }
 
+void PdfFloatingToolbox::copyAreaCb(GtkButton* button, PdfFloatingToolbox* pft) {
+    pft->copyAreaToClipboard();
+    pft->userCancelSelection();
+}
+
 void PdfFloatingToolbox::underlineCb(GtkButton* button, PdfFloatingToolbox* pft) {
     pft->createStrokes(PdfMarkerStyle::POS_TEXT_BOTTOM, PdfMarkerStyle::WIDTH_TEXT_LINE, 230);
     pft->userCancelSelection();
@@ -147,12 +155,23 @@ void PdfFloatingToolbox::show() {
     for (const char* id: {"pdfTbHighlight", "pdfTbUnderline", "pdfTbStrikethrough"}) {
         gtk_widget_set_visible(theMainWindow->get(id), editable);
     }
+    gtk_widget_set_visible(theMainWindow->get("pdfTbCopyArea"), selectionStyle == XojPdfPageSelectionStyle::Area);
 }
 
 void PdfFloatingToolbox::copyTextToClipboard() {
     GtkClipboard* clipboard = gtk_widget_get_clipboard(this->theMainWindow->getWindow());
     if (const std::string& text = this->pdfElemSelection->getSelectedText(); !text.empty()) {
         gtk_clipboard_set_text(clipboard, text.c_str(), -1);
+    }
+}
+
+void PdfFloatingToolbox::copyAreaToClipboard() {
+    const auto& pdfPage = this->pdfElemSelection->getPdfPage();
+    if (!pdfPage) {
+        return;
+    }
+    if (auto image = PdfElemSelection::createAreaImage(*pdfPage, this->pdfElemSelection->getSelectedArea())) {
+        this->theMainWindow->getControl()->getClipboardHandler()->copyElement(*image);
     }
 }
 
@@ -238,7 +257,10 @@ void PdfFloatingToolbox::switchSelectTypeCb(GtkButton* button, PdfFloatingToolbo
     pft->theMainWindow->getControl()->selectTool(type);
 
     pft->pdfElemSelection->setToolType(type);
-    pft->pdfElemSelection->finalizeSelection(PdfElemSelection::selectionStyleForToolType(type));
+    pft->selectionStyle = PdfElemSelection::selectionStyleForToolType(type);
+    pft->pdfElemSelection->finalizeSelectionAndRepaint(pft->selectionStyle);
+    gtk_widget_set_visible(pft->theMainWindow->get("pdfTbCopyArea"),
+                           pft->selectionStyle == XojPdfPageSelectionStyle::Area);
 }
 
 bool PdfFloatingToolbox::isHidden() const { return !gtk_widget_is_visible(this->floatingToolbox); }

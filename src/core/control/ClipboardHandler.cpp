@@ -1,6 +1,7 @@
 #include "ClipboardHandler.h"
 
-#include <set>      // for multiset, operator!=
+#include <algorithm>  // for max
+#include <set>        // for multiset, operator!=
 #include <utility>  // for move
 #include <vector>   // for vector
 
@@ -229,6 +230,72 @@ auto ClipboardHandler::copy() -> bool {
     g_string_free(svgString, true);
 
     return true;
+}
+
+void ClipboardHandler::copyElement(const Element& element) {
+    const xoj::util::Rectangle<double> bounds = element.getBoundingBox();
+    const xoj::util::Rectangle<double> snapped = element.getSnappedBounds();
+
+    // Same layout as EditSelection::serialize(), with the padding of the EditSelection constructor
+    const double PADDING = 12.;
+    const xoj::util::Rectangle<double> rect{bounds.x - PADDING, bounds.y - PADDING, bounds.width + 2 * PADDING,
+                                            bounds.height + 2 * PADDING};
+
+    ObjectOutputStream out(new BinObjectEncoding());
+    out.writeString(PROJECT_STRING);
+
+    out.writeObject("EditSelection");
+    for (double d: {rect.x, rect.y, rect.width, rect.height, snapped.x, snapped.y, snapped.width, snapped.height}) {
+        out.writeDouble(d);
+    }
+    out.writeDouble(0);  // rotation
+
+    out.writeObject("EditSelectionContents");
+    for (double d: {rect.x, rect.y, rect.width, rect.height, snapped.x, snapped.y, snapped.width, snapped.height}) {
+        out.writeDouble(d);
+    }
+    out.writeDouble(0);  // rotation
+    out.writeDouble(rect.x);
+    out.writeDouble(rect.y);
+    out.endObject();
+
+    out.endObject();
+
+    out.writeInt(1);
+    element.serialize(out);
+
+    // A PNG for pasting into other applications
+    const double dpiFactor = 1.0 / Util::DPI_NORMALIZATION_FACTOR * 300.0;
+    const int width = std::max(1, static_cast<int>(bounds.width * dpiFactor));
+    const int height = std::max(1, static_cast<int>(bounds.height * dpiFactor));
+    cairo_surface_t* surfacePng = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width, height);
+    cairo_t* crPng = cairo_create(surfacePng);
+    cairo_set_source_rgb(crPng, 1, 1, 1);
+    cairo_paint(crPng);
+    cairo_scale(crPng, dpiFactor, dpiFactor);
+    cairo_translate(crPng, -bounds.x, -bounds.y);
+    xoj::view::ElementView::createFromElement(&element)->draw(xoj::view::Context::createDefault(crPng));
+    cairo_destroy(crPng);
+
+    GdkPixbuf* image = gdk_pixbuf_get_from_surface(surfacePng, 0, 0, width, height);
+    cairo_surface_destroy(surfacePng);
+
+    GtkTargetList* list = gtk_target_list_new(nullptr, 0);
+    gtk_target_list_add_image_targets(list, 0, true);
+    gtk_target_list_add(list, atomXournal, 0, 0);
+
+    int n_targets = 0;
+    GtkTargetEntry* targets = gtk_target_table_new_from_list(list, &n_targets);
+
+    auto* contents = new ClipboardContents("", image, "", out.stealData());
+
+    gtk_clipboard_set_with_data(this->clipboard, targets, static_cast<guint>(n_targets),
+                                reinterpret_cast<GtkClipboardGetFunc>(ClipboardContents::getFunction),
+                                reinterpret_cast<GtkClipboardClearFunc>(ClipboardContents::clearFunction), contents);
+    gtk_clipboard_set_can_store(this->clipboard, nullptr, 0);
+
+    gtk_target_table_free(targets, n_targets);
+    gtk_target_list_unref(list);
 }
 
 void ClipboardHandler::setSelection(EditSelection* selection) {

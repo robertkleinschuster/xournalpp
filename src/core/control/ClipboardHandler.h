@@ -21,6 +21,7 @@
 
 class ObjectInputStream;
 class EditSelection;
+class Element;
 
 class ClipboardListener {
 public:
@@ -43,6 +44,9 @@ public:
     bool paste();
     bool cut();
     bool copy();
+
+    /// Fork: copy a single element that is not part of the document, as if it was copied from a selection
+    void copyElement(const Element& element);
 
     void setSelection(EditSelection* selection);
 

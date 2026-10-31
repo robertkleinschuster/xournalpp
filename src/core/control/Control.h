@@ -310,6 +310,7 @@ public:
     void setLastAutosaveFile(fs::path newAutosaveFile);
     void deleteLastAutosaveFile();
     void setClipboardHandlerSelection(EditSelection* selection);
+    ClipboardHandler* getClipboardHandler() const;
 
     void addChangedDocumentListener(DocumentListener* dl);
     void removeChangedDocumentListener(DocumentListener* dl);
