@@ -10,8 +10,10 @@
 
 #include <filesystem>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 class Control;
 class Document;
@@ -82,5 +84,13 @@ private:
     /// Whether the current document's exported PDF exists
     bool hasExport() const;
 
+    /// Continues on the UI thread once the export thread is done
+    void exportFinished(const std::string& error, std::function<void()> done);
+
     Control* control;
+    bool running = false;
+    /// Requests made while an export was running
+    std::vector<std::function<void()>> waiting;
+    /// Expires with this object, so that a finishing export thread does not call into it afterwards
+    std::shared_ptr<void> lifetime = std::make_shared<int>(0);
 };

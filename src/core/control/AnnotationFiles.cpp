@@ -4,21 +4,26 @@
 #include <fstream>
 #include <memory>
 #include <string_view>
+#include <thread>
 #include <utility>
 
 #include <glib.h>
 
 #include "control/Control.h"
-#include "control/jobs/PdfExportJob.h"
-#include "control/jobs/Scheduler.h"
-#include "control/jobs/XournalScheduler.h"
+#include "control/jobs/ProgressListener.h"
 #include "control/settings/Settings.h"
 #include "model/Document.h"
 #include "model/DocumentHandler.h"
+#include "model/Image.h"
+#include "model/Layer.h"
 #include "model/XojPage.h"
+#include "pdf/base/XojPdfExport.h"
+#include "pdf/base/XojPdfExportFactory.h"
 #include "undo/UndoRedoHandler.h"
 #include "util/GzInputStream.h"
 #include "util/PathUtil.h"
+#include "util/XojMsgBox.h"
+#include "util/i18n.h"
 
 namespace fs = std::filesystem;
 
@@ -33,43 +38,42 @@ auto samePath(const fs::path& a, const fs::path& b) -> bool {
     return fs::equivalent(a, b, error) || a.lexically_normal() == b.lexically_normal();
 }
 
-/// The regular PDF export, with a fixed target instead of the file dialog. Calls done when finished.
-class AutoPdfExportJob final: public PdfExportJob {
-public:
-    AutoPdfExportJob(Control* control, fs::path target, std::function<void()> done):
-            PdfExportJob(control), done(std::move(done)) {
-        this->filepath = std::move(target);
-    }
-
-    void run() override {
-        PdfExportJob::run();
-        // PdfExportJob only reports back on errors (and only while there is a window), so report success here.
-        // Calling callAfterRun() twice would run afterRun() twice.
-        if (this->errorMsg.empty() || !control->getWindow()) {
-            callAfterRun();
-        }
-    }
-
-    void afterRun() override {
-        PdfExportJob::afterRun();  // shows an error, if any
-        if (!done) {
-            return;
-        }
-        // Continue after the blocking job has unblocked the UI, which is queued just like this callback
-        g_idle_add(
-                +[](gpointer data) -> gboolean {
-                    std::unique_ptr<std::function<void()>> callback(static_cast<std::function<void()>*>(data));
-                    (*callback)();
-                    return G_SOURCE_REMOVE;
-                },
-                new std::function<void()>(std::exchange(done, {})));
-    }
-
-private:
-    ~AutoPdfExportJob() override = default;
-
-    std::function<void()> done;
+/// A copy of the document that the PDF export can read on another thread while the original is edited
+struct ExportSnapshot {
+    DocumentHandler handler;  // declared first: the document refers to it until it is destroyed
+    std::unique_ptr<Document> doc = std::make_unique<Document>(&handler);
+    fs::path target;
+    std::string error;
 };
+
+/// Copies pages and elements of doc (which the caller has locked) so that nothing is shared with the original
+auto createSnapshot(Document& doc, fs::path target) -> std::unique_ptr<ExportSnapshot> {
+    auto snapshot = std::make_unique<ExportSnapshot>();
+    snapshot->target = std::move(target);
+    snapshot->doc->setFilepath(doc.getFilepath());
+    snapshot->doc->setPdfAttributes(doc.getPdfFilepath(), doc.isAttachPdf());
+    std::vector<PageRef> pages;
+    pages.reserve(doc.getPageCount());
+    for (size_t i = 0; i < doc.getPageCount(); i++) {
+        const auto& original = doc.getPage(i);
+        PageRef copy(original->clone());
+        const auto& originalLayers = original->getLayers();
+        const auto& layers = copy->getLayers();
+        for (size_t l = 0; l < layers.size() && l < originalLayers.size(); l++) {
+            layers[l]->setVisible(originalLayers[l]->isVisible());  // Layer::clone() does not keep it
+            for (const auto& element: layers[l]->getElements()) {
+                if (element->getType() == ELEMENT_IMAGE) {
+                    // A clone shares the decoded surface with the original, which the UI keeps drawing
+                    auto* image = static_cast<Image*>(element.get());
+                    image->setImage(std::string(image->getBinaryData()));
+                }
+            }
+        }
+        pages.push_back(std::move(copy));
+    }
+    snapshot->doc->addPages(pages.begin(), pages.end());
+    return snapshot;
+}
 
 }  // namespace
 
@@ -346,6 +350,10 @@ AnnotationExporter::~AnnotationExporter() {
 }
 
 void AnnotationExporter::exportIfOutdated(std::function<void()> done) {
+    if (running) {
+        waiting.emplace_back([this, done = std::move(done)]() mutable { exportIfOutdated(std::move(done)); });
+        return;
+    }
     Document* doc = control->getDocument();
     auto* undoRedo = control->getUndoRedoHandler();
     if (!doc || !undoRedo || undoRedo->isChanged()) {
@@ -376,21 +384,45 @@ void AnnotationExporter::exportIfOutdated(std::function<void()> done) {
         done();
         return;
     }
-    // Start the export once the main loop is idle: when called from a save callback, the save job still blocks the UI
-    // and its unblock is already queued. Creating the export job (which blocks the UI itself) now would make that
-    // unblock re-enable editing while the export reads the document.
-    struct Pending {
-        Control* control;
-        fs::path target;
+    // Fork: export a copy of the document on its own thread, so the UI is not blocked and editing can continue.
+    // A second request waits for the running export and then checks again whether the PDF is outdated.
+    running = true;
+    doc->lock_shared();
+    auto snapshot = createSnapshot(*doc, target);
+    doc->unlock_shared();
+
+    struct Finished {
+        std::weak_ptr<void> alive;
+        AnnotationExporter* self;
+        std::unique_ptr<ExportSnapshot> snapshot;
         std::function<void()> done;
     };
-    g_idle_add(
-            +[](gpointer data) -> gboolean {
-                std::unique_ptr<Pending> pending(static_cast<Pending*>(data));
-                auto* job = new AutoPdfExportJob(pending->control, pending->target, std::move(pending->done));
-                pending->control->getScheduler()->addJob(job, JOB_PRIORITY_NONE);
-                job->unref();
-                return G_SOURCE_REMOVE;
-            },
-            new Pending{control, target, std::move(done)});
+    auto* finished = new Finished{lifetime, this, std::move(snapshot), std::move(done)};
+    std::thread([finished] {
+        DummyProgressListener listener;
+        auto exporter = XojPdfExportFactory::createExport(finished->snapshot->doc.get(), &listener);
+        if (!exporter->createPdf(finished->snapshot->target, false)) {
+            finished->snapshot->error = exporter->getLastError();
+        }
+        g_idle_add(
+                +[](gpointer data) -> gboolean {
+                    std::unique_ptr<Finished> f(static_cast<Finished*>(data));
+                    if (!f->alive.expired()) {
+                        f->self->exportFinished(f->snapshot->error, std::move(f->done));
+                    }
+                    return G_SOURCE_REMOVE;
+                },
+                finished);
+    }).detach();
+}
+
+void AnnotationExporter::exportFinished(const std::string& error, std::function<void()> done) {
+    running = false;
+    if (!error.empty()) {
+        XojMsgBox::showErrorToUser(control->getGtkWindow(), FS(_F("Error exporting PDF: {1}") % error));
+    }
+    done();
+    for (auto& next: std::exchange(waiting, {})) {
+        next();
+    }
 }
