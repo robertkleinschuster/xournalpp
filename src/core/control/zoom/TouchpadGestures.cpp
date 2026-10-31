@@ -440,9 +440,21 @@ struct TouchpadGestures::Impl {
                y < gtk_widget_get_allocated_height(widget);
     }
 
+    /// A mouse button is held, e.g. the touchpad is clicked down with one finger while another one drags
+    static auto mouseButtonDown() -> bool {
+        // Physical buttons, so swapped buttons do not matter
+        return (GetAsyncKeyState(VK_LBUTTON) | GetAsyncKeyState(VK_RBUTTON) | GetAsyncKeyState(VK_MBUTTON)) & 0x8000;
+    }
+
     void updateGesture(const Contacts& contacts) {
         if (contacts.size() != 2 || !isActive() || zoom->isZoomPresentationMode()) {
             finishGesture();
+            return;
+        }
+        if (mouseButtonDown()) {
+            // Dragging with a clicked touchpad (e.g. drawing a selection rectangle) puts two fingers on it as well;
+            // that drag belongs to the tool, the document must neither move nor zoom
+            cancelGesture();
             return;
         }
         contactsAt = g_get_monotonic_time();
@@ -540,6 +552,20 @@ struct TouchpadGestures::Impl {
         }
         tracking = false;
         zooming = false;
+    }
+
+    /// Ends the gesture where it is, without the movement since the last frame and without gliding on
+    void cancelGesture() {
+        if (tickId && toplevel) {
+            gtk_widget_remove_tick_callback(toplevel, tickId);
+        }
+        tickId = 0;
+        if (zooming) {
+            zoom->endZoomSequence();
+        }
+        tracking = false;
+        zooming = false;
+        momentum.begin();
     }
 
     void stopInertia() { momentum.stop(); }
