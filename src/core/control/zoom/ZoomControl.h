@@ -74,6 +74,8 @@ public:
 
     /// Fork: stops the document gliding after a touchpad swipe
     void stopTouchpadGliding();
+    /// Fork: ends touchpad gestures before the view they move is destroyed
+    void releaseTouchpadGestures();
     bool isZoomFitMode() const;
 
     /**

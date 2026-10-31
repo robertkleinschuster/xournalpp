@@ -546,3 +546,5 @@ void ZoomControl::stopTouchpadGliding() {
         touchpadGestures->stopGliding();
     }
 }
+
+void ZoomControl::releaseTouchpadGestures() { touchpadGestures.reset(); }

@@ -177,6 +177,12 @@ MainWindow::~MainWindow() {
     if (readOnlyHighlightSource) {
         g_source_remove(readOnlyHighlightSource);
     }
+    // Fork: the window is destroyed (and may still emit signals) after the members, e.g. the document view below.
+    // Nothing may reach them then: neither the window's handlers nor the touchpad thread's hand-overs.
+    g_signal_handlers_disconnect_by_data(this->window, this);
+    if (this->control && this->control->getZoomControl()) {
+        this->control->getZoomControl()->releaseTouchpadGestures();
+    }
 }
 
 struct ThemeProperties {
