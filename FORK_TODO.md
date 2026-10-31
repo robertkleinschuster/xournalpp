@@ -41,17 +41,6 @@ long press) and with a "Move to…" entry in the context menu that offers the pr
 - Moving a PDF that a document in another folder uses as background relinks that document.
 - Refuse targets that exist already and moving a folder into itself.
 
-### Project explorer: show deleted files
-
-Files that git still tracks but that were deleted in the working tree (they are part of the next sync) have no row
-today. Show them in their folder until the next sync, so it is visible what the sync will delete.
-
-- Gray, but distinguishable from the unsupported file formats that are already shown dimmed: e.g. a struck-through
-  name and/or a dedicated icon (a document icon with a small "x" or trash badge), plus a tooltip ("Deleted – removed
-  from the repository with the next sync").
-- Context menu: "Restore" (`git restore` / `git checkout -- <path>`), which brings the file back.
-- Not openable; excluded from search results, or shown there marked the same way.
-
 ### Arrange pages
 
 Reorder pages like in a PDF tool instead of moving them step by step.

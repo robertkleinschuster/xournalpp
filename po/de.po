@@ -5088,3 +5088,19 @@ msgstr "Ein Dokument behält seine Dateiendung."
 #: src/core/gui/sidebar/ProjectExplorerSidebar.cpp
 msgid "Some files could not be renamed back."
 msgstr "Einige Dateien konnten nicht zurückbenannt werden."
+
+#: src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "Deleted – removed from the repository with the next sync"
+msgstr "Gelöscht – wird beim nächsten Sync aus dem Repository entfernt"
+
+#: src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "Deleted folder – removed from the repository with the next sync"
+msgstr "Gelöschter Ordner – wird beim nächsten Sync aus dem Repository entfernt"
+
+#: src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "Restore"
+msgstr "Wiederherstellen"
+
+#: src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "The entry could not be restored."
+msgstr "Der Eintrag konnte nicht wiederhergestellt werden."

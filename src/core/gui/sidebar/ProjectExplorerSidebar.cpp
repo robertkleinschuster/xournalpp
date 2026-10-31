@@ -47,7 +47,20 @@ enum Column : gint {
     COL_COUNT
 };
 /// KIND_NESTED: source or exported PDF shown below its .xopp document
-enum Kind : gint { KIND_DIRECTORY, KIND_DOCUMENT, KIND_FILE, KIND_PLACEHOLDER, KIND_NESTED };
+/// KIND_DELETED(_DIRECTORY): a file or folder git tracks that was deleted in the working tree (removed by the next
+/// sync)
+enum Kind : gint {
+    KIND_DIRECTORY,
+    KIND_DOCUMENT,
+    KIND_FILE,
+    KIND_PLACEHOLDER,
+    KIND_NESTED,
+    KIND_DELETED,
+    KIND_DELETED_DIRECTORY
+};
+
+auto isDeletedKind(gint kind) -> bool { return kind == KIND_DELETED || kind == KIND_DELETED_DIRECTORY; }
+auto isFolderKind(gint kind) -> bool { return kind == KIND_DIRECTORY || kind == KIND_DELETED_DIRECTORY; }
 
 constexpr size_t MAX_SEARCH_RESULTS = 1000;
 constexpr int MAX_SEARCH_DEPTH = 16;
@@ -59,6 +72,7 @@ constexpr guint GIT_FETCH_INTERVAL_S = 300;
 
 constexpr const char* COLOR_ADDED = "#2ea043";
 constexpr const char* COLOR_MODIFIED = "#3584e4";
+constexpr const char* COLOR_DELETED = "#8a8a8a";
 
 auto colorFor(ProjectGit::FileState state) -> const char* {
     switch (state) {
@@ -196,8 +210,8 @@ auto compareRows(GtkTreeModel* model, GtkTreeIter* a, GtkTreeIter* b, gpointer) 
     gtk_tree_model_get(model, a, COL_KIND, &kindA, COL_NAME, &nameA, -1);
     gtk_tree_model_get(model, b, COL_KIND, &kindB, COL_NAME, &nameB, -1);
     gint result = 0;
-    if ((kindA == KIND_DIRECTORY) != (kindB == KIND_DIRECTORY)) {
-        result = kindA == KIND_DIRECTORY ? -1 : 1;
+    if (isFolderKind(kindA) != isFolderKind(kindB)) {
+        result = isFolderKind(kindA) ? -1 : 1;
     } else {
         gchar* keyA = g_utf8_collate_key_for_filename(nameA ? nameA : "", -1);
         gchar* keyB = g_utf8_collate_key_for_filename(nameB ? nameB : "", -1);
@@ -285,6 +299,7 @@ public:
         xournalIcon = loadPixmapIcon(control, "project-explorer-xopp.svg", "x-office-document-symbolic");
         pdfIcon = loadPixmapIcon(control, "project-explorer-pdf.svg", "x-office-document-symbolic");
         annotatedPdfIcon = loadPixmapIcon(control, "project-explorer-pdf-annotated.svg", "x-office-document-symbolic");
+        trashIcon = g_themed_icon_new("user-trash-symbolic");
 
         store = gtk_tree_store_new(COL_COUNT, G_TYPE_ICON, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_INT,
                                    G_TYPE_BOOLEAN, G_TYPE_STRING, G_TYPE_STRING);
@@ -440,7 +455,8 @@ public:
         }
         g_object_unref(longPress);
         g_object_unref(root);
-        for (auto* icon: {folderIcon, folderOpenIcon, imageIcon, fileIcon, xournalIcon, pdfIcon, annotatedPdfIcon}) {
+        for (auto* icon:
+             {folderIcon, folderOpenIcon, imageIcon, fileIcon, xournalIcon, pdfIcon, annotatedPdfIcon, trashIcon}) {
             g_object_unref(icon);
         }
     }
@@ -527,7 +543,7 @@ private:
                                           name.c_str(), COL_MARKUP, markup.c_str(), COL_PATH, utf8(path).c_str(),
                                           COL_KIND, kind, COL_SENSITIVE, kind != KIND_FILE, COL_FOREGROUND,
                                           gitColorFor(path, kind), -1);
-        if (kind == KIND_DIRECTORY && lazy && hasVisibleEntries(path)) {
+        if (kind == KIND_DIRECTORY && lazy && (hasVisibleEntries(path) || !deletedEntriesIn(path).empty())) {
             GtkTreeIter placeholder;
             gtk_tree_store_insert_with_values(store, &placeholder, &iter, -1, COL_NAME, "", COL_KIND, KIND_PLACEHOLDER,
                                               COL_SENSITIVE, false, -1);
@@ -612,8 +628,84 @@ private:
                 }
             }
         }
+        for (const auto& [path, directory]: deletedEntriesIn(dir)) {
+            appendDeletedNode(iter, path, directory);
+        }
         gtk_tree_store_remove(store, &placeholder);
         watch(dir);
+    }
+
+    // --- Deleted entries ---
+
+    /**
+     * The entries directly in dir that git tracks but that were deleted in the working tree: deleted files, and
+     * folders that no longer exist and contained tracked files (bool: whether it is a folder)
+     */
+    auto deletedEntriesIn(const fs::path& dir) const -> std::vector<std::pair<fs::path, bool>> {
+        std::vector<std::pair<fs::path, bool>> entries;
+        if (!gitRepo || gitStatus.deleted.empty()) {
+            return entries;
+        }
+        const auto dirKey = ProjectGit::pathKey(dir);
+        std::set<std::string> folders;
+        for (const auto& deleted: gitStatus.deleted) {
+            const auto key = ProjectGit::pathKey(deleted);
+            if (key.size() <= dirKey.size() + 1 || key.compare(0, dirKey.size(), dirKey) != 0 ||
+                (key[dirKey.size()] != '\\' && key[dirKey.size()] != '/')) {
+                continue;
+            }
+            if (ProjectGit::pathKey(deleted.parent_path()) == dirKey) {
+                entries.emplace_back(deleted, false);
+                continue;
+            }
+            // Deeper: the first missing folder below dir stands for it
+            const auto relative = deleted.lexically_relative(dir);
+            if (relative.empty() || relative.begin() == relative.end()) {
+                continue;
+            }
+            const auto folder = dir / *relative.begin();
+            std::error_code error;
+            if (!fs::exists(folder, error) && folders.insert(ProjectGit::pathKey(folder)).second) {
+                entries.emplace_back(folder, true);
+            }
+        }
+        std::sort(entries.begin(), entries.end(), [](const auto& a, const auto& b) {
+            return a.second != b.second ? a.second : utf8(a.first.filename()) < utf8(b.first.filename());
+        });
+        return entries;
+    }
+
+    /// A deleted entry: struck through, gray and with a trash icon, unlike the dimmed unsupported files
+    void appendDeletedNode(GtkTreeIter* parentIter, const fs::path& path, bool directory) {
+        const auto name = utf8(path.filename());
+        GtkTreeIter iter;
+        gtk_tree_store_insert_with_values(
+                store, &iter, parentIter, -1, COL_ICON, trashIcon, COL_NAME, name.c_str(), COL_MARKUP,
+                ("<s>" + escape(name) + "</s>").c_str(), COL_PATH, utf8(path).c_str(), COL_KIND,
+                directory ? KIND_DELETED_DIRECTORY : KIND_DELETED, COL_SENSITIVE, true, COL_FOREGROUND, COLOR_DELETED,
+                COL_TOOLTIP,
+                escape(directory ? _("Deleted folder – removed from the repository with the next sync") :
+                                   _("Deleted – removed from the repository with the next sync"))
+                        .c_str(),
+                -1);
+    }
+
+    /// Brings a deleted file or folder back from the last commit
+    void restoreEntry(const fs::path& path) {
+        if (gitToplevel.empty()) {
+            return;
+        }
+        ProjectGit::run(gitToplevel, {"restore", "--source=HEAD", "--staged", "--worktree", "--", utf8(path)}, lifetime,
+                        [this, path](auto restored) {
+                            if (!restored.success) {
+                                showError(_("The entry could not be restored."), restored.error);
+                                return;
+                            }
+                            refreshGit([this, path] {
+                                refresh(true);
+                                showEntry(path);
+                            });
+                        });
     }
 
     void expandIter(GtkTreeIter* iter) {
@@ -913,7 +1005,11 @@ private:
         directoryStates.clear();
         if (gitRepo) {
             const auto rootKey = ProjectGit::pathKey(projectRoot);
-            for (const auto& [key, state]: gitStatus.files) {
+            auto changes = gitStatus.files;
+            for (const auto& deleted: gitStatus.deleted) {
+                changes.emplace(ProjectGit::pathKey(deleted), ProjectGit::FileState::Modified);
+            }
+            for (const auto& [key, state]: changes) {
                 if (key.size() <= rootKey.size() || key.compare(0, rootKey.size(), rootKey) != 0) {
                     continue;
                 }
@@ -1008,8 +1104,13 @@ private:
                             lifetime, [this, root, top, done](auto status) {
                                 if (root == projectRoot && status.success) {
                                     gitToplevel = top;
+                                    auto previousDeleted = std::move(gitStatus.deleted);
                                     gitStatus = ProjectGit::parseStatus(status.output, top);
+                                    const bool deletedChanged = previousDeleted != gitStatus.deleted;
                                     finishGitRefresh(true, done);
+                                    if (deletedChanged && !searching) {
+                                        refresh(true);  // show or remove the rows of deleted entries
+                                    }
                                 } else {
                                     finishGitRefresh(std::nullopt, done);
                                 }
@@ -1341,7 +1442,8 @@ private:
 
     /// Whether the entry can be renamed or deleted (not the project folder itself)
     auto canModify(const Target& target) const -> bool {
-        return target.kind != KIND_PLACEHOLDER && !target.path.empty() && target.path != projectRoot;
+        return target.kind != KIND_PLACEHOLDER && !isDeletedKind(target.kind) && !target.path.empty() &&
+               target.path != projectRoot;
     }
 
     auto selectedPath() -> std::string {
@@ -1547,6 +1649,14 @@ private:
         }
 
         auto* menu = gtk_menu_new();
+        if (isDeletedKind(kind)) {
+            addMenuItem(menu, _("Restore"), [this, target] { restoreEntry(pathFromUtf8(target.c_str())); });
+            addMenuItem(menu, _("Copy Path"), [target] {
+                gtk_clipboard_set_text(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD), target.c_str(), -1);
+            });
+            popupMenu(menu, event);
+            return;
+        }
         if (kind == KIND_DOCUMENT || kind == KIND_NESTED) {
             addMenuItem(menu, _("Open"), [this, document] { openDocument(document); });
             if (Util::hasPdfFileExt(pathFromUtf8(target.c_str()))) {
@@ -1588,6 +1698,10 @@ private:
         addMenuItem(menu, _("Open Folder…"), [this] { chooseFolder(); });
         addMenuItem(menu, _("Close Folder"), [this] { closeProject(); }, !projectRoot.empty());
 
+        popupMenu(menu, event);
+    }
+
+    void popupMenu(GtkWidget* menu, GdkEvent* event) {
         gtk_widget_show_all(menu);
         gtk_menu_attach_to_widget(GTK_MENU(menu), GTK_WIDGET(tree), nullptr);
         // Items are activated after "deactivate", so destroy the menu only once the main loop is idle again
@@ -2455,6 +2569,7 @@ private:
     GIcon* xournalIcon{};
     GIcon* pdfIcon{};
     GIcon* annotatedPdfIcon{};
+    GIcon* trashIcon{};  ///< deleted entries
     guint saveSource = 0;
     std::map<std::string, GFileMonitor*> monitors;
     std::map<std::string, fs::file_time_type> folderTimes;  ///< modification times of the watched folders

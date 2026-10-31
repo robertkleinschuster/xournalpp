@@ -59,6 +59,8 @@ TEST(ProjectGit, parsesFileStates) {
     EXPECT_EQ(status.files.at(ProjectGit::pathKey(top / "both.xopp")), FileState::Modified);
     EXPECT_FALSE(status.files.count(ProjectGit::pathKey(top / "old.xopp")));
     EXPECT_FALSE(status.files.count(ProjectGit::pathKey(top / "deleted.xopp")));
+    ASSERT_EQ(status.deleted.size(), 1U);
+    EXPECT_EQ(ProjectGit::pathKey(status.deleted.front()), ProjectGit::pathKey(top / "deleted.xopp"));
 }
 
 TEST(ProjectGit, pathKeyNormalizes) {

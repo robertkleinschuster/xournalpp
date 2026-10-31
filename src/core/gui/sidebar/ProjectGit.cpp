@@ -311,7 +311,8 @@ auto ProjectGit::parseStatus(const std::string& output, const fs::path& toplevel
         }
         status.changedFiles++;
         if (index == 'D' || worktree == 'D') {
-            continue;  // deleted files have no row in the tree
+            status.deleted.push_back(toplevel / pathFromUtf8(entry->substr(3)));
+            continue;
         }
         const auto state = index == '?' || index == 'A' ? FileState::Added : FileState::Modified;
         status.files[pathKey(toplevel / pathFromUtf8(entry->substr(3)))] = state;

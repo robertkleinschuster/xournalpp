@@ -41,6 +41,8 @@ enum class FileState { Unchanged, Added, Modified };
 struct Status {
     /// Changed files, keyed by pathKey() of their absolute path
     std::map<std::string, FileState> files;
+    /// Fork: files git tracks that were deleted in the working tree (absolute paths); they have no entry in files
+    std::vector<std::filesystem::path> deleted;
     size_t changedFiles = 0;
     bool hasUpstream = false;
     size_t ahead = 0;
