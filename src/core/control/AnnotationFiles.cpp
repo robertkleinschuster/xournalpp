@@ -24,7 +24,9 @@ namespace fs = std::filesystem;
 
 namespace {
 
-auto isXopp(const fs::path& path) -> bool { return path.extension() == ".xopp"; }
+auto isXopp(const fs::path& path) -> bool {
+    return path.extension() == ".xopp" && !AnnotationFiles::isRecoveryCopy(path);
+}
 
 auto samePath(const fs::path& a, const fs::path& b) -> bool {
     std::error_code error;
@@ -193,6 +195,14 @@ auto sameFileName(const fs::path& a, const fs::path& b) -> bool {
 #endif
 }
 }  // namespace
+
+auto AnnotationFiles::isRecoveryCopy(const fs::path& path) -> bool {
+    const auto name = utf8(path.filename());
+    constexpr std::string_view autosaveSuffix = ".autosave.xopp";
+    return (name.size() > autosaveSuffix.size() && name.front() == '.' &&
+            name.compare(name.size() - autosaveSuffix.size(), autosaveSuffix.size(), autosaveSuffix) == 0) ||
+           (!name.empty() && name.back() == '~');
+}
 
 auto AnnotationFiles::recordedSourcePdf(const fs::path& xopp) -> fs::path {
     // The first PDF background names the file, relative to the document or absolute. The preview image comes first.

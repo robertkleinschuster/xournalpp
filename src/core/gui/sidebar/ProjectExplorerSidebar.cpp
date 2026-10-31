@@ -102,16 +102,8 @@ auto escape(const std::string& value) -> std::string {
     return result;
 }
 
-/// Recovery copies written by Xournal++ itself: ".<name>.autosave.xopp" and "<name>.xopp~" (written while saving)
-auto isXournalBackup(const std::string& name) -> bool {
-    constexpr std::string_view autosaveSuffix = ".autosave.xopp";
-    return (name.size() > autosaveSuffix.size() && name.front() == '.' &&
-            name.compare(name.size() - autosaveSuffix.size(), autosaveSuffix.size(), autosaveSuffix) == 0) ||
-           (!name.empty() && name.back() == '~');
-}
-
 auto isIgnored(const fs::path& path) -> bool {
-    return path.filename() == ".git" || isXournalBackup(utf8(path.filename()));
+    return path.filename() == ".git" || AnnotationFiles::isRecoveryCopy(path);
 }
 
 /// Keeps Xournal++ recovery copies out of the sync, in any folder of the repository
@@ -1136,7 +1128,8 @@ private:
                              auto* self = static_cast<ProjectExplorerSidebar*>(data);
                              gchar* name = g_file_get_basename(file);
                              // Neither .git nor the backups Xournal++ writes while saving are shown in the tree
-                             const bool ignored = name && (std::strcmp(name, ".git") == 0 || isXournalBackup(name));
+                             const bool ignored = name && (std::strcmp(name, ".git") == 0 ||
+                                                           AnnotationFiles::isRecoveryCopy(pathFromUtf8(name)));
                              g_free(name);
                              if (ignored) {
                                  // Still changes the folder's modification time: do not take it for a missed change

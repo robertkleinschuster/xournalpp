@@ -23,6 +23,10 @@ class Settings;
  */
 namespace AnnotationFiles {
 
+/// Recovery copies written by Xournal++ itself: ".<name>.autosave.xopp" and "<name>.xopp~" (written while saving).
+/// They are never the document of a PDF.
+bool isRecoveryCopy(const std::filesystem::path& path);
+
 /**
  * Where the annotated PDF of a saved .xopp document is exported to; empty if it has no .xopp file
  * or the export would overwrite the source PDF.

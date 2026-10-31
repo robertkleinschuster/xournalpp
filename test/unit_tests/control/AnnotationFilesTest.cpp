@@ -134,6 +134,22 @@ TEST_F(AnnotationFilesTest, renamedDocumentIsFoundByItsSourcePdf) {
     EXPECT_FALSE(AnnotationFiles::documentForSource(dir / "Skript.pdf"));
 }
 
+TEST_F(AnnotationFilesTest, recoveryCopiesAreNotTheDocumentOfAPdf) {
+    fs::copy_file(GET_TESTFILE(u8"packaged_xopp/pdfBackground/old.xopp.bg.pdf"), dir / "Lecture.pdf");
+    DocumentHandler handler;
+    Document doc(&handler);
+    ASSERT_TRUE(doc.readPdf(dir / "Lecture.pdf", true, false));
+    // Like the autosave of a document and a save that was interrupted, both annotating the PDF
+    for (const auto* name: {".Lecture.autosave.xopp", "Lecture.xopp~"}) {
+        SaveHandler saver;
+        saver.prepareSave(&doc, dir / "Lecture.xopp");
+        saver.saveTo(dir / "Saving.xopp");
+        ASSERT_TRUE(saver.getErrorMessage().empty()) << saver.getErrorMessage();
+        fs::rename(dir / "Saving.xopp", dir / name);
+    }
+    EXPECT_FALSE(AnnotationFiles::documentForSource(dir / "Lecture.pdf"));
+}
+
 TEST_F(AnnotationFilesTest, onlyChangedDocumentsHaveAnnotations) {
     fs::copy_file(GET_TESTFILE(u8"packaged_xopp/pdfBackground/old.xopp.bg.pdf"), dir / "Lecture.pdf");
     DocumentHandler handler;
