@@ -25,6 +25,7 @@
 #include "util/raii/GObjectSPtr.h"
 
 class Control;
+class PageReorderGesture;
 class GladeGui;
 
 
@@ -73,4 +74,7 @@ private:
 
 private:
     IconNameHelper iconNameHelper;
+
+    /// Fork: drag and drop of the miniatures to reorder pages
+    std::unique_ptr<PageReorderGesture> reorder;
 };

@@ -17,13 +17,18 @@
 #include "util/i18n.h"        // for _
 #include "util/safe_casts.h"  // for as_signed
 
+#include "PageReorderGesture.h"       // for PageReorderGesture
 #include "SidebarPreviewPageEntry.h"  // for Sideb...
 
 constexpr auto MENU_ID = "PreviewPagesContextMenu";
 constexpr auto TOOLBAR_ID = "PreviewPagesToolbar";
 
 SidebarPreviewPages::SidebarPreviewPages(Control* control):
-        SidebarPreviewBase(control, MENU_ID, TOOLBAR_ID), iconNameHelper(control->getSettings()) {}
+        SidebarPreviewBase(control, MENU_ID, TOOLBAR_ID), iconNameHelper(control->getSettings()) {
+    reorder = std::make_unique<PageReorderGesture>(miniaturesContainer.get(), GTK_SCROLLED_WINDOW(scrollableBox.get()),
+                                                   previews,
+                                                   [control](size_t from, size_t to) { control->movePage(from, to); });
+}
 
 SidebarPreviewPages::~SidebarPreviewPages() = default;
 

@@ -2105,6 +2105,10 @@ msgstr "Skalieren"
 msgid "Change stroke width"
 msgstr "Liniendicke ändern"
 
+#: ../src/core/undo/MovePageUndoAction.cpp:44
+msgid "Move page"
+msgstr "Seite verschieben"
+
 #: ../src/core/undo/SwapUndoAction.cpp:67
 msgid "Move page upwards"
 msgstr "Verschiebe Seite nach oben"

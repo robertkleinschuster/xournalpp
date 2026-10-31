@@ -33,13 +33,12 @@ Optional improvements:
 
 ### Arrange pages
 
-Reorder pages like in a PDF tool instead of moving them step by step.
+Done: drag and drop of a miniature in the page preview sidebar moves the page (`PageReorderGesture`,
+`Control::movePage`, undoable via `MovePageUndoAction`). Mouse and pen drag right away, a finger after holding the
+miniature for 0.4 s (a swipe still scrolls). Verified with the mouse on the hidden desktop; touch to be confirmed on
+the device. Open:
 
-- Today: `MOVE_PAGE_TOWARDS_BEGINNING` / `MOVE_PAGE_TOWARDS_END` move the current page by one position;
-  `DUPLICATE_PAGE`, `DELETE_PAGE` and the `NEW_PAGE_*` actions exist. The page preview sidebar
-  (`src/core/gui/sidebar/previews`) has no drag and drop.
-- Idea: drag and drop in the page preview sidebar (also by touch), possibly multi-selection to move or delete
-  several pages at once. Every move must stay undoable (existing undo actions for page moves).
+- Multi-selection to move or delete several pages at once.
 
 ### Insert pages from other PDFs
 

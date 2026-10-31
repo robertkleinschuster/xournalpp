@@ -249,6 +249,8 @@ public:
     void deletePage();
     void movePageTowardsBeginning();
     void movePageTowardsEnd();
+    /// Fork: moves the page at from to position to (to counted after removing it), undoable
+    void movePage(size_t from, size_t to);
 
     /**
      * Ask the user whether a page with the given id

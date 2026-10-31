@@ -91,6 +91,7 @@
 #include "undo/AddUndoAction.h"                                  // for AddU...
 #include "undo/InsertDeletePageUndoAction.h"                     // for Inse...
 #include "undo/InsertUndoAction.h"                               // for Inse...
+#include "undo/MovePageUndoAction.h"                             // for MovePageUndoAction
 #include "undo/MoveSelectionToLayerUndoAction.h"                 // for Move...
 #include "undo/PageSizeChangeUndoAction.h"                       // for PageSizeChangeUndoAction
 #include "undo/SwapUndoAction.h"                                 // for SwapUndoAction
@@ -825,6 +826,15 @@ void Control::movePageTowardsBeginning() {
     this->getScrollHandler()->scrollToPage(currentPageNo - 1);
 }
 
+
+void Control::movePage(size_t from, size_t to) {
+    if (MovePageUndoAction::move(this, from, to)) {
+        this->doc->lock_shared();
+        PageRef page = this->doc->getPage(to);  // the page that was moved
+        this->doc->unlock_shared();
+        this->undoRedo->addUndoAction(std::make_unique<MovePageUndoAction>(page, from, to));
+    }
+}
 
 void Control::movePageTowardsEnd() {
     auto currentPageNo = this->getCurrentPageNo();
