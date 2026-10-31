@@ -18,6 +18,7 @@
 #include "util/Point.h"  // for Point
 
 #include "AbstractInputHandler.h"  // for AbstractInputHandler
+#include "ScrollMomentum.h"        // for ScrollMomentum
 
 class InputContext;
 struct InputEvent;
@@ -54,6 +55,11 @@ private:
     guint frameCallbackId = 0;
     /// The canvas widget the frame callback is attached to; reset to nullptr by GLib when it is destroyed
     GtkWidget* frameWidget = nullptr;
+
+    /// Fork: the document glides on after a swipe, like after a two-finger swipe on the touchpad
+    ScrollMomentum momentum;
+    /// The current two-finger gesture changed the zoom noticeably, so it does not glide on
+    bool pinched = false;
 
 private:
     void sequenceStart(InputEvent const& event);

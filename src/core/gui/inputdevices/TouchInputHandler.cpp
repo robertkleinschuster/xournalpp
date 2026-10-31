@@ -32,7 +32,17 @@ auto isTouchDown(GdkEventSequence* sequence) -> bool {
 #endif
 
 
-TouchInputHandler::TouchInputHandler(InputContext* inputContext): AbstractInputHandler(inputContext) {}
+namespace {
+/// A pinch that zoomed by less than this still counts as a two-finger swipe, which glides on
+constexpr double NEGLIGIBLE_ZOOM = 0.05;
+}  // namespace
+
+TouchInputHandler::TouchInputHandler(InputContext* inputContext):
+        AbstractInputHandler(inputContext), momentum([inputContext](xoj::util::Point<double> move) {
+            if (auto* view = inputContext->getView(); view) {
+                view->getLayout()->scrollRelative(-move.x, -move.y);
+            }
+        }) {}
 
 TouchInputHandler::~TouchInputHandler() {
     cancelFrame();
@@ -72,6 +82,7 @@ void TouchInputHandler::applyPendingMotion() {
     if (pendingScroll.x != 0.0 || pendingScroll.y != 0.0) {
         const auto scroll = std::exchange(pendingScroll, {});
         inputContext->getView()->getLayout()->scrollRelative(-scroll.x, -scroll.y);
+        momentum.addMovement(scroll);
     }
     if (zoomPending) {
         zoomPending = false;
@@ -110,6 +121,10 @@ auto TouchInputHandler::handleImpl(InputEvent const& event) -> bool {
         forgetEndedTouches(event.sequence);
         // Finish a pending scroll before a second finger may turn the gesture into a zoom
         applyPendingMotion();
+        if (!primarySequence && !secondarySequence) {
+            // Touching the screen again catches the gliding document
+            momentum.begin();
+        }
         if (invalidActive.find(event.sequence) != invalidActive.end()) {
             g_warning("Missed touch end/cancel event. Resetting touch input handler.");
             invalidActive.clear();
@@ -181,6 +196,11 @@ auto TouchInputHandler::handleImpl(InputEvent const& event) -> bool {
         } else {
             invalidActive.erase(event.sequence);
             g_debug("Removing sequence from invalid list, %zu inputs remain invalid.", invalidActive.size());
+            return true;
+        }
+        if (!primarySequence && invalidActive.empty()) {
+            // The last finger was lifted: a swipe glides on
+            momentum.release(inputContext->getView() ? inputContext->getView()->getWidget() : nullptr);
         }
         return true;
     }
@@ -244,6 +264,7 @@ void TouchInputHandler::zoomStart() {
     zoomControl->startZoomSequence(center);
 
     this->startZoomReady = false;
+    this->pinched = false;
 }
 
 void TouchInputHandler::zoomMotion(InputEvent const& event) {
@@ -271,10 +292,14 @@ void TouchInputHandler::applyZoom() {
         // no longer prevent touchscreen zooming.
         this->canBlockZoom = false;
     }
+    if (std::abs(zoom - 1.0) >= NEGLIGIBLE_ZOOM) {
+        pinched = true;
+    }
 
     ZoomControl* zoomControl = this->inputContext->getView()->getControl()->getZoomControl();
     const auto center = (this->priLastAbs + this->secLastAbs) / 2;
     zoomControl->zoomSequenceChange(zoom, true, center - lastZoomScrollCenter);
+    momentum.addMovement(center - lastZoomScrollCenter);
     lastZoomScrollCenter = center;
 }
 
@@ -282,6 +307,11 @@ void TouchInputHandler::zoomEnd() {
     this->zooming = false;
     ZoomControl* zoomControl = this->inputContext->getView()->getControl()->getZoomControl();
     zoomControl->endZoomSequence();
+    if (pinched) {
+        // Only a two-finger swipe glides on, not the movement of a pinch
+        momentum.forgetMovement();
+        pinched = false;
+    }
 }
 
 void TouchInputHandler::onBlock() { resetTouchSequence(); }
@@ -290,6 +320,7 @@ void TouchInputHandler::onUnblock() { resetTouchSequence(); }
 
 void TouchInputHandler::resetTouchSequence() {
     cancelFrame();
+    momentum.stop();
     this->pendingScroll = {};
     this->zoomPending = false;
     if (this->zooming) {
