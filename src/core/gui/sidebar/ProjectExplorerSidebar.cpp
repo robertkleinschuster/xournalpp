@@ -233,7 +233,9 @@ public:
             g_object_add_weak_pointer(G_OBJECT(focusWindow), reinterpret_cast<gpointer*>(&focusWindow));
             auto onActive = +[](GObject* window, GParamSpec*, gpointer data) {
                 if (gtk_window_is_active(GTK_WINDOW(window))) {
-                    static_cast<ProjectExplorerSidebar*>(data)->checkForMissedChanges();
+                    auto* self = static_cast<ProjectExplorerSidebar*>(data);
+                    self->checkForMissedChanges();
+                    self->catchUpGit();
                 }
             };
             g_signal_connect(focusWindow, "notify::is-active", G_CALLBACK(onActive), this);
@@ -371,14 +373,26 @@ public:
         gitStatusTimer = g_timeout_add_seconds(
                 GIT_STATUS_INTERVAL_S,
                 +[](gpointer data) -> gboolean {
-                    static_cast<ProjectExplorerSidebar*>(data)->refreshGit();
+                    auto* self = static_cast<ProjectExplorerSidebar*>(data);
+                    // Fork: no git processes while the window is in the background (saves battery); caught up on
+                    // activation
+                    if (self->isInBackground()) {
+                        self->gitStatusMissed = true;
+                    } else {
+                        self->refreshGit();
+                    }
                     return G_SOURCE_CONTINUE;
                 },
                 this);
         gitFetchTimer = g_timeout_add_seconds(
                 GIT_FETCH_INTERVAL_S,
                 +[](gpointer data) -> gboolean {
-                    static_cast<ProjectExplorerSidebar*>(data)->fetchRemote();
+                    auto* self = static_cast<ProjectExplorerSidebar*>(data);
+                    if (self->isInBackground()) {
+                        self->gitFetchMissed = true;
+                    } else {
+                        self->fetchRemote();
+                    }
                     return G_SOURCE_CONTINUE;
                 },
                 this);
@@ -2074,6 +2088,22 @@ private:
     guint gitRefreshSource = 0;
     guint gitStatusTimer = 0;
     guint gitFetchTimer = 0;
+    bool gitStatusMissed = false;  ///< a periodic refresh was skipped while the window was in the background
+    bool gitFetchMissed = false;
+
+    auto isInBackground() const -> bool { return focusWindow && !gtk_window_is_active(focusWindow); }
+
+    void catchUpGit() {
+        if (std::exchange(gitFetchMissed, false)) {
+            gitStatusMissed = false;
+            fetchRemote();  // refreshes the status afterwards
+            if (!fetchRunning) {
+                refreshGit();  // no upstream to fetch from
+            }
+        } else if (std::exchange(gitStatusMissed, false)) {
+            refreshGit();
+        }
+    }
     GtkGesture* longPress{};
     fs::path projectRoot;
     std::string query;
