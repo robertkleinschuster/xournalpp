@@ -151,6 +151,16 @@ auto Task::tag(std::string_view key) const -> std::optional<std::string> {
     return std::nullopt;
 }
 
+auto Task::tags(std::string_view key) const -> std::vector<std::string> {
+    std::vector<std::string> values;
+    for (auto word: words(description)) {
+        if (auto tag = splitTag(word); tag && tag->first == key) {
+            values.emplace_back(tag->second);
+        }
+    }
+    return values;
+}
+
 auto Task::due() const -> std::optional<Date> {
     auto value = tag("due");
     return value ? parseDate(*value) : std::nullopt;
@@ -320,6 +330,63 @@ void reopen(Task& task) {
         task.priority = (*pri)[0];
         setTag(task, "pri", std::nullopt);
     }
+}
+
+auto dueTime(const Task& task) -> std::optional<LocalTime> {
+    auto due = task.due();
+    auto time = task.time();
+    if (!due || !time) {
+        return std::nullopt;
+    }
+    return local_days(*due) + *time;
+}
+
+auto reminders(const Task& task) -> std::vector<LocalTime> {
+    std::vector<LocalTime> result;
+    if (task.done) {
+        return result;
+    }
+    constexpr auto DEFAULT_DAY_TIME = hours(8);  ///< for tasks due on a day without time
+    const auto due = task.due();
+    const auto base = dueTime(task) ?
+                              dueTime(task) :
+                              (due ? std::optional<LocalTime>(local_days(*due) + DEFAULT_DAY_TIME) : std::nullopt);
+    for (const auto& value: task.tags("remind")) {
+        if (value.size() == 16 && value[10] == 'T') {
+            // Absolute: 2026-11-05T13:30
+            auto date = parseDate(std::string_view(value).substr(0, 10));
+            Task timeOnly;
+            timeOnly.description = "time:" + value.substr(11);
+            if (date && timeOnly.time()) {
+                result.push_back(local_days(*date) + *timeOnly.time());
+            }
+        } else if (value.size() >= 3 && value[0] == '-' && base) {
+            // Relative to the due time: -30m, -2h, -1d
+            auto count = toInt(std::string_view(value).substr(1, value.size() - 2));
+            if (!count || *count < 0) {
+                continue;
+            }
+            switch (value.back()) {
+                case 'm':
+                    result.push_back(*base - minutes(*count));
+                    break;
+                case 'h':
+                    result.push_back(*base - hours(*count));
+                    break;
+                case 'd':
+                    result.push_back(*base - std::chrono::days(*count));
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+    if (task.tags("remind").empty()) {
+        if (auto at = dueTime(task)) {
+            result.push_back(*at);
+        }
+    }
+    return result;
 }
 
 auto groupOf(const Task& task, const Date& today) -> Group {

@@ -17,6 +17,8 @@
 namespace TodoTxt {
 
 using Date = std::chrono::year_month_day;
+/// A local date and time (no time zone: todo.txt files have none)
+using LocalTime = std::chrono::local_time<std::chrono::minutes>;
 
 /**
  * One line of a todo.txt file: "x 2026-11-02 2026-10-30 (A) Übungsblatt 3 +GET @uni due:2026-11-05 time:14:00".
@@ -32,6 +34,8 @@ struct Task {
 
     /// The value of a key:value tag, if present
     std::optional<std::string> tag(std::string_view key) const;
+    /// The values of all tags with this key (e.g. several remind:)
+    std::vector<std::string> tags(std::string_view key) const;
     /// due:YYYY-MM-DD
     std::optional<Date> due() const;
     /// time:HH:MM (the due time; kept apart from due: so other apps still understand the date)
@@ -71,6 +75,16 @@ Date addInterval(const Date& date, const Recurrence& interval);
 std::optional<Task> complete(Task& task, const Date& today);
 /// Marks a completed task open again (restores the priority from pri:)
 void reopen(Task& task);
+
+/// The due date with the due time, if the task has both
+std::optional<LocalTime> dueTime(const Task& task);
+
+/**
+ * When to remind of an open task: each remind: tag, either a local time ("2026-11-05T13:30") or relative to the due
+ * time ("-30m", "-2h", "-1d"; for a task without time relative to 08:00 on the due day). Without remind: tags, a task
+ * with a due time reminds at that time.
+ */
+std::vector<LocalTime> reminders(const Task& task);
 
 /// When a task is shown, relative to today
 enum class Group { Overdue, Today, Upcoming, NoDate, Later, Done };

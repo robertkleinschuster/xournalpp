@@ -139,6 +139,13 @@ void Sidebar::selectProjectExplorer() {
 }
 
 void Sidebar::addTaskForPage(const fs::path& document, size_t page) {
+    if (tasksActions) {
+        selectTasks();
+        tasksActions->addTaskForPage(document, page);
+    }
+}
+
+void Sidebar::selectTasks() {
     if (!tasksActions) {
         return;
     }
@@ -146,7 +153,6 @@ void Sidebar::addTaskForPage(const fs::path& document, size_t page) {
         control->getWindow()->setSidebarVisible(true);
     }
     setSelectedTab(tasksTabIndex);
-    tasksActions->addTaskForPage(document, page);
 }
 
 void Sidebar::openProjectFolder() {

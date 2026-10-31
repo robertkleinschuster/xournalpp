@@ -137,6 +137,24 @@ TEST(TodoTxt, quickAddUnderstandsDatesAndTimes) {
     EXPECT_FALSE(TodoTxt::quickAdd("Aufgabe 3.5 rechnen", TODAY).due());
 }
 
+TEST(TodoTxt, computesReminders) {
+    const auto at = [](int y, unsigned m, unsigned d, int h, int min) {
+        return local_days(date(y, m, d)) + hours(h) + minutes(min);
+    };
+    using Times = std::vector<TodoTxt::LocalTime>;
+    // At the due time by default, nothing for a day without time
+    EXPECT_EQ(TodoTxt::reminders(*TodoTxt::parse("a due:2026-11-05 time:14:00")), Times{at(2026, 11, 5, 14, 0)});
+    EXPECT_TRUE(TodoTxt::reminders(*TodoTxt::parse("a due:2026-11-05")).empty());
+    EXPECT_TRUE(TodoTxt::reminders(*TodoTxt::parse("x a due:2026-11-05 time:14:00")).empty());
+    // Explicit ones replace it: absolute, relative to the due time, relative to 08:00 for a day
+    EXPECT_EQ(TodoTxt::reminders(*TodoTxt::parse("a due:2026-11-05 time:14:00 remind:-30m remind:-1d")),
+              (Times{at(2026, 11, 5, 13, 30), at(2026, 11, 4, 14, 0)}));
+    EXPECT_EQ(TodoTxt::reminders(*TodoTxt::parse("a due:2026-11-05 remind:-2h")), Times{at(2026, 11, 5, 6, 0)});
+    EXPECT_EQ(TodoTxt::reminders(*TodoTxt::parse("a remind:2026-11-01T09:15")), Times{at(2026, 11, 1, 9, 15)});
+    EXPECT_TRUE(TodoTxt::reminders(*TodoTxt::parse("a remind:-30m")).empty());  // relative without due date
+    EXPECT_TRUE(TodoTxt::reminders(*TodoTxt::parse("a due:2026-11-05 remind:soon")).empty());
+}
+
 TEST(TaskFiles, editsLinesAndKeepsTheRest) {
     const auto dir = fs::temp_directory_path() / u8"xournalpp-tasks-test ä";
     fs::remove_all(dir);

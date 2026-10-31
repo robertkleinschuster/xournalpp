@@ -83,6 +83,8 @@ public:
     void selectProjectExplorer();
     /// Fork: shows the task tab with a new task linked to the page (0-based) of the document
     void addTaskForPage(const std::filesystem::path& document, size_t page);
+    /// Fork: shows the task tab (e.g. after a click on a reminder)
+    void selectTasks();
     void openProjectFolder();
     /// The document last opened from the project explorer's folder, or empty
     std::filesystem::path getProjectExplorerLastDocument() const;

@@ -15,7 +15,9 @@
 #include "control/Control.h"                  // for Control
 #include "control/tasks/TaskFiles.h"          // for TaskFiles
 #include "control/tasks/TodoTxt.h"            // for TodoTxt
+#include "gui/TaskNotifier.h"                 // for TaskNotifier
 #include "gui/sidebar/AbstractSidebarPage.h"  // for AbstractSidebarPage
+#include "gui/sidebar/Sidebar.h"              // for Sidebar
 #include "model/Document.h"                   // for Document
 #include "util/PathUtil.h"                    // for toUtf8
 #include "util/i18n.h"                        // for _
@@ -29,7 +31,10 @@ enum Column : gint { COL_DONE, COL_MARKUP, COL_INDEX, COL_IS_TASK, COL_COUNT };
 constexpr gint HEADER = -1;
 
 constexpr const char* COLOR_OVERDUE = "#e01b24";
-constexpr guint RELOAD_DELAY_MS = 300;  ///< editors and Git write files in several steps
+constexpr guint RELOAD_DELAY_MS = 300;   ///< editors and Git write files in several steps
+constexpr guint REMINDER_CHECK_S = 30;   ///< also catches reminders missed during sleep
+constexpr auto SUMMARY_TIME = hours(8);  ///< the daily overview of the tasks due today is shown from then on
+constexpr size_t MAX_LISTED = 5;         ///< tasks named in one notification
 
 /// The groups in display order
 constexpr std::array<Group, 6> GROUPS = {Group::Overdue, Group::Today, Group::Upcoming,
@@ -59,6 +64,39 @@ auto today() -> TodoTxt::Date {
                        day(static_cast<unsigned>(g_date_time_get_day_of_month(now)))};
     g_date_time_unref(now);
     return date;
+}
+
+auto localNow() -> TodoTxt::LocalTime {
+    GDateTime* now = g_date_time_new_now_local();
+    TodoTxt::Date date{year(g_date_time_get_year(now)), month(static_cast<unsigned>(g_date_time_get_month(now))),
+                       day(static_cast<unsigned>(g_date_time_get_day_of_month(now)))};
+    const auto time = hours(g_date_time_get_hour(now)) + minutes(g_date_time_get_minute(now));
+    g_date_time_unref(now);
+    return local_days(date) + time;
+}
+
+/// The date of the last daily overview, kept in the config folder so it is shown once a day
+auto summaryStateFile() -> std::string { return Util::toUtf8(Util::getConfigFile("tasks.ini")); }
+
+auto lastSummaryDate() -> std::string {
+    GKeyFile* file = g_key_file_new();
+    std::string date;
+    if (g_key_file_load_from_file(file, summaryStateFile().c_str(), G_KEY_FILE_NONE, nullptr)) {
+        if (gchar* value = g_key_file_get_string(file, "Reminders", "lastSummary", nullptr)) {
+            date = value;
+            g_free(value);
+        }
+    }
+    g_key_file_free(file);
+    return date;
+}
+
+void storeSummaryDate(const std::string& date) {
+    GKeyFile* file = g_key_file_new();
+    g_key_file_load_from_file(file, summaryStateFile().c_str(), G_KEY_FILE_KEEP_COMMENTS, nullptr);
+    g_key_file_set_string(file, "Reminders", "lastSummary", date.c_str());
+    g_key_file_save_to_file(file, summaryStateFile().c_str(), nullptr);
+    g_key_file_free(file);
 }
 
 auto escape(const std::string& text) -> std::string {
@@ -227,12 +265,38 @@ public:
         gtk_widget_hide(linkBar);
         g_object_ref_sink(root);
         reload();
+
+        // Reminders, also while the tab is hidden
+        notifier = std::make_unique<TaskNotifier>([this] {
+            gtk_window_present(this->control->getGtkWindow());
+            this->control->getSidebar()->selectTasks();
+        });
+        lastCheck = localNow();
+        reminderSource = g_timeout_add_seconds(
+                REMINDER_CHECK_S,
+                +[](gpointer self) -> gboolean {
+                    static_cast<TasksSidebar*>(self)->checkReminders();
+                    return G_SOURCE_CONTINUE;
+                },
+                this);
+        // The daily overview right after the start, once the window is there
+        startupSource = g_timeout_add_seconds(
+                5,
+                +[](gpointer self) -> gboolean {
+                    auto* sidebar = static_cast<TasksSidebar*>(self);
+                    sidebar->startupSource = 0;
+                    sidebar->checkReminders();
+                    return G_SOURCE_REMOVE;
+                },
+                this);
     }
 
     ~TasksSidebar() override {
         stopMonitors();
-        if (reloadSource) {
-            g_source_remove(reloadSource);
+        for (guint source: {reloadSource, reminderSource, startupSource}) {
+            if (source) {
+                g_source_remove(source);
+            }
         }
         g_object_unref(longPress);
         g_object_unref(store);
@@ -301,6 +365,8 @@ private:
         entries.clear();
         stopMonitors();
         const auto project = context.projectRoot();
+        loadedProject = project;
+        loadedDay = today();
         if (!project.empty()) {
             for (const auto& file: TaskFiles::find(project)) {
                 watch(file);
@@ -365,6 +431,84 @@ private:
                     return G_SOURCE_REMOVE;
                 },
                 this);
+    }
+
+    // --- Reminders ---
+
+    /// Shows the reminders due since the last check, and once a day an overview of the tasks due today
+    void checkReminders() {
+        if (context.projectRoot() != loadedProject || today() != loadedDay) {
+            // Another project was opened while the tab was hidden, or a new day moves tasks to "Today"
+            reload();
+        }
+        const auto now = localNow();
+        std::vector<const Entry*> due;
+        for (const auto& entry: entries) {
+            for (const auto& at: TodoTxt::reminders(entry.task)) {
+                if (at > lastCheck && at <= now) {
+                    due.push_back(&entry);
+                    break;
+                }
+            }
+        }
+        lastCheck = now;
+        if (!due.empty()) {
+            notify(due.size() == 1 ? due.front()->task.title() : FS(_F("{1} task reminders") % due.size()), due);
+        }
+        showDailySummary(now);
+    }
+
+    void showDailySummary(const TodoTxt::LocalTime& now) {
+        const auto date = TodoTxt::formatDate(TodoTxt::Date(floor<days>(now)));
+        if (now - floor<days>(now) < SUMMARY_TIME || loadedProject.empty() || lastSummaryDate() == date) {
+            return;
+        }
+        storeSummaryDate(date);
+        const auto day = today();
+        std::vector<const Entry*> todays;
+        size_t overdue = 0;
+        for (const auto& entry: entries) {
+            const auto group = TodoTxt::groupOf(entry.task, day);
+            if (group == Group::Overdue || group == Group::Today) {
+                todays.push_back(&entry);
+                overdue += group == Group::Overdue ? 1 : 0;
+            }
+        }
+        if (todays.empty()) {
+            return;
+        }
+        const size_t dueToday = todays.size() - overdue;
+        const auto count = [](const char* singular, const char* plural, size_t n) {
+            return PlaceholderString(ngettext(singular, plural, static_cast<unsigned long>(n)));
+        };
+        const std::string title =
+                overdue == 0 ?
+                        FS(count("{1} task due today", "{1} tasks due today", dueToday) % dueToday) :
+                dueToday == 0 ?
+                        FS(count("{1} task overdue", "{1} tasks overdue", overdue) % overdue) :
+                        FS(count("{1} task due today, {2} overdue", "{1} tasks due today, {2} overdue", dueToday) %
+                           dueToday % overdue);
+        notify(title, todays);
+    }
+
+    /// One notification naming the tasks with their due dates
+    void notify(const std::string& title, const std::vector<const Entry*>& tasks) {
+        const auto day = today();
+        std::string text;
+        for (size_t i = 0; i < tasks.size() && i < MAX_LISTED; i++) {
+            const auto& task = tasks[i]->task;
+            std::string line = tasks.size() == 1 ? describeDue(task, day) : task.title();
+            if (tasks.size() > 1) {
+                if (auto due = describeDue(task, day); !due.empty()) {
+                    line += " (" + due + ")";
+                }
+            }
+            text += (text.empty() ? "" : "\n") + line;
+        }
+        if (tasks.size() > MAX_LISTED) {
+            text += "\n" + FS(_F("and {1} more") % (tasks.size() - MAX_LISTED));
+        }
+        notifier->show(title, text);
     }
 
     // --- Display ---
@@ -821,6 +965,12 @@ private:
 
     TasksSidebarContext context;
     std::vector<Entry> entries;
+    fs::path loadedProject;
+    TodoTxt::Date loadedDay;
+    std::unique_ptr<TaskNotifier> notifier;
+    TodoTxt::LocalTime lastCheck;  ///< reminders up to then were shown (or were before the start)
+    guint reminderSource = 0;
+    guint startupSource = 0;
     std::vector<GFileMonitor*> monitors;
     guint reloadSource = 0;
     bool enabled = false;
