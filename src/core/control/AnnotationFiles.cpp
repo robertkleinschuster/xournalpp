@@ -88,15 +88,6 @@ auto createSnapshot(Document& doc, fs::path target) -> std::unique_ptr<ExportSna
 
 namespace {
 
-auto utf8(const fs::path& path) -> std::string {
-    auto value = path.u8string();
-    return {reinterpret_cast<const char*>(value.data()), value.size()};
-}
-
-auto pathFromUtf8(const std::string& value) -> fs::path {
-    return fs::path(std::u8string(reinterpret_cast<const char8_t*>(value.data()), value.size()));
-}
-
 /// Export path following the export name setting
 auto exportPathFromSetting(const Document& doc, const fs::path& xopp, const Settings& settings) -> fs::path {
     auto target = xopp.parent_path() / doc.createSaveFilename(Document::PDF, settings.getDefaultSaveName(),
@@ -211,7 +202,7 @@ auto cachedXoppTag(const fs::path& xopp, std::string_view tagStart, size_t maxBy
     };
     static std::mutex mutex;
     static std::unordered_map<std::string, Entry> cache;
-    auto key = utf8(xopp.lexically_normal());
+    auto key = Util::toUtf8(xopp.lexically_normal());
     key += '|';
     key += tagStart;
     {
@@ -256,8 +247,8 @@ auto readXoppAttribute(const fs::path& xopp, std::string_view tagStart, std::str
 
 auto sameFileName(const fs::path& a, const fs::path& b) -> bool {
 #ifdef _WIN32
-    gchar* foldedA = g_utf8_casefold(utf8(a.filename()).c_str(), -1);
-    gchar* foldedB = g_utf8_casefold(utf8(b.filename()).c_str(), -1);
+    gchar* foldedA = g_utf8_casefold(Util::toUtf8(a.filename()).c_str(), -1);
+    gchar* foldedB = g_utf8_casefold(Util::toUtf8(b.filename()).c_str(), -1);
     const bool same = std::strcmp(foldedA, foldedB) == 0;
     g_free(foldedA);
     g_free(foldedB);
@@ -288,7 +279,7 @@ auto AnnotationFiles::fileStamp(const fs::path& path) -> std::optional<FileStamp
 }
 
 auto AnnotationFiles::isRecoveryCopy(const fs::path& path) -> bool {
-    const auto name = utf8(path.filename());
+    const auto name = Util::toUtf8(path.filename());
     constexpr std::string_view autosaveSuffix = ".autosave.xopp";
     return (name.size() > autosaveSuffix.size() && name.front() == '.' &&
             name.compare(name.size() - autosaveSuffix.size(), autosaveSuffix.size(), autosaveSuffix) == 0) ||
@@ -301,7 +292,7 @@ auto AnnotationFiles::recordedSourcePdf(const fs::path& xopp) -> fs::path {
     if (name.empty()) {
         return {};
     }
-    const auto path = pathFromUtf8(name);
+    const auto path = Util::fromUtf8(name);
     return path.is_absolute() ? path : xopp.parent_path() / path;
 }
 
@@ -328,7 +319,7 @@ auto AnnotationFiles::recordedExportFilename(const fs::path& xopp) -> std::strin
     }
     // The value comes from a file that may have been shared or edited by hand: only accept a plain .pdf file name
     // next to the document, so an export can never overwrite another kind of file
-    const auto path = pathFromUtf8(name);
+    const auto path = Util::fromUtf8(name);
     const bool plainPdfName = path.filename() == path && name != "." && name != ".." && Util::hasPdfFileExt(path);
     return plainPdfName ? name : std::string();
 }
@@ -339,8 +330,8 @@ auto AnnotationFiles::exportPath(const Document& doc, const Settings& settings) 
         return {};
     }
     const auto recorded = recordedExportFilename(xopp);
-    auto target =
-            recorded.empty() ? exportPathFromSetting(doc, xopp, settings) : xopp.parent_path() / pathFromUtf8(recorded);
+    auto target = recorded.empty() ? exportPathFromSetting(doc, xopp, settings) :
+                                     xopp.parent_path() / Util::fromUtf8(recorded);
     return safeTarget(std::move(target), xopp, doc.getPdfFilepath());
 }
 
@@ -373,12 +364,12 @@ auto AnnotationFiles::exportPathForFile(const fs::path& xopp, const Settings& se
 auto AnnotationFiles::exportFilenameForSave(const Document& doc, const fs::path& target, const Settings& settings)
         -> std::string {
     if (auto recorded = recordedExportFilename(target); !recorded.empty()) {
-        if (!safeTarget(target.parent_path() / pathFromUtf8(recorded), target, doc.getPdfFilepath()).empty()) {
+        if (!safeTarget(target.parent_path() / Util::fromUtf8(recorded), target, doc.getPdfFilepath()).empty()) {
             return recorded;
         }
     }
     const auto path = safeTarget(exportPathFromSetting(doc, target, settings), target, doc.getPdfFilepath());
-    return path.empty() ? std::string() : utf8(path.filename());
+    return path.empty() ? std::string() : Util::toUtf8(path.filename());
 }
 
 auto AnnotationFiles::relinkSourcePdf(const fs::path& xopp, const fs::path& pdf, const Settings& settings)
@@ -401,7 +392,7 @@ auto AnnotationFiles::relinkDocument(const fs::path& xopp, const std::optional<f
         return "The document could not be loaded completely.";
     }
     const auto exported =
-            exportFilename ? xopp.parent_path() / pathFromUtf8(*exportFilename) : exportPathForFile(xopp, settings);
+            exportFilename ? xopp.parent_path() / Util::fromUtf8(*exportFilename) : exportPathForFile(xopp, settings);
     const bool exportUpToDate = isExportUpToDate(xopp, exported);
     if (pdf) {
         doc->setPdfAttributes(*pdf, doc->isAttachPdf());
@@ -423,21 +414,21 @@ auto AnnotationFiles::groupForRename(const fs::path& oldXopp, const fs::path& ne
     group.newXopp = newXopp;
     group.moves.emplace_back(oldXopp, newXopp);
     const auto dir = oldXopp.parent_path();
-    const auto oldStem = utf8(oldXopp.stem());
-    const auto newStem = utf8(newXopp.stem());
+    const auto oldStem = Util::toUtf8(oldXopp.stem());
+    const auto newStem = Util::toUtf8(newXopp.stem());
     std::error_code error;
     if (const auto source = recordedSourcePdf(oldXopp); !source.empty() && fs::exists(source, error) &&
                                                         samePath(source.parent_path(), dir) &&
-                                                        utf8(source.stem()) == oldStem) {
-        group.newSource = dir / pathFromUtf8(newStem + utf8(source.extension()));
+                                                        Util::toUtf8(source.stem()) == oldStem) {
+        group.newSource = dir / Util::fromUtf8(newStem + Util::toUtf8(source.extension()));
         group.moves.emplace_back(source, *group.newSource);
     }
     const auto exported = exportPathForFile(oldXopp, settings);
-    const auto exportName = utf8(exported.filename());
+    const auto exportName = Util::toUtf8(exported.filename());
     if (!exported.empty() && exportName.rfind(oldStem, 0) == 0) {
         group.newExportName = newStem + exportName.substr(oldStem.size());
         if (fs::exists(exported, error)) {
-            group.moves.emplace_back(exported, dir / pathFromUtf8(*group.newExportName));
+            group.moves.emplace_back(exported, dir / Util::fromUtf8(*group.newExportName));
         }
     }
     return group;
@@ -468,13 +459,13 @@ auto AnnotationFiles::groupConflict(const DocumentGroup& group) -> std::optional
     std::error_code error;
     for (const auto& [from, to]: group.moves) {
         for (const auto& other: targets) {
-            if (samePath(other, to) || utf8(other.filename()) == utf8(to.filename())) {
-                return utf8(to.filename());
+            if (samePath(other, to) || Util::toUtf8(other.filename()) == Util::toUtf8(to.filename())) {
+                return Util::toUtf8(to.filename());
             }
         }
         targets.push_back(to);
         if (!samePath(from, to) && fs::exists(to, error)) {
-            return utf8(to.filename());
+            return Util::toUtf8(to.filename());
         }
     }
     return std::nullopt;

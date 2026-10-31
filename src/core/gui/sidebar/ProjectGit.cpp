@@ -7,6 +7,8 @@
 
 #include <glib.h>
 
+#include "util/PathUtil.h"  // for toUtf8, fromUtf8
+
 #ifdef _WIN32
 #include <Windows.h>
 #endif
@@ -14,15 +16,6 @@
 namespace fs = std::filesystem;
 
 namespace {
-
-auto utf8(const fs::path& path) -> std::string {
-    auto value = path.u8string();
-    return {reinterpret_cast<const char*>(value.data()), value.size()};
-}
-
-auto pathFromUtf8(const std::string& value) -> fs::path {
-    return fs::path(std::u8string(reinterpret_cast<const char8_t*>(value.data()), value.size()));
-}
 
 auto findGit() -> const std::optional<std::string>& {
     static const std::optional<std::string> git = []() -> std::optional<std::string> {
@@ -37,11 +30,11 @@ auto findGit() -> const std::optional<std::string>& {
         for (const char* variable: {"ProgramFiles", "ProgramW6432", "LOCALAPPDATA"}) {
             if (const char* base = g_getenv(variable)) {
                 const auto candidate =
-                        pathFromUtf8(base) /
+                        Util::fromUtf8(base) /
                         (std::string(variable) == "LOCALAPPDATA" ? "Programs/Git/cmd/git.exe" : "Git/cmd/git.exe");
                 std::error_code error;
                 if (fs::is_regular_file(candidate, error)) {
-                    return utf8(candidate);
+                    return Util::toUtf8(candidate);
                 }
             }
         }
@@ -311,11 +304,11 @@ auto ProjectGit::parseStatus(const std::string& output, const fs::path& toplevel
         }
         status.changedFiles++;
         if (index == 'D' || worktree == 'D') {
-            status.deleted.push_back(toplevel / pathFromUtf8(entry->substr(3)));
+            status.deleted.push_back(toplevel / Util::fromUtf8(entry->substr(3)));
             continue;
         }
         const auto state = index == '?' || index == 'A' ? FileState::Added : FileState::Modified;
-        status.files[pathKey(toplevel / pathFromUtf8(entry->substr(3)))] = state;
+        status.files[pathKey(toplevel / Util::fromUtf8(entry->substr(3)))] = state;
     }
     return status;
 }
@@ -323,7 +316,7 @@ auto ProjectGit::parseStatus(const std::string& output, const fs::path& toplevel
 auto ProjectGit::pathKey(const fs::path& path) -> std::string {
     auto normalized = path.lexically_normal();
     normalized.make_preferred();
-    auto key = utf8(normalized);
+    auto key = Util::toUtf8(normalized);
     while (key.size() > 1 && (key.back() == '/' || key.back() == '\\')) {
         key.pop_back();
     }

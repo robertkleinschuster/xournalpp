@@ -147,6 +147,17 @@ auto Util::hasXournalFileExt(const fs::path& path) -> bool {
     return extension == ".xoj" || extension == ".xopp";
 }
 
+auto Util::toUtf8(const fs::path& path) -> std::string {
+    const auto value = path.u8string();
+    return {reinterpret_cast<const char*>(value.data()), value.size()};
+}
+
+auto Util::fromUtf8(const std::string& value) -> fs::path {
+    return fs::path(std::u8string(reinterpret_cast<const char8_t*>(value.data()), value.size()));
+}
+
+auto Util::fromUtf8(const char* value) -> fs::path { return value ? fromUtf8(std::string(value)) : fs::path(); }
+
 auto Util::hasPdfFileExt(const fs::path& path) -> bool {
     return StringUtils::toLowerCase(path.extension().string()) == ".pdf";
 }

@@ -51,6 +51,13 @@ namespace Util {
  */
 [[maybe_unused]] [[nodiscard]] bool hasXournalFileExt(const fs::path& path);
 
+/// Fork: the path as UTF-8 text
+[[nodiscard]] std::string toUtf8(const fs::path& path);
+
+/// Fork: the path from UTF-8 text (an empty path for nullptr)
+[[nodiscard]] fs::path fromUtf8(const std::string& value);
+[[nodiscard]] fs::path fromUtf8(const char* value);
+
 /**
  * @return true if this file has a pdf extension
  */

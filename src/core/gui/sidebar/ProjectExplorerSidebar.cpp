@@ -92,19 +92,6 @@ auto trim(std::string value) -> std::string {
     return value;
 }
 
-auto utf8(const fs::path& path) -> std::string {
-    auto value = path.u8string();
-    return {reinterpret_cast<const char*>(value.data()), value.size()};
-}
-
-auto pathFromUtf8(const char* value) -> fs::path {
-    std::u8string path;
-    while (value && *value) {
-        path.push_back(static_cast<char8_t>(*value++));
-    }
-    return fs::path(path);
-}
-
 auto casefold(const std::string& value) -> std::string {
     gchar* folded = g_utf8_casefold(value.c_str(), -1);
     std::string result(folded);
@@ -149,7 +136,7 @@ auto kindFor(const fs::path& path, bool directory) -> Kind {
 }
 
 auto isImage(const fs::path& path) -> bool {
-    auto ext = casefold(utf8(path.extension()));
+    auto ext = casefold(Util::toUtf8(path.extension()));
     return ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".gif" || ext == ".svg" || ext == ".bmp";
 }
 
@@ -159,7 +146,7 @@ auto loadPixmapIcon(Control* control, const char* file, const char* fallback) ->
     if (path.empty()) {
         return g_themed_icon_new(fallback);
     }
-    GFile* gfile = g_file_new_for_path(utf8(path).c_str());
+    GFile* gfile = g_file_new_for_path(Util::toUtf8(path).c_str());
     GIcon* icon = g_file_icon_new(gfile);
     g_object_unref(gfile);
     return icon;
@@ -167,7 +154,7 @@ auto loadPixmapIcon(Control* control, const char* file, const char* fallback) ->
 
 /// Key file group for a project, independent of characters in its path
 auto projectGroup(const fs::path& project) -> std::string {
-    gchar* hash = g_compute_checksum_for_string(G_CHECKSUM_SHA1, utf8(project).c_str(), -1);
+    gchar* hash = g_compute_checksum_for_string(G_CHECKSUM_SHA1, Util::toUtf8(project).c_str(), -1);
     std::string group = std::string("project-") + hash;
     g_free(hash);
     return group;
@@ -386,7 +373,7 @@ public:
         registerListener(control);
         buildTree();
         if (!selectedFile.empty()) {
-            reveal(pathFromUtf8(selectedFile.c_str()), true);
+            reveal(Util::fromUtf8(selectedFile.c_str()), true);
         }
 
         refreshGit();
@@ -483,7 +470,7 @@ public:
         if (lastDocumentFile.empty() || projectRoot.empty()) {
             return {};
         }
-        const auto path = pathFromUtf8(lastDocumentFile.c_str());
+        const auto path = Util::fromUtf8(lastDocumentFile.c_str());
         std::error_code error;
         return fs::is_regular_file(path, error) && Util::isChildOrEquivalent(path, projectRoot) ? path : fs::path();
     }
@@ -498,7 +485,7 @@ public:
         if (absolute.empty() || error || !Util::isChildOrEquivalent(absolute, projectRoot)) {
             return;
         }
-        lastDocumentFile = utf8(absolute);
+        lastDocumentFile = Util::toUtf8(absolute);
         saveState();
         if (!searching) {
             reveal(absolute, true);
@@ -541,9 +528,9 @@ private:
                     const std::string& markup, bool lazy) -> GtkTreeIter {
         GtkTreeIter iter;
         gtk_tree_store_insert_with_values(store, &iter, parentIter, -1, COL_ICON, iconFor(path, kind), COL_NAME,
-                                          name.c_str(), COL_MARKUP, markup.c_str(), COL_PATH, utf8(path).c_str(),
-                                          COL_KIND, kind, COL_SENSITIVE, kind != KIND_FILE, COL_FOREGROUND,
-                                          gitColorFor(path, kind), -1);
+                                          name.c_str(), COL_MARKUP, markup.c_str(), COL_PATH,
+                                          Util::toUtf8(path).c_str(), COL_KIND, kind, COL_SENSITIVE, kind != KIND_FILE,
+                                          COL_FOREGROUND, gitColorFor(path, kind), -1);
         if (kind == KIND_DIRECTORY && lazy && (hasVisibleEntries(path) || !deletedEntriesIn(path).empty())) {
             GtkTreeIter placeholder;
             gtk_tree_store_insert_with_values(store, &placeholder, &iter, -1, COL_NAME, "", COL_KIND, KIND_PLACEHOLDER,
@@ -565,7 +552,7 @@ private:
         if (!gtk_tree_model_iter_children(model(), &placeholder, iter) || kindAt(&placeholder) != KIND_PLACEHOLDER) {
             return;
         }
-        const auto dir = pathFromUtf8(pathAt(iter).c_str());
+        const auto dir = Util::fromUtf8(pathAt(iter).c_str());
         std::vector<fs::path> directories;
         std::vector<fs::path> files;
         std::error_code error;
@@ -581,7 +568,7 @@ private:
             }
         }
         for (const auto& path: directories) {
-            const auto name = utf8(path.filename());
+            const auto name = Util::toUtf8(path.filename());
             appendNode(iter, path, name, KIND_DIRECTORY, escape(name), true);
         }
         // Nest the source PDF and the exported PDF below their .xopp document, like file nesting in IDEs
@@ -608,20 +595,20 @@ private:
                                          NestedFile{exported, annotatedPdfIcon, _("Exported PDF with annotations")}}) {
                 std::error_code fileError;
                 if (!candidate.path.empty() && fs::is_regular_file(candidate.path, fileError) &&
-                    nestedFiles.insert(utf8(candidate.path)).second) {
-                    nested[utf8(path)].push_back(candidate);
+                    nestedFiles.insert(Util::toUtf8(candidate.path)).second) {
+                    nested[Util::toUtf8(path)].push_back(candidate);
                 }
             }
         }
         for (const auto& path: files) {
-            if (nestedFiles.count(utf8(path))) {
+            if (nestedFiles.count(Util::toUtf8(path))) {
                 continue;
             }
-            const auto name = utf8(path.filename());
+            const auto name = Util::toUtf8(path.filename());
             auto fileIter = appendNode(iter, path, name, kindFor(path, false), escape(name), true);
-            if (auto children = nested.find(utf8(path)); children != nested.end()) {
+            if (auto children = nested.find(Util::toUtf8(path)); children != nested.end()) {
                 for (const auto& child: children->second) {
-                    const auto childName = utf8(child.path.filename());
+                    const auto childName = Util::toUtf8(child.path.filename());
                     auto childIter =
                             appendNode(&fileIter, child.path, childName, KIND_NESTED, escape(childName), false);
                     gtk_tree_store_set(store, &childIter, COL_ICON, child.icon, COL_TOOLTIP,
@@ -671,18 +658,19 @@ private:
             }
         }
         std::sort(entries.begin(), entries.end(), [](const auto& a, const auto& b) {
-            return a.second != b.second ? a.second : utf8(a.first.filename()) < utf8(b.first.filename());
+            return a.second != b.second ? a.second :
+                                          Util::toUtf8(a.first.filename()) < Util::toUtf8(b.first.filename());
         });
         return entries;
     }
 
     /// A deleted entry: struck through, gray and with a trash icon, unlike the dimmed unsupported files
     void appendDeletedNode(GtkTreeIter* parentIter, const fs::path& path, bool directory) {
-        const auto name = utf8(path.filename());
+        const auto name = Util::toUtf8(path.filename());
         GtkTreeIter iter;
         gtk_tree_store_insert_with_values(
                 store, &iter, parentIter, -1, COL_ICON, trashIcon, COL_NAME, name.c_str(), COL_MARKUP,
-                ("<s>" + escape(name) + "</s>").c_str(), COL_PATH, utf8(path).c_str(), COL_KIND,
+                ("<s>" + escape(name) + "</s>").c_str(), COL_PATH, Util::toUtf8(path).c_str(), COL_KIND,
                 directory ? KIND_DELETED_DIRECTORY : KIND_DELETED, COL_SENSITIVE, true, COL_FOREGROUND, COLOR_DELETED,
                 COL_TOOLTIP,
                 escape(directory ? _("Deleted folder – removed from the repository with the next sync") :
@@ -696,8 +684,8 @@ private:
         if (gitToplevel.empty()) {
             return;
         }
-        ProjectGit::run(gitToplevel, {"restore", "--source=HEAD", "--staged", "--worktree", "--", utf8(path)}, lifetime,
-                        [this, path](auto restored) {
+        ProjectGit::run(gitToplevel, {"restore", "--source=HEAD", "--staged", "--worktree", "--", Util::toUtf8(path)},
+                        lifetime, [this, path](auto restored) {
                             if (!restored.success) {
                                 showError(_("The entry could not be restored."), restored.error);
                                 return;
@@ -725,9 +713,9 @@ private:
         gtk_tree_store_clear(store);
         updateView();
         if (!projectRoot.empty()) {
-            auto rootName = utf8(projectRoot.filename());
+            auto rootName = Util::toUtf8(projectRoot.filename());
             if (rootName.empty()) {
-                rootName = utf8(projectRoot);
+                rootName = Util::toUtf8(projectRoot);
             }
             auto rootIter = appendNode(nullptr, projectRoot, rootName, KIND_DIRECTORY,
                                        "<b>" + escape(rootName) + "</b>", !searching);
@@ -749,11 +737,11 @@ private:
             const auto& folder = entry.first;
             std::vector<std::string> names;
             std::error_code error;
-            for (fs::directory_iterator it(pathFromUtf8(folder.c_str()), error), end; !error && it != end;
+            for (fs::directory_iterator it(Util::fromUtf8(folder.c_str()), error), end; !error && it != end;
                  it.increment(error)) {
                 if (!isIgnored(it->path())) {
                     std::error_code typeError;
-                    names.push_back(utf8(it->path().filename()) + (it->is_directory(typeError) ? "/" : ""));
+                    names.push_back(Util::toUtf8(it->path().filename()) + (it->is_directory(typeError) ? "/" : ""));
                 }
             }
             std::sort(names.begin(), names.end());
@@ -809,7 +797,7 @@ private:
                 if (!directory && !it->is_regular_file(itemError)) {
                     continue;
                 }
-                if (auto markup = highlightMatch(utf8(path.filename()), search->query)) {
+                if (auto markup = highlightMatch(Util::toUtf8(path.filename()), search->query)) {
                     search->matches.push_back({path, directory, std::move(*markup)});
                     if (search->matches.size() >= MAX_SEARCH_RESULTS) {
                         break;
@@ -846,13 +834,13 @@ private:
         while (gtk_tree_model_iter_children(model(), &child, &rootIter)) {
             gtk_tree_store_remove(store, &child);  // the "Searching…" row
         }
-        std::map<std::string, GtkTreeIter> directories{{utf8(projectRoot), rootIter}};
+        std::map<std::string, GtkTreeIter> directories{{Util::toUtf8(projectRoot), rootIter}};
         for (const auto& match: matches) {
             auto* parentIter = ensureDirectory(match.path.parent_path(), directories);
-            auto iter = appendNode(parentIter, match.path, utf8(match.path.filename()),
+            auto iter = appendNode(parentIter, match.path, Util::toUtf8(match.path.filename()),
                                    kindFor(match.path, match.directory), match.markup, false);
             if (match.directory) {
-                directories[utf8(match.path)] = iter;
+                directories[Util::toUtf8(match.path)] = iter;
             }
         }
         if (matches.empty()) {
@@ -863,7 +851,7 @@ private:
     }
 
     auto ensureDirectory(const fs::path& dir, std::map<std::string, GtkTreeIter>& directories) -> GtkTreeIter* {
-        const auto key = utf8(dir);
+        const auto key = Util::toUtf8(dir);
         if (auto found = directories.find(key); found != directories.end()) {
             return &found->second;
         }
@@ -871,7 +859,7 @@ private:
             return &directories.begin()->second;
         }
         auto* parentIter = ensureDirectory(dir.parent_path(), directories);
-        const auto name = utf8(dir.filename());
+        const auto name = Util::toUtf8(dir.filename());
         auto iter = appendNode(parentIter, dir, name, KIND_DIRECTORY, escape(name), false);
         return &directories.emplace(key, iter).first->second;
     }
@@ -884,7 +872,7 @@ private:
         const auto selected = selectedPath();
         buildTree();
         if (!selected.empty()) {
-            reveal(pathFromUtf8(selected.c_str()), !keepScroll);
+            reveal(Util::fromUtf8(selected.c_str()), !keepScroll);
         }
         if (keepScroll && !scrollSource) {
             scrollSource = g_idle_add(
@@ -1015,7 +1003,7 @@ private:
                     continue;
                 }
                 // Mark all parent folders below the project root; modified wins over added
-                for (auto dir = pathFromUtf8(key.c_str()).parent_path();; dir = dir.parent_path()) {
+                for (auto dir = Util::fromUtf8(key.c_str()).parent_path();; dir = dir.parent_path()) {
                     const auto dirKey = ProjectGit::pathKey(dir);
                     if (dirKey.size() <= rootKey.size()) {
                         break;
@@ -1036,7 +1024,7 @@ private:
                     continue;
                 }
                 gtk_tree_store_set(store, &child, COL_FOREGROUND,
-                                   gitColorFor(pathFromUtf8(pathAt(&child).c_str()), static_cast<Kind>(kind)), -1);
+                                   gitColorFor(Util::fromUtf8(pathAt(&child).c_str()), static_cast<Kind>(kind)), -1);
                 recolor(&child);
             }
         };
@@ -1095,7 +1083,7 @@ private:
                 return;
             }
             std::error_code error;
-            const auto top = fs::weakly_canonical(pathFromUtf8(trim(result.output).c_str()), error);
+            const auto top = fs::weakly_canonical(Util::fromUtf8(trim(result.output).c_str()), error);
             // Only the project folder (cwd and pathspec "."), which may be part of a larger repository. Porcelain
             // paths are still relative to the repository root. --no-optional-locks keeps status from taking the
             // index lock, which would make a concurrent commit fail.
@@ -1333,7 +1321,7 @@ private:
     // --- File system monitoring ---
 
     void watch(const fs::path& dir) {
-        const auto key = utf8(dir);
+        const auto key = Util::toUtf8(dir);
         if (monitors.count(key)) {
             return;
         }
@@ -1349,7 +1337,7 @@ private:
                              gchar* name = g_file_get_basename(file);
                              // Neither .git nor the backups Xournal++ writes while saving are shown in the tree
                              const bool ignored = name && (std::strcmp(name, ".git") == 0 ||
-                                                           AnnotationFiles::isRecoveryCopy(pathFromUtf8(name)));
+                                                           AnnotationFiles::isRecoveryCopy(Util::fromUtf8(name)));
                              g_free(name);
                              if (ignored) {
                                  // Still changes the folder's modification time: do not take it for a missed change
@@ -1388,7 +1376,7 @@ private:
         if (path) {
             if (auto found = folderTimes.find(path); found != folderTimes.end()) {
                 std::error_code error;
-                found->second = fs::last_write_time(pathFromUtf8(path), error);
+                found->second = fs::last_write_time(Util::fromUtf8(path), error);
             }
             g_free(path);
         }
@@ -1402,7 +1390,7 @@ private:
         }
         for (const auto& [key, time]: folderTimes) {
             std::error_code error;
-            if (fs::last_write_time(pathFromUtf8(key.c_str()), error) != time || error) {
+            if (fs::last_write_time(Util::fromUtf8(key.c_str()), error) != time || error) {
                 scheduleRefresh();
                 break;
             }
@@ -1434,7 +1422,7 @@ private:
         if (!tree || !gtk_tree_selection_get_selected(gtk_tree_view_get_selection(tree), nullptr, &iter)) {
             return {};
         }
-        Target target{pathFromUtf8(pathAt(&iter).c_str()), kindAt(&iter), {}};
+        Target target{Util::fromUtf8(pathAt(&iter).c_str()), kindAt(&iter), {}};
         if (target.kind == KIND_NESTED) {
             target.owner = owningDocument(&iter);
         }
@@ -1472,7 +1460,7 @@ private:
                 continue;
             }
             expandIter(&iter);
-            const auto name = utf8(part);
+            const auto name = Util::toUtf8(part);
             GtkTreeIter child;
             bool found = false;
             for (bool valid = gtk_tree_model_iter_children(model(), &child, &iter); valid;
@@ -1507,7 +1495,7 @@ private:
             for (bool valid = gtk_tree_model_iter_children(model(), &child, parentIter); valid;
                  valid = gtk_tree_model_iter_next(model(), &child)) {
                 if (kindAt(&child) == KIND_DOCUMENT) {
-                    openDocument(pathFromUtf8(pathAt(&child).c_str()));
+                    openDocument(Util::fromUtf8(pathAt(&child).c_str()));
                     return true;
                 }
                 if (visit(&child)) {
@@ -1577,11 +1565,11 @@ private:
                 }
                 break;
             case KIND_DOCUMENT:
-                self->openDocument(pathFromUtf8(self->pathAt(&iter).c_str()));
+                self->openDocument(Util::fromUtf8(self->pathAt(&iter).c_str()));
                 break;
             case KIND_NESTED:
                 // The document row above opens the PDFs for editing; the nested entries show them as they are
-                self->openReadOnly(pathFromUtf8(self->pathAt(&iter).c_str()));
+                self->openReadOnly(Util::fromUtf8(self->pathAt(&iter).c_str()));
                 break;
             default:
                 break;
@@ -1593,7 +1581,7 @@ private:
         if (!gtk_tree_model_iter_parent(model(), &parentIter, nested)) {
             return {};
         }
-        return pathFromUtf8(pathAt(&parentIter).c_str());
+        return Util::fromUtf8(pathAt(&parentIter).c_str());
     }
 
     static auto onButtonPress(GtkWidget*, GdkEventButton* event, ProjectExplorerSidebar* self) -> gboolean {
@@ -1641,7 +1629,7 @@ private:
             if (gtk_tree_model_get_iter(model(), &iter, path)) {
                 kind = kindAt(&iter);
                 target = pathAt(&iter);
-                document = kind == KIND_NESTED ? owningDocument(&iter) : pathFromUtf8(target.c_str());
+                document = kind == KIND_NESTED ? owningDocument(&iter) : Util::fromUtf8(target.c_str());
             }
             if (kind != KIND_PLACEHOLDER) {
                 gtk_tree_selection_select_path(gtk_tree_view_get_selection(tree), path);
@@ -1651,7 +1639,7 @@ private:
 
         auto* menu = gtk_menu_new();
         if (isDeletedKind(kind)) {
-            addMenuItem(menu, _("Restore"), [this, target] { restoreEntry(pathFromUtf8(target.c_str())); });
+            addMenuItem(menu, _("Restore"), [this, target] { restoreEntry(Util::fromUtf8(target.c_str())); });
             addMenuItem(menu, _("Copy Path"), [target] {
                 gtk_clipboard_set_text(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD), target.c_str(), -1);
             });
@@ -1660,9 +1648,10 @@ private:
         }
         if (kind == KIND_DOCUMENT || kind == KIND_NESTED) {
             addMenuItem(menu, _("Open"), [this, document] { openDocument(document); });
-            if (Util::hasPdfFileExt(pathFromUtf8(target.c_str()))) {
+            if (Util::hasPdfFileExt(Util::fromUtf8(target.c_str()))) {
                 // Read-only viewing, e.g. of the exported PDF, without creating annotations
-                addMenuItem(menu, _("Open Read-Only"), [this, target] { openReadOnly(pathFromUtf8(target.c_str())); });
+                addMenuItem(menu, _("Open Read-Only"),
+                            [this, target] { openReadOnly(Util::fromUtf8(target.c_str())); });
                 addMenuItem(menu, _("Open in PDF Viewer"), [this, target] { openWithDefaultApp(target); });
             }
             addMenuSeparator(menu);
@@ -1673,20 +1662,21 @@ private:
             addMenuItem(menu, _("New Folder"), [this, dir] { createFolder(dir); });
             addMenuSeparator(menu);
         }
-        const bool isRoot = !target.empty() && pathFromUtf8(target.c_str()) == projectRoot;
+        const bool isRoot = !target.empty() && Util::fromUtf8(target.c_str()) == projectRoot;
         if (kind != KIND_PLACEHOLDER && !isRoot) {
-            addMenuItem(menu, _("Rename…"),
-                        [this, target, kind, document] { renameEntry(pathFromUtf8(target.c_str()), kind, document); });
+            addMenuItem(menu, _("Rename…"), [this, target, kind, document] {
+                renameEntry(Util::fromUtf8(target.c_str()), kind, document);
+            });
             addMenuItem(menu, _("Move to…"), [this, target, kind, document] {
-                moveEntry(pathFromUtf8(target.c_str()), kind, kind == KIND_NESTED ? document : fs::path());
+                moveEntry(Util::fromUtf8(target.c_str()), kind, kind == KIND_NESTED ? document : fs::path());
             });
             addMenuItem(menu, _("Delete"),
-                        [this, target, kind] { deleteEntry(pathFromUtf8(target.c_str()), kind == KIND_DIRECTORY); });
+                        [this, target, kind] { deleteEntry(Util::fromUtf8(target.c_str()), kind == KIND_DIRECTORY); });
             addMenuSeparator(menu);
         }
         if (kind != KIND_PLACEHOLDER) {
             addMenuItem(menu, _("Show in File Manager"), [this, target, kind] {
-                const auto path = pathFromUtf8(target.c_str());
+                const auto path = Util::fromUtf8(target.c_str());
                 showInFileManager(kind == KIND_DIRECTORY ? path : path.parent_path());
             });
             addMenuItem(menu, _("Copy Path"), [target] {
@@ -1732,7 +1722,7 @@ private:
     }
 
     void openWithDefaultApp(const std::string& file) {
-        if (auto uri = Util::toUri(pathFromUtf8(file.c_str()))) {
+        if (auto uri = Util::toUri(Util::fromUtf8(file.c_str()))) {
             GError* error = nullptr;
             if (!g_app_info_launch_default_for_uri(uri->c_str(), nullptr, &error)) {
                 showError(_("The file could not be opened."), error->message);
@@ -1774,7 +1764,7 @@ private:
         if (!documentPath.empty() && Util::isChildOrEquivalent(documentPath, projectRoot)) {
             reveal(documentPath, true);
         } else if (!selectedFile.empty()) {
-            reveal(pathFromUtf8(selectedFile.c_str()), true);
+            reveal(Util::fromUtf8(selectedFile.c_str()), true);
         }
     }
 
@@ -1789,7 +1779,7 @@ private:
 
     // --- Persistent state (project-explorer.ini in the config folder) ---
 
-    auto stateFile() const -> std::string { return utf8(Util::getConfigFile("project-explorer.ini")); }
+    auto stateFile() const -> std::string { return Util::toUtf8(Util::getConfigFile("project-explorer.ini")); }
 
     auto loadKeyFile() const -> GKeyFile* {
         GKeyFile* keyFile = g_key_file_new();
@@ -1820,7 +1810,7 @@ private:
         fs::remove(legacyFile, error);
 
         if (!project.empty()) {
-            auto path = fs::weakly_canonical(pathFromUtf8(project.c_str()), error);
+            auto path = fs::weakly_canonical(Util::fromUtf8(project.c_str()), error);
             if (!error && fs::is_directory(path, error)) {
                 projectRoot = path;
             }
@@ -1856,8 +1846,8 @@ private:
             g_key_file_remove_key(keyFile, "General", "project", nullptr);
         } else {
             const auto group = projectGroup(projectRoot);
-            g_key_file_set_string(keyFile, "General", "project", utf8(projectRoot).c_str());
-            g_key_file_set_string(keyFile, group.c_str(), "root", utf8(projectRoot).c_str());
+            g_key_file_set_string(keyFile, "General", "project", Util::toUtf8(projectRoot).c_str());
+            g_key_file_set_string(keyFile, group.c_str(), "root", Util::toUtf8(projectRoot).c_str());
             std::vector<const gchar*> expanded;
             for (const auto& path: expandedPaths) {
                 expanded.push_back(path.c_str());
@@ -1908,7 +1898,7 @@ private:
                                  GFile* file = gtk_file_chooser_get_file(GTK_FILE_CHOOSER(dialog));
                                  if (file) {
                                      if (gchar* path = g_file_get_path(file)) {
-                                         self->openProject(pathFromUtf8(path));
+                                         self->openProject(Util::fromUtf8(path));
                                          g_free(path);
                                      }
                                      g_object_unref(file);
@@ -1927,15 +1917,15 @@ private:
         if (target.empty() || kind == KIND_PLACEHOLDER) {
             return projectRoot;
         }
-        const auto path = pathFromUtf8(target.c_str());
+        const auto path = Util::fromUtf8(target.c_str());
         return kind == KIND_DIRECTORY ? path : path.parent_path();
     }
 
     static auto uniquePath(const fs::path& dir, const std::string& base, const std::string& extension) -> fs::path {
         std::error_code error;
-        auto candidate = dir / pathFromUtf8((base + extension).c_str());
+        auto candidate = dir / Util::fromUtf8((base + extension).c_str());
         for (int i = 2; fs::exists(candidate, error); i++) {
-            candidate = dir / pathFromUtf8((base + " " + std::to_string(i) + extension).c_str());
+            candidate = dir / Util::fromUtf8((base + " " + std::to_string(i) + extension).c_str());
         }
         return candidate;
     }
@@ -1964,7 +1954,7 @@ private:
         gtk_box_pack_start(GTK_BOX(area), entry, false, false, 0);
         gtk_widget_show_all(area);
 
-        const auto stem = utf8(pathFromUtf8(initial.c_str()).stem());
+        const auto stem = Util::toUtf8(Util::fromUtf8(initial.c_str()).stem());
         gtk_widget_grab_focus(entry);
         gtk_editable_select_region(GTK_EDITABLE(entry), 0, static_cast<gint>(g_utf8_strlen(stem.c_str(), -1)));
 
@@ -2007,7 +1997,7 @@ private:
         // Suggest the default file name from the preferences, e.g. "2026-10-30-Note-14-05"
         Document unnamed(control);
         const auto stem = unnamed.createSaveFilename(Document::XOPP, control->getSettings()->getDefaultSaveName());
-        std::string name = utf8(uniquePath(dir, utf8(stem), ".xopp").filename());
+        std::string name = Util::toUtf8(uniquePath(dir, Util::toUtf8(stem), ".xopp").filename());
         fs::path path;
         while (true) {
             auto entered = askForName(_("New Document"), _("Create"), name);
@@ -2016,10 +2006,10 @@ private:
             }
             name = *entered;
             // Every new document is a Xournal++ file, whatever else the name looks like
-            if (!Util::hasXournalFileExt(pathFromUtf8(name.c_str()))) {
+            if (!Util::hasXournalFileExt(Util::fromUtf8(name.c_str()))) {
                 name += ".xopp";
             }
-            path = dir / pathFromUtf8(name.c_str());
+            path = dir / Util::fromUtf8(name.c_str());
             if (auto problem = checkName(name, path)) {
                 showError(problem->first, problem->second);
                 continue;
@@ -2044,14 +2034,14 @@ private:
     }
 
     void createFolder(const fs::path& dir) {
-        std::string name = utf8(uniquePath(dir, _("New Folder"), "").filename());
+        std::string name = Util::toUtf8(uniquePath(dir, _("New Folder"), "").filename());
         while (true) {
             auto entered = askForName(_("New Folder"), _("Create"), name);
             if (!entered) {
                 return;
             }
             name = *entered;
-            const auto path = dir / pathFromUtf8(name.c_str());
+            const auto path = dir / Util::fromUtf8(name.c_str());
             if (auto problem = checkName(name, path)) {
                 showError(problem->first, problem->second);
                 continue;
@@ -2069,18 +2059,18 @@ private:
     /// owner: for a nested PDF (kind KIND_NESTED), the document it belongs to
     void renameEntry(const fs::path& oldPath, gint kind, const fs::path& owner = {}) {
         const bool document = kind == KIND_DOCUMENT || kind == KIND_NESTED;
-        std::string name = utf8(oldPath.filename());
+        std::string name = Util::toUtf8(oldPath.filename());
         while (true) {
             auto entered = askForName(_("Rename"), _("Rename"), name);
-            if (!entered || *entered == utf8(oldPath.filename())) {
+            if (!entered || *entered == Util::toUtf8(oldPath.filename())) {
                 return;
             }
             name = *entered;
             // Keep the document type if the extension was left out
-            if (document && !pathFromUtf8(name.c_str()).has_extension()) {
-                name += utf8(oldPath.extension());
+            if (document && !Util::fromUtf8(name.c_str()).has_extension()) {
+                name += Util::toUtf8(oldPath.extension());
             }
-            const auto newPath = oldPath.parent_path() / pathFromUtf8(name.c_str());
+            const auto newPath = oldPath.parent_path() / Util::fromUtf8(name.c_str());
             if (auto problem = checkName(name, newPath, oldPath)) {
                 showError(problem->first, problem->second);
                 continue;
@@ -2088,7 +2078,7 @@ private:
             // Fork: a document is renamed together with its source PDF (if named like it) and exported PDF
             if (kind == KIND_DOCUMENT && isXoppFile(oldPath)) {
                 if (!isXoppFile(newPath)) {
-                    showError(_("A document keeps its file extension."), utf8(oldPath.extension()));
+                    showError(_("A document keeps its file extension."), Util::toUtf8(oldPath.extension()));
                     continue;
                 }
                 auto group = AnnotationFiles::groupForRename(oldPath, newPath, *control->getSettings());
@@ -2129,7 +2119,7 @@ private:
     }
 
     static auto isXoppFile(const fs::path& path) -> bool {
-        gchar* folded = g_utf8_casefold(utf8(path.extension()).c_str(), -1);
+        gchar* folded = g_utf8_casefold(Util::toUtf8(path.extension()).c_str(), -1);
         const bool xopp = std::strcmp(folded, ".xopp") == 0;
         g_free(folded);
         return xopp;
@@ -2144,7 +2134,7 @@ private:
             std::error_code error;
             fs::rename(from, to, error);
             if (error) {
-                const auto message = utf8(from.filename()) + ": " + error.message();
+                const auto message = Util::toUtf8(from.filename()) + ": " + error.message();
                 undoRenames(done);
                 showError(_("The entry could not be renamed."), message);
                 return std::nullopt;
@@ -2164,8 +2154,8 @@ private:
             std::error_code error;
             fs::rename(it->second, it->first, error);
             if (error) {
-                failed += utf8(it->second.filename()) + " → " + utf8(it->first.filename()) + ": " + error.message() +
-                          "\n";
+                failed += Util::toUtf8(it->second.filename()) + " → " + Util::toUtf8(it->first.filename()) + ": " +
+                          error.message() + "\n";
             }
         }
         if (!failed.empty()) {
@@ -2191,7 +2181,8 @@ private:
                 for (const auto& [from, to]: *done) {
                     movedEntry(to, from);
                 }
-                showError(FC(_F("“{1}” could not be updated to use the renamed PDF.") % utf8(group.newXopp.filename())),
+                showError(FC(_F("“{1}” could not be updated to use the renamed PDF.") %
+                             Util::toUtf8(group.newXopp.filename())),
                           problem);
                 return false;
             }
@@ -2283,9 +2274,9 @@ private:
      * inside it, the folder it is in) are not offered.
      */
     auto askForTargetFolder(const fs::path& path) -> std::optional<fs::path> {
-        auto* dialog =
-                gtk_dialog_new_with_buttons(FC(_F("Move “{1}”") % utf8(path.filename())), parent, GTK_DIALOG_MODAL,
-                                            _("Cancel"), GTK_RESPONSE_CANCEL, _("Move"), GTK_RESPONSE_ACCEPT, nullptr);
+        auto* dialog = gtk_dialog_new_with_buttons(FC(_F("Move “{1}”") % Util::toUtf8(path.filename())), parent,
+                                                   GTK_DIALOG_MODAL, _("Cancel"), GTK_RESPONSE_CANCEL, _("Move"),
+                                                   GTK_RESPONSE_ACCEPT, nullptr);
         gtk_window_set_default_size(GTK_WINDOW(dialog), 420, 520);
         auto* folders = gtk_tree_store_new(2, G_TYPE_STRING, G_TYPE_STRING);  // name, path
         std::error_code error;
@@ -2295,7 +2286,7 @@ private:
             std::vector<fs::path> children;
             for (fs::directory_iterator it(dir, error), end; !error && it != end; it.increment(error)) {
                 std::error_code typeError;
-                const auto name = utf8(it->path().filename());
+                const auto name = Util::toUtf8(it->path().filename());
                 if (it->is_directory(typeError) && !isIgnored(it->path()) && !name.empty() && name.front() != '.' &&
                     !Util::isChildOrEquivalent(it->path(), path)) {
                     children.push_back(it->path());
@@ -2303,8 +2294,8 @@ private:
             }
             error.clear();
             std::sort(children.begin(), children.end(), [](const auto& a, const auto& b) {
-                gchar* keyA = g_utf8_collate_key_for_filename(utf8(a.filename()).c_str(), -1);
-                gchar* keyB = g_utf8_collate_key_for_filename(utf8(b.filename()).c_str(), -1);
+                gchar* keyA = g_utf8_collate_key_for_filename(Util::toUtf8(a.filename()).c_str(), -1);
+                gchar* keyB = g_utf8_collate_key_for_filename(Util::toUtf8(b.filename()).c_str(), -1);
                 const bool less = std::strcmp(keyA, keyB) < 0;
                 g_free(keyA);
                 g_free(keyB);
@@ -2312,16 +2303,18 @@ private:
             });
             for (const auto& child: children) {
                 GtkTreeIter iter;
-                gtk_tree_store_insert_with_values(folders, &iter, parentIter, -1, 0, utf8(child.filename()).c_str(), 1,
-                                                  utf8(child).c_str(), -1);
+                gtk_tree_store_insert_with_values(folders, &iter, parentIter, -1, 0,
+                                                  Util::toUtf8(child.filename()).c_str(), 1,
+                                                  Util::toUtf8(child).c_str(), -1);
                 if (depth < 8) {
                     add(child, &iter, depth + 1);
                 }
             }
         };
         GtkTreeIter rootIter;
-        gtk_tree_store_insert_with_values(folders, &rootIter, nullptr, -1, 0, utf8(projectRoot.filename()).c_str(), 1,
-                                          utf8(projectRoot).c_str(), -1);
+        gtk_tree_store_insert_with_values(folders, &rootIter, nullptr, -1, 0,
+                                          Util::toUtf8(projectRoot.filename()).c_str(), 1,
+                                          Util::toUtf8(projectRoot).c_str(), -1);
         add(projectRoot, &rootIter, 1);
 
         auto* view = gtk_tree_view_new_with_model(GTK_TREE_MODEL(folders));
@@ -2364,7 +2357,7 @@ private:
                              if (gtk_tree_selection_get_selected(selection, &model, &iter)) {
                                  gchar* value = nullptr;
                                  gtk_tree_model_get(model, &iter, 1, &value, -1);
-                                 choice->chosen = pathFromUtf8(value ? value : "");
+                                 choice->chosen = Util::fromUtf8(value ? value : "");
                                  g_free(value);
                              }
                              gtk_widget_set_sensitive(
@@ -2406,7 +2399,7 @@ private:
         const auto newPath = *target / path.filename();
         std::error_code error;
         if (fs::exists(newPath, error)) {
-            showError(_("An entry with this name already exists."), utf8(newPath.filename()));
+            showError(_("An entry with this name already exists."), Util::toUtf8(newPath.filename()));
             return;
         }
         // A PDF keeps being the background of the document annotating it, wherever it is moved
@@ -2424,7 +2417,7 @@ private:
                                     AnnotationFiles::relinkSourcePdf(*annotating, newPath, *control->getSettings());
                             !problem.empty()) {
                             showError(FC(_F("“{1}” could not be updated to use the renamed PDF.") %
-                                         utf8(annotating->filename())),
+                                         Util::toUtf8(annotating->filename())),
                                       problem);
                         }
                     }
@@ -2443,10 +2436,10 @@ private:
             if (!renameAll({{oldPdf, newPdf}})) {
                 return;
             }
-            if (auto problem = AnnotationFiles::relinkDocument(xopp, std::nullopt, utf8(newPdf.filename()),
+            if (auto problem = AnnotationFiles::relinkDocument(xopp, std::nullopt, Util::toUtf8(newPdf.filename()),
                                                                *control->getSettings());
                 !problem.empty()) {
-                showError(FC(_F("“{1}” could not be updated to use the renamed PDF.") % utf8(xopp.filename())),
+                showError(FC(_F("“{1}” could not be updated to use the renamed PDF.") % Util::toUtf8(xopp.filename())),
                           problem);
             }
             showEntry(newPdf);
@@ -2478,20 +2471,21 @@ private:
             return;
         }
         if (auto problem = AnnotationFiles::relinkSourcePdf(xopp, pdf, *control->getSettings()); !problem.empty()) {
-            showError(FC(_F("“{1}” could not be updated to use the renamed PDF.") % utf8(xopp.filename())), problem);
+            showError(FC(_F("“{1}” could not be updated to use the renamed PDF.") % Util::toUtf8(xopp.filename())),
+                      problem);
         }
     }
 
     /// Updates all remembered paths (open document, selection, expanded folders) after a rename
     void movedEntry(const fs::path& oldPath, const fs::path& newPath) {
-        const auto oldPrefix = utf8(oldPath);
+        const auto oldPrefix = Util::toUtf8(oldPath);
         auto rebase = [&](const std::string& value) -> std::optional<std::string> {
             if (value == oldPrefix) {
-                return utf8(newPath);
+                return Util::toUtf8(newPath);
             }
             if (value.size() > oldPrefix.size() && value.compare(0, oldPrefix.size(), oldPrefix) == 0 &&
                 (value[oldPrefix.size()] == '/' || value[oldPrefix.size()] == '\\')) {
-                return utf8(newPath) + value.substr(oldPrefix.size());
+                return Util::toUtf8(newPath) + value.substr(oldPrefix.size());
             }
             return std::nullopt;
         };
@@ -2504,9 +2498,9 @@ private:
         lastDocumentFile = rebase(lastDocumentFile).value_or(lastDocumentFile);
 
         Document* document = control->getDocument();
-        if (auto moved = rebase(utf8(document->getFilepath()))) {
+        if (auto moved = rebase(Util::toUtf8(document->getFilepath()))) {
             document->lock();
-            document->setFilepath(pathFromUtf8(moved->c_str()));
+            document->setFilepath(Util::fromUtf8(moved->c_str()));
             document->unlock();
             control->updateWindowTitle();
         }
@@ -2514,7 +2508,7 @@ private:
     }
 
     void deleteEntry(const fs::path& path, bool directory) {
-        const auto name = utf8(path.filename());
+        const auto name = Util::toUtf8(path.filename());
         auto* dialog = gtk_message_dialog_new(parent, GTK_DIALOG_MODAL, GTK_MESSAGE_QUESTION, GTK_BUTTONS_NONE, "%s",
                                               FC(_F("Delete “{1}”?") % name));
         gtk_message_dialog_format_secondary_text(
@@ -2545,7 +2539,7 @@ private:
     }
 
     auto trash(const fs::path& path) -> bool {
-        GFile* file = g_file_new_for_path(utf8(path).c_str());
+        GFile* file = g_file_new_for_path(Util::toUtf8(path).c_str());
         GError* error = nullptr;
         const bool trashed = g_file_trash(file, nullptr, &error);
         g_object_unref(file);
