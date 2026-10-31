@@ -11,6 +11,7 @@
 #include "control/AnnotationFiles.h"
 #include "control/AudioController.h"
 #include "control/Control.h"
+#include "control/InsertPdfPages.h"
 #include "control/NavigationHistory.h"
 #include "control/ScrollHandler.h"
 #include "control/ToolEnums.h"
@@ -592,6 +593,10 @@ struct ActionProperties<Action::MOVE_PAGE_TOWARDS_END> {
 template <>
 struct ActionProperties<Action::APPEND_NEW_PDF_PAGES> {
     static void callback(GSimpleAction*, GVariant*, Control* ctrl) { ctrl->appendNewPdfPages(); }
+};
+template <>
+struct ActionProperties<Action::INSERT_PDF_PAGES> {
+    static void callback(GSimpleAction*, GVariant*, Control* ctrl) { InsertPdfPages::run(ctrl); }
 };
 template <>
 struct ActionProperties<Action::CONFIGURE_PAGE_TEMPLATE> {

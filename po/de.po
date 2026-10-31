@@ -5116,3 +5116,75 @@ msgstr "Verschieben nach…"
 #: src/core/gui/sidebar/ProjectExplorerSidebar.cpp
 msgid "Move “{1}”"
 msgstr "„{1}“ verschieben"
+
+#: ../src/core/control/InsertPdfPages.cpp
+msgid "Insert Pages from PDF"
+msgstr "Seiten aus PDF einfügen"
+
+#: ../ui/mainmenubar.xml
+msgid "Insert Pages from PDF…"
+msgstr "Seiten aus PDF einfügen…"
+
+#: ../src/core/undo/InsertPdfPagesUndoAction.cpp
+msgid "Insert pages from PDF"
+msgstr "Seiten aus PDF einfügen"
+
+#: ../src/core/control/InsertPdfPages.cpp
+msgid "Insert"
+msgstr "Einfügen"
+
+#: ../src/core/control/InsertPdfPages.cpp
+msgid "“{1}” has {2} pages."
+msgstr "„{1}“ hat {2} Seiten."
+
+#: ../src/core/control/InsertPdfPages.cpp
+msgid "_Pages (e.g. 1-3, 5; empty for all):"
+msgstr "_Seiten (z. B. 1-3, 5; leer für alle):"
+
+#: ../src/core/control/InsertPdfPages.cpp
+msgid "After the _current page"
+msgstr "Nach der _aktuellen Seite"
+
+#: ../src/core/control/InsertPdfPages.cpp
+msgid "At the _end"
+msgstr "Am _Ende"
+
+#: ../src/core/control/InsertPdfPages.cpp
+msgid "Please enter page numbers between 1 and the number of pages, e.g. 1-3, 5."
+msgstr "Bitte Seitenzahlen zwischen 1 und der Seitenanzahl eingeben, z. B. 1-3, 5."
+
+#: ../src/core/control/InsertPdfPages.cpp
+msgid "{1} (combined).pdf"
+msgstr "{1} (kombiniert).pdf"
+
+#: ../src/core/control/InsertPdfPages.cpp
+msgid "{1} (combined {2}).pdf"
+msgstr "{1} (kombiniert {2}).pdf"
+
+#: ../src/core/control/InsertPdfPages.cpp
+msgid "Pages cannot be inserted into a document with an attached PDF."
+msgstr "In ein Dokument mit angehängtem PDF können keine Seiten eingefügt werden."
+
+#: ../src/core/control/InsertPdfPages.cpp
+msgid "The background PDF of the document is missing."
+msgstr "Das Hintergrund-PDF des Dokuments fehlt."
+
+#: ../src/core/control/InsertPdfPages.cpp
+msgid "The PDF could not be read."
+msgstr "Das PDF konnte nicht gelesen werden."
+
+#: ../src/core/control/InsertPdfPages.cpp
+msgid "The pages could not be combined."
+msgstr "Die Seiten konnten nicht zusammengeführt werden."
+
+#: ../src/core/control/InsertPdfPages.cpp
+msgid "The combined PDF could not be written."
+msgstr "Das zusammengeführte PDF konnte nicht geschrieben werden."
+
+#: ../src/core/control/InsertPdfPages.cpp
+msgid "This build cannot insert pages from other PDFs (QPDF is missing)."
+msgstr "Diese Version kann keine Seiten aus anderen PDFs einfügen (QPDF fehlt)."
+
+#: ../src/core/control/InsertPdfPages.cpp
+msgid "Please save the document first: the inserted pages are stored in a PDF next to it."
+msgstr "Bitte das Dokument zuerst speichern: Die eingefügten Seiten werden in einem PDF daneben abgelegt."

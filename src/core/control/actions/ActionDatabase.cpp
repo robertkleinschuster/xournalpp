@@ -201,6 +201,7 @@ static constexpr Action EDITING_ACTIONS[] = {
         Action::MOVE_PAGE_TOWARDS_BEGINNING,
         Action::MOVE_PAGE_TOWARDS_END,
         Action::APPEND_NEW_PDF_PAGES,
+        Action::INSERT_PDF_PAGES,
         Action::CONFIGURE_PAGE_TEMPLATE,
         Action::DELETE_PAGE,
         Action::PAPER_FORMAT,

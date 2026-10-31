@@ -474,6 +474,10 @@
      <attribute name="action">win.append-new-pdf-pages</attribute>
     </item>
     <item>
+     <attribute name="label" translatable="yes">Insert Pages from PDF…</attribute>
+     <attribute name="action">win.insert-pdf-pages</attribute>
+    </item>
+    <item>
      <attribute name="label" translatable="yes">Configure Page Template</attribute>
      <attribute name="action">win.configure-page-template</attribute>
     </item>

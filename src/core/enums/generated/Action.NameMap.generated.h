@@ -64,6 +64,7 @@ constexpr const char* ACTION_NAMES[] = {  // Action to string conversion map
         "move-page-towards-beginning",
         "move-page-towards-end",
         "append-new-pdf-pages",
+        "insert-pdf-pages",
         "configure-page-template",
         "delete-page",
         "paper-format",

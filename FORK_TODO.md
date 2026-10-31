@@ -42,16 +42,12 @@ the device. Open:
 
 ### Insert pages from other PDFs
 
-Insert single pages or ranges from another PDF into the current document.
+Done: "Journal → Insert Pages from PDF…" (`InsertPdfPages`, `PdfCombiner`, undoable via
+`InsertPdfPagesUndoAction`). The chosen pages are appended to a combined copy of the background PDF next to the
+document, marked in its document info (`/XournalStudioCombined`); the source PDF stays untouched. Open:
 
-- Today: a document has exactly one background PDF (`Document::getPdfFilepath()`); `APPEND_NEW_PDF_PAGES` only adds
-  pages of that PDF that are not in the document yet. Pages from other PDFs cannot be inserted.
-- Options to evaluate:
-  - Merge the pages into a new combined background PDF (e.g. with QPDF, already a dependency) stored next to the
-    `.xopp`, and remap the background page numbers. Keeps vector quality and text selection; needs care with
-    the source/export file nesting in the project explorer and with the recorded export name.
-  - Render the inserted pages as image backgrounds. Simple, but loses vectors, text selection and search.
-- Needs a page picker dialog (thumbnails, ranges) and a target position.
+- A thumbnail picker instead of typing page ranges.
+- Removing pages that are no longer used from the combined PDF (it only grows; undo keeps them).
 
 ### Tasks with reminders (todo.txt)
 
