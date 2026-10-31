@@ -480,11 +480,17 @@ void on_startup(GApplication* application, XMPtr app_data) {
         } catch (const fs::filesystem_error& e) {
             g_warning("Unable to convert path %s to absolute path: %s", app_data->optFilename[0], e.what());
         }
-    } else if (auto last = app_data->control->getSidebar()->getProjectExplorerLastDocument(); !last.empty()) {
-        // Reopen the document last opened from the project folder
-        p = std::move(last);
     } else if (app_data->control->getSettings()->isAutoloadMostRecent()) {
-        auto most_recent = RecentManager::getMostRecent();
+        // Fork: with a project folder, its last document is the most recent one ("Autoload most recent" setting)
+        if (auto last = app_data->control->getSidebar()->getProjectExplorerLastDocument(); !last.empty()) {
+            if (std::error_code err; fs::exists(last, err)) {
+                p = std::move(last);
+            }
+        }
+        decltype(RecentManager::getMostRecent()) most_recent;
+        if (p.empty()) {
+            most_recent = RecentManager::getMostRecent();
+        }
         if (most_recent) {
             if (auto opt = Util::fromUri(gtk_recent_info_get_uri(most_recent.get()))) {
                 p = opt.value();

@@ -1818,18 +1818,16 @@ void Control::openFileWithoutSavingTheCurrentDocument(fs::path filepath, bool at
     }
 
     if (Util::hasPdfFileExt(filepath)) {
-        // Fork: an exported, annotated PDF is edited through the document it was exported from
-        if (!attachToDocument) {
+        // Fork: like the .xopp next to a PDF ("Autoload pdf.xoj" setting), an exported, annotated PDF opens the
+        // document it was exported from, and a PDF the document that annotates it (also after being renamed)
+        if (!attachToDocument && this->settings->isAutoloadPdfXoj()) {
             if (auto xopp = AnnotationFiles::documentForExport(filepath, *this->settings)) {
                 this->openXoppFile(std::move(*xopp), scrollToPage, std::move(callback));
                 return;
             }
-            // Fork: also find the document by the PDF it annotates, so it is found after being renamed
-            if (this->settings->isAutoloadPdfXoj()) {
-                if (auto xopp = AnnotationFiles::documentForSource(filepath)) {
-                    this->openXoppFile(std::move(*xopp), scrollToPage, std::move(callback));
-                    return;
-                }
+            if (auto xopp = AnnotationFiles::documentForSource(filepath)) {
+                this->openXoppFile(std::move(*xopp), scrollToPage, std::move(callback));
+                return;
             }
         }
         if (!attachToDocument && this->settings->isAutoloadPdfXoj()) {
