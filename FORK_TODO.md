@@ -21,10 +21,11 @@ longer shown; `TouchButtonFix` handles taps on buttons and the menu bar.
 Links in a PDF (references in the text, its own table of contents, URLs) react to the PDF tools: a tap with one of
 them - also with "Copy PDF Area", the default of the PDF tool button in the toolbar - shows a popover with "Go to …"
 / "Open link" (`XojPageView::displayLinkPopover`, only called when `isPdfSelectionTool`; verified). With the pen,
-highlighter or lasso nothing happens, on purpose, since every stroke over a link would jump. Optional improvements:
+highlighter or lasso nothing happens, on purpose, since every stroke over a link would jump. Done: a short tap of
+one finger (no movement, under 500 ms) on a link shows the popover with every tool (`TouchInputHandler::handleTap`).
+Optional improvements:
 
-- Make them reachable while writing, e.g.: a tap (no movement) with the finger on a link shows the popover; with the
-  pen, a long press on a link; the "Select object" tool follows links on tap.
+- With the pen, a long press on a link; the "Select object" tool follows links on tap.
 - Show where links are, e.g. a faint underline or outline of link areas (toggle), so they can be found.
 - After following an internal link, a way back (upstream has NAVIGATE_BACK / NAVIGATE_FORWARD; consider a back
   button in the popover or the toolbar while a jump is pending).

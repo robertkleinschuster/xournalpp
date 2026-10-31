@@ -216,6 +216,13 @@ private:
      */
     bool displayLinkPopover(std::shared_ptr<XojPdfPage> page, double targetX, double targetY);
 
+public:
+    /**
+     * Fork: shows the popover of the PDF link at (x, y) in layout pixels, if there is one (e.g. for a tap of a finger)
+     * @returns whether a link was found
+     */
+    bool showPdfLinkAt(int x, int y);
+
     /**
      * Shows the floating toolbox at the location of an input event
      */

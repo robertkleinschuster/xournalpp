@@ -12,11 +12,17 @@
 #include "control/zoom/ZoomControl.h"               // for ZoomControl
 #include "gui/Layout.h"                             // for Layout
 #include "gui/MainWindow.h"                         // for MainWindow
+#include "gui/PageView.h"                           // for XojPageView
 #include "gui/XournalView.h"                        // for XournalView
 #include "gui/inputdevices/AbstractInputHandler.h"  // for AbstractInputHandler
 #include "gui/inputdevices/InputEvents.h"           // for InputEvent, BUTTO...
 
 #include "InputContext.h"  // for InputContext
+
+namespace {
+constexpr double TAP_SLOP = 12;  ///< pixels a finger may move during a tap
+constexpr guint32 TAP_MAX_DURATION_MS = 500;
+}  // namespace
 
 #ifdef _WIN32
 #include <windows.h>
@@ -123,7 +129,12 @@ auto TouchInputHandler::handleImpl(InputEvent const& event) -> bool {
         applyPendingMotion();
         if (!primarySequence && !secondarySequence) {
             // Touching the screen again catches the gliding document
+            // ... and a tap that only stopped it is no tap on a link
+            const bool wasGliding = momentum.isGliding();
             momentum.begin();
+            tap = wasGliding ? Tap{} : Tap{event.sequence, event.absolute, event.timestamp};
+        } else {
+            tap = {};  // a second finger: no tap
         }
         if (invalidActive.find(event.sequence) != invalidActive.end()) {
             g_warning("Missed touch end/cancel event. Resetting touch input handler.");
@@ -155,6 +166,10 @@ auto TouchInputHandler::handleImpl(InputEvent const& event) -> bool {
     }
 
     if (event.type == MOTION_EVENT) {
+        if (tap.sequence == event.sequence &&
+            std::hypot(event.absolute.x - tap.start.x, event.absolute.y - tap.start.y) > TAP_SLOP) {
+            tap = {};  // a swipe
+        }
         if (primarySequence == event.sequence && !secondarySequence) {
             scrollMotion(event);
             return true;
@@ -179,6 +194,9 @@ auto TouchInputHandler::handleImpl(InputEvent const& event) -> bool {
     if (event.type == BUTTON_RELEASE_EVENT) {
         // Finish the movement up to the release before the gesture changes
         applyPendingMotion();
+        if (tap.sequence == event.sequence) {
+            handleTap(event);
+        }
         if (zooming && primarySequence && secondarySequence &&
             (event.sequence == primarySequence || event.sequence == secondarySequence)) {
             zoomEnd();
@@ -206,6 +224,22 @@ auto TouchInputHandler::handleImpl(InputEvent const& event) -> bool {
     }
 
     return false;
+}
+
+/// Fork: a finger only scrolls the document, so a tap is free for links: a tap on a link of the PDF shows its popover
+/// ("Go to …" / "Open link"), whatever tool is selected for the pen
+void TouchInputHandler::handleTap(InputEvent const& event) {
+    const auto start = std::exchange(tap, {});
+    if (event.timestamp - start.time > TAP_MAX_DURATION_MS || primarySequence != event.sequence || secondarySequence ||
+        !invalidActive.empty()) {
+        return;
+    }
+    if (auto* view = inputContext->getView()) {
+        if (auto* pageView = view->getLayout()->getPageViewAt(static_cast<int>(event.relative.x),
+                                                              static_cast<int>(event.relative.y))) {
+            pageView->showPdfLinkAt(static_cast<int>(event.relative.x), static_cast<int>(event.relative.y));
+        }
+    }
 }
 
 void TouchInputHandler::sequenceStart(InputEvent const& event) {

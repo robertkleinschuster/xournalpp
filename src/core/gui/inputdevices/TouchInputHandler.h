@@ -61,6 +61,15 @@ private:
     /// The current two-finger gesture changed the zoom noticeably, so it does not glide on
     bool pinched = false;
 
+    /// Fork: a short tap of one finger without moving, e.g. on a PDF link (see handleTap())
+    struct Tap {
+        GdkEventSequence* sequence = nullptr;
+        xoj::util::Point<double> start;  ///< in widget coordinates
+        guint32 time = 0;
+    };
+    Tap tap;
+    void handleTap(InputEvent const& event);
+
 private:
     void sequenceStart(InputEvent const& event);
     void scrollMotion(InputEvent const& event);

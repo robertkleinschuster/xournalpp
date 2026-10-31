@@ -1042,6 +1042,19 @@ void XojPageView::drawLoadingPage(cairo_t* cr) {
     rerenderPage();
 }
 
+auto XojPageView::showPdfLinkAt(int x, int y) -> bool {
+    if (this->page->getPdfPageNr() == npos) {
+        return false;
+    }
+    auto pdfPage = this->xournal->getDocument()->getPdfDocument().getPage(this->page->getPdfPageNr());
+    if (!pdfPage) {
+        return false;
+    }
+    const auto origin = getPixelPosition();
+    const double zoom = this->xournal->getZoom();
+    return displayLinkPopover(pdfPage, (x - origin.x) / zoom, (y - origin.y) / zoom);
+}
+
 bool XojPageView::displayLinkPopover(std::shared_ptr<XojPdfPage> page, double pageX, double pageY) {
     // Search for selected link
     const auto links = page->getLinks();
