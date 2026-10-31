@@ -85,6 +85,7 @@ public:
 
     void setMenubarVisible(bool visible);
     void setSidebarVisible(bool visible);
+    bool isSidebarVisible() const { return sidebarVisible; }
     void setToolbarVisible(bool visible);
 
     Control* getControl() const;
