@@ -27,8 +27,8 @@ Optional improvements:
 
 - With the pen, a long press on a link; the "Select object" tool follows links on tap.
 - Show where links are, e.g. a faint underline or outline of link areas (toggle), so they can be found.
-- After following an internal link, a way back (upstream has NAVIGATE_BACK / NAVIGATE_FORWARD; consider a back
-  button in the popover or the toolbar while a jump is pending).
+- After following an internal link: link jumps are recorded, "Navigation → Jump Back" (Alt+Left) returns; consider
+  a back button in the popover or the toolbar while a jump is pending, for the tablet mode.
 - The PDF outline (bookmarks) is in the sidebar's second tab and works; consider a hint or making it easier to find.
 
 ### Arrange pages
