@@ -18,10 +18,10 @@ longer shown; `TouchButtonFix` handles taps on buttons and the menu bar.
 
 ### Follow PDF links without switching tools
 
-Links in a PDF (references in the text, its own table of contents, URLs) only react to the PDF tools today: a tap
-with one of them shows a popover with "Go to …" / "Open link" (`XojPageView::displayLinkPopover`, only called when
-`isPdfSelectionTool`). With the pen, highlighter or lasso nothing happens, on purpose, since every stroke over a link
-would jump; in practice links seem broken.
+Links in a PDF (references in the text, its own table of contents, URLs) react to the PDF tools: a tap with one of
+them - also with "Copy PDF Area", the default of the PDF tool button in the toolbar - shows a popover with "Go to …"
+/ "Open link" (`XojPageView::displayLinkPopover`, only called when `isPdfSelectionTool`; verified). With the pen,
+highlighter or lasso nothing happens, on purpose, since every stroke over a link would jump. Optional improvements:
 
 - Make them reachable while writing, e.g.: a tap (no movement) with the finger on a link shows the popover; with the
   pen, a long press on a link; the "Select object" tool follows links on tap.
