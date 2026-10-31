@@ -1,5 +1,6 @@
 #include "ProjectExplorerSidebar.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cstring>
 #include <filesystem>
@@ -642,6 +643,32 @@ private:
             }
         }
         updatingTree = false;
+        shownListing = listingSignature();
+    }
+
+    /// The entries of all watched (i.e. shown) folders, to tell whether a monitor event changed what the tree shows
+    auto listingSignature() const -> std::string {
+        std::string signature;
+        for (const auto& entry: monitors) {
+            const auto& folder = entry.first;
+            std::vector<std::string> names;
+            std::error_code error;
+            for (fs::directory_iterator it(pathFromUtf8(folder.c_str()), error), end; !error && it != end;
+                 it.increment(error)) {
+                if (!isIgnored(it->path())) {
+                    std::error_code typeError;
+                    names.push_back(utf8(it->path().filename()) + (it->is_directory(typeError) ? "/" : ""));
+                }
+            }
+            std::sort(names.begin(), names.end());
+            signature += folder;
+            signature += '\n';
+            for (const auto& name: names) {
+                signature += name;
+                signature += '\n';
+            }
+        }
+        return signature;
     }
 
     struct SearchMatch {
@@ -785,6 +812,11 @@ private:
                 +[](gpointer data) -> gboolean {
                     auto* self = static_cast<ProjectExplorerSidebar*>(data);
                     self->refreshSource = 0;
+                    // Fork: saving replaces the document file (via "<name>.xopp~"), which the monitors report as
+                    // changes; only rebuild the tree if the shown entries actually changed
+                    if (!self->searching && self->listingSignature() == self->shownListing) {
+                        return G_SOURCE_REMOVE;
+                    }
                     self->refresh(true);
                     return G_SOURCE_REMOVE;
                 },
@@ -2090,6 +2122,7 @@ private:
     bool gitBusy = false;
     bool gitRefreshPending = false;
     bool syncing = false;
+    std::string shownListing;  ///< listingSignature() of the tree as last built
     bool fetchRunning = false;
     bool syncAfterFetch = false;
     fs::path gitToplevel;
