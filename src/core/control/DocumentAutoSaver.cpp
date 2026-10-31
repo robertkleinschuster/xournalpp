@@ -8,7 +8,14 @@
 #include "model/Document.h"
 #include "undo/UndoRedoHandler.h"
 
+#ifdef _WIN32
+#include <windows.h>  // last: its macros clash with names in the headers above
+#endif
+
 namespace {
+constexpr guint IDLE_CHECK_INTERVAL_S = 5;
+constexpr unsigned long IDLE_SAVE_AFTER_MS = 30'000;
+
 /// Whether any window of this application has the focus, e.g. a dialog opened from the main window
 auto applicationHasFocus() -> bool {
     GList* windows = gtk_window_list_toplevels();
@@ -43,11 +50,29 @@ DocumentAutoSaver::DocumentAutoSaver(Control* control): control(control) {
                                         }
                                     }),
                                     this);
+#ifdef _WIN32
+    // Save after a pause without input. The time of the last input covers the whole system, so the check is cheap and
+    // also waits while the user writes in another application.
+    idleCheck = g_timeout_add_seconds(
+            IDLE_CHECK_INTERVAL_S,
+            +[](gpointer data) -> gboolean {
+                auto* self = static_cast<DocumentAutoSaver*>(data);
+                LASTINPUTINFO info{sizeof(LASTINPUTINFO), 0};
+                if (GetLastInputInfo(&info) && GetTickCount() - info.dwTime >= IDLE_SAVE_AFTER_MS) {
+                    self->saveInBackground();
+                }
+                return G_SOURCE_CONTINUE;
+            },
+            this);
+#endif
 }
 
 DocumentAutoSaver::~DocumentAutoSaver() {
     if (focusCheck) {
         g_source_remove(focusCheck);
+    }
+    if (idleCheck) {
+        g_source_remove(idleCheck);
     }
     if (window) {
         g_signal_handler_disconnect(window, focusHandler);

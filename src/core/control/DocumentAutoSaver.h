@@ -21,6 +21,8 @@ class Control;
  * another application. It never saves while the user is working in the window: saving blocks the UI briefly, which
  * would disturb drawing. Only documents that already have a .xopp file are saved; untitled documents keep asking for
  * a location as before. The built-in autosave (a hidden recovery copy) stays responsible for crash protection.
+ * On Windows it also saves after a pause without any input (pen, touch, keyboard, mouse), so changes are on disk in
+ * tablet mode as well, where there is no keyboard for Ctrl+S.
  */
 class DocumentAutoSaver final {
 public:
@@ -46,6 +48,7 @@ private:
     /// Main window, reset to nullptr by GLib once it is destroyed
     GtkWindow* window = nullptr;
     guint focusCheck = 0;
+    guint idleCheck = 0;
     gulong focusHandler = 0;
     bool saving = false;
     /// Callbacks of saveNow() waiting for the running save
