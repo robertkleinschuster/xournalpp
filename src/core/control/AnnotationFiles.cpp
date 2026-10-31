@@ -3,11 +3,14 @@
 #include <cstring>
 #include <fstream>
 #include <memory>
+#include <mutex>
 #include <string_view>
 #include <thread>
+#include <unordered_map>
 #include <utility>
 
 #include <glib.h>
+#include <glib/gstdio.h>
 
 #include "control/Control.h"
 #include "control/jobs/ProgressListener.h"
@@ -24,6 +27,10 @@
 #include "util/PathUtil.h"
 #include "util/XojMsgBox.h"
 #include "util/i18n.h"
+
+#ifdef _WIN32
+#include <windows.h>  // last: its macros clash with names in the headers above
+#endif
 
 namespace fs = std::filesystem;
 
@@ -143,15 +150,10 @@ auto unescapeXml(std::string_view value) -> std::string {
 
 namespace {
 /**
- * Reads an attribute of the first element starting with tagStart from the beginning of a .xopp file, without loading
- * the document. Only the first maxBytes (decompressed) are searched.
+ * The first element starting with tagStart (up to its '>') from the beginning of a .xopp file, without loading the
+ * document; empty if it is not within the first maxBytes (decompressed).
  */
-auto readXoppAttribute(const fs::path& xopp, std::string_view tagStart, std::string_view attribute, size_t maxBytes)
-        -> std::string {
-    std::error_code error;
-    if (!fs::is_regular_file(xopp, error)) {
-        return {};
-    }
+auto readXoppTag(const fs::path& xopp, std::string_view tagStart, size_t maxBytes) -> std::string {
     std::string header;
     size_t tagPos = std::string::npos;
     try {
@@ -159,8 +161,12 @@ auto readXoppAttribute(const fs::path& xopp, std::string_view tagStart, std::str
         char buffer[4096];
         int read = 0;
         while (header.size() < maxBytes && (read = input.read(buffer, sizeof(buffer))) > 0) {
+            // Only search the new part (and the end of the previous one, which may hold the start of the tag)
+            const size_t searchFrom = header.size() < tagStart.size() ? 0 : header.size() - tagStart.size();
             header.append(buffer, static_cast<size_t>(read));
-            tagPos = header.find(tagStart);
+            if (tagPos == std::string::npos) {
+                tagPos = header.find(tagStart, searchFrom);
+            }
             if (tagPos != std::string::npos && header.find('>', tagPos) != std::string::npos) {
                 break;
             }
@@ -168,12 +174,81 @@ auto readXoppAttribute(const fs::path& xopp, std::string_view tagStart, std::str
     } catch (const std::exception&) {
         return {};
     }
-    tagPos = header.find(tagStart);
     const auto tagEnd = tagPos == std::string::npos ? std::string::npos : header.find('>', tagPos);
     if (tagEnd == std::string::npos) {
         return {};
     }
-    const std::string_view tag(header.data() + tagPos, tagEnd - tagPos);
+    return header.substr(tagPos, tagEnd - tagPos);
+}
+
+/**
+ * readXoppTag(), remembered per file as long as it is not modified: the project explorer asks for every document of a
+ * folder whenever it shows it, and reading a document without PDF background decompresses up to maxBytes.
+ */
+auto cachedXoppTag(const fs::path& xopp, std::string_view tagStart, size_t maxBytes) -> std::string {
+    // Modification time and size; std::filesystem only has a resolution of seconds with MinGW
+    std::pair<uint64_t, uint64_t> stamp;
+#ifdef _WIN32
+    WIN32_FILE_ATTRIBUTE_DATA data;
+    if (!GetFileAttributesExW(xopp.c_str(), GetFileExInfoStandard, &data) ||
+        (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+        return {};
+    }
+    stamp = {(uint64_t(data.ftLastWriteTime.dwHighDateTime) << 32) | data.ftLastWriteTime.dwLowDateTime,
+             (uint64_t(data.nFileSizeHigh) << 32) | data.nFileSizeLow};
+    FILETIME nowTime;
+    GetSystemTimeAsFileTime(&nowTime);
+    const uint64_t now = (uint64_t(nowTime.dwHighDateTime) << 32) | nowTime.dwLowDateTime;
+    constexpr uint64_t SECOND = 10'000'000;  // in 100 ns
+#else
+    GStatBuf info;
+    if (g_stat(xopp.c_str(), &info) != 0 || !S_ISREG(info.st_mode)) {
+        return {};
+    }
+    stamp = {uint64_t(info.st_mtim.tv_sec) * 1'000'000'000 + uint64_t(info.st_mtim.tv_nsec), uint64_t(info.st_size)};
+    const uint64_t now = uint64_t(g_get_real_time()) * 1000;
+    constexpr uint64_t SECOND = 1'000'000'000;
+#endif
+    // The clock that stamps files ticks coarsely (about 16 ms on Windows): a file written just now may be written
+    // again with the same stamp, so only remember files that have not changed for a while
+    const bool settled = now > stamp.first + 2 * SECOND;
+    struct Entry {
+        std::pair<uint64_t, uint64_t> stamp;
+        std::string tag;
+    };
+    static std::mutex mutex;
+    static std::unordered_map<std::string, Entry> cache;
+    auto key = utf8(xopp.lexically_normal());
+    key += '|';
+    key += tagStart;
+    {
+        std::lock_guard lock(mutex);
+        if (auto it = cache.find(key); it != cache.end() && it->second.stamp == stamp) {
+            return it->second.tag;
+        }
+    }
+    auto tag = readXoppTag(xopp, tagStart, maxBytes);
+    if (!settled) {
+        return tag;
+    }
+    std::lock_guard lock(mutex);
+    if (cache.size() > 4096) {
+        cache.clear();  // e.g. after browsing many folders; the entries are cheap to rebuild
+    }
+    cache[std::move(key)] = Entry{stamp, tag};
+    return tag;
+}
+
+/**
+ * Reads an attribute of the first element starting with tagStart from the beginning of a .xopp file, without loading
+ * the document. Only the first maxBytes (decompressed) are searched.
+ */
+auto readXoppAttribute(const fs::path& xopp, std::string_view tagStart, std::string_view attribute, size_t maxBytes)
+        -> std::string {
+    const auto tag = cachedXoppTag(xopp, tagStart, maxBytes);
+    if (tag.empty()) {
+        return {};
+    }
     const std::string prefix = " " + std::string(attribute) + "=\"";
     const auto valueStart = tag.find(prefix);
     if (valueStart == std::string_view::npos) {

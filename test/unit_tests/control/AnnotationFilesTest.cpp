@@ -115,6 +115,14 @@ TEST_F(AnnotationFilesTest, untrustedRecordedExportNamesAreRejected) {
     EXPECT_EQ(AnnotationFiles::recordedExportFilename(dir / "Edited.xopp"), "Fine & ok.pdf");
 }
 
+TEST_F(AnnotationFilesTest, rewrittenDocumentIsReadAgain) {
+    // The header is remembered per file; a rewrite of the same size right away must not return the old value
+    std::ofstream(dir / "Edited.xopp") << "<?xml version=\"1.0\"?>\n<xournal fork-export=\"a.pdf\">";
+    EXPECT_EQ(AnnotationFiles::recordedExportFilename(dir / "Edited.xopp"), "a.pdf");
+    std::ofstream(dir / "Edited.xopp") << "<?xml version=\"1.0\"?>\n<xournal fork-export=\"b.pdf\">";
+    EXPECT_EQ(AnnotationFiles::recordedExportFilename(dir / "Edited.xopp"), "b.pdf");
+}
+
 TEST_F(AnnotationFilesTest, renamedDocumentIsFoundByItsSourcePdf) {
     fs::copy_file(GET_TESTFILE(u8"packaged_xopp/pdfBackground/old.xopp.bg.pdf"), dir / "Lecture.pdf");
     DocumentHandler handler;
