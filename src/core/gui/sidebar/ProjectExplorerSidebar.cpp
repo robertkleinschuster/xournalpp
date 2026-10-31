@@ -20,11 +20,13 @@
 #include "control/ScrollHandler.h"  // for ScrollHandler
 #include "control/settings/PageTemplateSettings.h"
 #include "control/settings/Settings.h"
+#include "control/tasks/TaskFiles.h"  // for isTaskFile
 #include "control/xojfile/SaveHandler.h"
 #include "gui/GladeSearchpath.h"
 #include "gui/MainWindow.h"
 #include "gui/sidebar/AbstractSidebarPage.h"
 #include "gui/sidebar/ProjectGit.h"
+#include "gui/sidebar/Sidebar.h"  // for Sidebar
 #include "model/Document.h"
 #include "undo/UndoRedoHandler.h"
 #include "util/PathUtil.h"
@@ -288,6 +290,7 @@ public:
         pdfIcon = loadPixmapIcon(control, "project-explorer-pdf.svg", "x-office-document-symbolic");
         annotatedPdfIcon = loadPixmapIcon(control, "project-explorer-pdf-annotated.svg", "x-office-document-symbolic");
         trashIcon = g_themed_icon_new("user-trash-symbolic");
+        tasksIcon = g_themed_icon_new("task-due-symbolic");
 
         store = gtk_tree_store_new(COL_COUNT, G_TYPE_ICON, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_INT,
                                    G_TYPE_BOOLEAN, G_TYPE_STRING, G_TYPE_STRING);
@@ -444,8 +447,8 @@ public:
         }
         g_object_unref(longPress);
         g_object_unref(root);
-        for (auto* icon:
-             {folderIcon, folderOpenIcon, imageIcon, fileIcon, xournalIcon, pdfIcon, annotatedPdfIcon, trashIcon}) {
+        for (auto* icon: {folderIcon, folderOpenIcon, imageIcon, fileIcon, xournalIcon, pdfIcon, annotatedPdfIcon,
+                          trashIcon, tasksIcon}) {
             g_object_unref(icon);
         }
     }
@@ -527,6 +530,9 @@ private:
         if (Util::hasPdfFileExt(path)) {
             return pdfIcon;
         }
+        if (TaskFiles::isTaskFile(path)) {
+            return tasksIcon;
+        }
         return isImage(path) ? imageIcon : fileIcon;
     }
 
@@ -547,10 +553,10 @@ private:
     auto appendNode(GtkTreeIter* parentIter, const fs::path& path, const std::string& name, Kind kind,
                     const std::string& markup, bool lazy) -> GtkTreeIter {
         GtkTreeIter iter;
-        gtk_tree_store_insert_with_values(store, &iter, parentIter, -1, COL_ICON, iconFor(path, kind), COL_NAME,
-                                          name.c_str(), COL_MARKUP, markup.c_str(), COL_PATH,
-                                          Util::toUtf8(path).c_str(), COL_KIND, kind, COL_SENSITIVE, kind != KIND_FILE,
-                                          COL_FOREGROUND, gitColorFor(path, kind), -1);
+        gtk_tree_store_insert_with_values(
+                store, &iter, parentIter, -1, COL_ICON, iconFor(path, kind), COL_NAME, name.c_str(), COL_MARKUP,
+                markup.c_str(), COL_PATH, Util::toUtf8(path).c_str(), COL_KIND, kind, COL_SENSITIVE,
+                kind != KIND_FILE || TaskFiles::isTaskFile(path), COL_FOREGROUND, gitColorFor(path, kind), -1);
         if (kind == KIND_DIRECTORY && lazy && (hasVisibleEntries(path) || !deletedEntriesIn(path).empty())) {
             GtkTreeIter placeholder;
             gtk_tree_store_insert_with_values(store, &placeholder, &iter, -1, COL_NAME, "", COL_KIND, KIND_PLACEHOLDER,
@@ -1590,6 +1596,12 @@ private:
             case KIND_NESTED:
                 // The document row above opens the PDFs for editing; the nested entries show them as they are
                 self->openReadOnly(Util::fromUtf8(self->pathAt(&iter).c_str()));
+                break;
+            case KIND_FILE:
+                // Fork: a todo.txt shows its tasks in the task tab
+                if (TaskFiles::isTaskFile(Util::fromUtf8(self->pathAt(&iter).c_str()))) {
+                    self->control->getSidebar()->selectTasks();
+                }
                 break;
             default:
                 break;
@@ -2698,7 +2710,8 @@ private:
     GIcon* xournalIcon{};
     GIcon* pdfIcon{};
     GIcon* annotatedPdfIcon{};
-    GIcon* trashIcon{};  ///< deleted entries
+    GIcon* trashIcon{};
+    GIcon* tasksIcon{};  ///< todo.txt files  ///< deleted entries
     guint saveSource = 0;
     std::map<std::string, GFileMonitor*> monitors;
     std::map<std::string, fs::file_time_type> folderTimes;  ///< modification times of the watched folders
