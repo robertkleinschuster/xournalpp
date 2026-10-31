@@ -22,7 +22,8 @@
 #include "gui/GladeGui.h"            // for GladeGui
 #include "gui/PdfFloatingToolbox.h"  // for PdfFloatingToolbox
 #include "gui/PenFeedbackFix.h"
-#include "gui/SearchBar.h"                              // for SearchBar
+#include "gui/SearchBar.h"  // for SearchBar
+#include "gui/TouchPanedHandle.h"
 #include "gui/inputdevices/InputEvents.h"               // for INPUT_DEVICE_TOUC...
 #include "gui/menus/menubar/Menubar.h"                  // for Menubar
 #include "gui/menus/menubar/ToolbarSelectionSubmenu.h"  // for ToolbarSelectionSubmenu
@@ -70,6 +71,7 @@ MainWindow::MainWindow(GladeSearchpath* gladeSearchPath, Control* control, GtkAp
     gtk_window_set_application(GTK_WINDOW(getWindow()), parent);
 
     panedContainerWidget.reset(get("panelMainContents"), xoj::util::ref);
+    TouchPanedHandle::install(GTK_PANED(panedContainerWidget.get()));  // Fork: resize the sidebar by touch
     boxContainerWidget.reset(get("mainContentContainer"), xoj::util::ref);
     mainContentWidget.reset(get("boxContents"), xoj::util::ref);
     sidebarWidget.reset(get("sidebar"), xoj::util::ref);
