@@ -45,6 +45,8 @@ constexpr double PAN_GAIN = 1.7;
 /// Change of the finger distance (mm) before zooming starts. The distance varies by a few millimetres during a fast
 /// two-finger swipe (and when the fingers are lifted), a pinch changes it much more right away.
 constexpr double ZOOM_THRESHOLD_MM = 6.0;
+/// Ctrl + two-finger swipe: zoom factor per pixel of content movement (about 10 % per 40 px, like a wheel notch)
+constexpr double CTRL_ZOOM_PER_PIXEL = 0.0954 / 40.0;
 /// A gesture that zoomed by less than this in the end still counts as a swipe, which may glide on
 constexpr double NEGLIGIBLE_ZOOM = 0.05;
 /// After the fingers are lifted, Windows keeps sending synthesized scroll events (inertia) with short gaps
@@ -329,6 +331,9 @@ struct TouchpadGestures::Impl {
     Point<double> centroid;
     Point<double> appliedCentroid;  ///< centroid of the last applied frame
     Point<double> pointer;          ///< mouse pointer at the start, in document widget coordinates
+    /// Ctrl was held when the gesture started: moving the fingers up or down zooms, like Ctrl + mouse wheel
+    bool ctrlZoom = false;
+    double ctrlTravel = 0;  ///< content movement in screen pixels since the Ctrl zoom started
 
     // Synthesized wheel events to ignore after the gesture
     gint64 releasedAt = 0;
@@ -457,7 +462,13 @@ struct TouchpadGestures::Impl {
             cancelGesture();
             return;
         }
-        contactsAt = g_get_monotonic_time();
+        const gint64 now = g_get_monotonic_time();
+        if (tracking && now - contactsAt > CONTACTS_STALE_US) {
+            // The lift of the previous gesture was not reported (e.g. after standby): start over instead of moving
+            // the document by the whole distance between the old and the new finger positions
+            finishGesture();
+        }
+        contactsAt = now;
         const auto& a = contacts.begin()->second;
         const auto& b = std::next(contacts.begin())->second;
         distance = std::hypot(a.x - b.x, a.y - b.y);
@@ -469,6 +480,8 @@ struct TouchpadGestures::Impl {
             momentum.begin();  // touching the touchpad again catches the gliding document
             tracking = true;
             zooming = false;
+            ctrlZoom = GetAsyncKeyState(VK_CONTROL) & 0x8000;
+            ctrlTravel = 0;
             startDistance = distance;
             centroid = current;
             appliedCentroid = current;
@@ -512,6 +525,20 @@ struct TouchpadGestures::Impl {
         const Point<double> move = (centroid - appliedCentroid) * factor;
         appliedCentroid = centroid;
 
+        if (ctrlZoom) {
+            // Like Ctrl + wheel in browsers: scrolling up (the content moving down) zooms in, around the pointer
+            if (!zooming) {
+                zooming = true;
+                if (zoom->isZoomFitMode()) {
+                    zoom->setZoomFitMode(false);
+                }
+                zoom->startZoomSequence(pointer);
+            }
+            ctrlTravel += move.y;
+            zoom->zoomSequenceChange(std::exp(ctrlTravel * CTRL_ZOOM_PER_PIXEL), true, {0.0, 0.0});
+            return;
+        }
+
         if (!zooming && std::abs(distance - startDistance) >= ZOOM_THRESHOLD_MM && distance >= MIN_DISTANCE_MM) {
             // Zoom relative to the distance from here on, so the zoom does not jump by the threshold
             zooming = true;
@@ -542,7 +569,7 @@ struct TouchpadGestures::Impl {
             lastIgnoredAt = releasedAt;
             // A swipe glides on, unless it was a pinch
             const bool pinched = zooming && std::abs(distance / startDistance - 1.0) >= NEGLIGIBLE_ZOOM;
-            if (pinched) {
+            if (pinched || ctrlZoom) {
                 momentum.forgetMovement();
             }
             momentum.release(toplevel);
@@ -552,6 +579,7 @@ struct TouchpadGestures::Impl {
         }
         tracking = false;
         zooming = false;
+        ctrlZoom = false;
     }
 
     /// Ends the gesture where it is, without the movement since the last frame and without gliding on
