@@ -159,6 +159,8 @@ endif (ENABLE_PROFILING)
 pkg_check_modules(ExternalModules REQUIRED IMPORTED_TARGET ${pkg-module-spec})
 
 find_package(ZLIB REQUIRED)
+# Fork: libdeflate compresses saved documents about three times faster than zlib, and slightly smaller
+pkg_check_modules(libdeflate IMPORTED_TARGET "libdeflate >= 1.0")
 find_package(Threads REQUIRED)
 
 option(ENABLE_AUDIO "Compile with Audio recording/playing support" ON)
@@ -272,6 +274,7 @@ target_link_libraries(external_modules INTERFACE
         $<$<TARGET_EXISTS:X11::X11>:X11::X11>
         $<$<TARGET_EXISTS:cpptrace::cpptrace>:cpptrace::cpptrace>
         $<$<TARGET_EXISTS:qpdf::libqpdf>:qpdf::libqpdf>
+        $<$<TARGET_EXISTS:PkgConfig::libdeflate>:PkgConfig::libdeflate>
         ZLIB::ZLIB
         Threads::Threads
         )
@@ -279,6 +282,7 @@ target_link_libraries(external_modules INTERFACE
 target_compile_definitions(external_modules INTERFACE
         GLIB_VERSION_MIN_REQUIRED=GLIB_VERSION_2_40
         GDK_VERSION_MIN_REQUIRED=GDK_VERSION_3_18
+        $<$<TARGET_EXISTS:PkgConfig::libdeflate>:XOJ_HAVE_LIBDEFLATE>
         )
 target_link_options(external_modules INTERFACE
         $<$<AND:$<NOT:$<PLATFORM_ID:Windows>>,$<OR:$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:GNU>>>:-rdynamic>

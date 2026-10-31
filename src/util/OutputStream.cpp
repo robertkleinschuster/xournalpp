@@ -24,6 +24,65 @@ void OutputStream::write(const std::u8string_view sv) { write(char_cast(sv.data(
 /// GzOutputStream /////////////////////////////////////
 ////////////////////////////////////////////////////////
 
+#ifdef XOJ_HAVE_LIBDEFLATE
+
+#include <libdeflate.h>
+
+GzOutputStream::GzOutputStream(fs::path file): file(std::move(file)) {
+#ifdef _WIN32
+    this->out = _wfopen(this->file.c_str(), L"wb");
+#else
+    this->out = std::fopen(this->file.c_str(), "wb");
+#endif
+    if (this->out == nullptr) {
+        this->error = FS(_F("Error opening file: \"{1}\"") % this->file.u8string());
+        this->error = this->error + "\n" + std::strerror(errno);
+    }
+}
+
+GzOutputStream::~GzOutputStream() {
+    if (this->out) {
+        close();
+    }
+}
+
+auto GzOutputStream::getLastError() const -> const std::string& { return this->error; }
+
+void GzOutputStream::write(const char* data, size_t len) {
+    xoj_assert(this->out);
+    this->buffer.append(data, len);
+}
+
+void GzOutputStream::close() {
+    if (!this->out) {
+        return;
+    }
+    // Level 6 like zlib's default, which it compresses about three times faster and a few percent smaller
+    libdeflate_compressor* compressor = libdeflate_alloc_compressor(6);
+    std::string compressed;
+    size_t size = 0;
+    if (compressor) {
+        compressed.resize(libdeflate_gzip_compress_bound(compressor, this->buffer.size()));
+        size = libdeflate_gzip_compress(compressor, this->buffer.data(), this->buffer.size(), compressed.data(),
+                                        compressed.size());
+        libdeflate_free_compressor(compressor);
+    }
+    std::string().swap(this->buffer);
+
+    const bool written = size > 0 && std::fwrite(compressed.data(), 1, size, this->out) == size;
+    const int writeErrno = errno;
+    const bool closed = std::fclose(this->out) == 0;
+    this->out = nullptr;
+
+    if (!written || !closed) {
+        this->error = FS(_F("Error writing data to file: \"{1}\"") % this->file.u8string());
+        this->error += "\n";
+        this->error += size == 0 ? "Compression failed" : std::strerror(written ? errno : writeErrno);
+    }
+}
+
+#else
+
 GzOutputStream::GzOutputStream(fs::path file): file(std::move(file)) {
     this->fp = GzUtil::openPath(this->file, "w");
     if (this->fp == nullptr) {
@@ -80,3 +139,5 @@ void GzOutputStream::close() {
         }
     }
 }
+
+#endif

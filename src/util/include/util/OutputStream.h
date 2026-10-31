@@ -11,6 +11,7 @@
 
 #pragma once
 
+#include <cstdio>       // for FILE
 #include <string>       // for string
 #include <string_view>  // for string_view
 
@@ -45,7 +46,13 @@ public:
     const std::string& getLastError() const;
 
 private:
+#ifdef XOJ_HAVE_LIBDEFLATE
+    // Fork: the document is collected and compressed with libdeflate at once when closing
+    std::FILE* out = nullptr;
+    std::string buffer;
+#else
     gzFile fp = nullptr;
+#endif
 
     std::string error;
     fs::path file;
