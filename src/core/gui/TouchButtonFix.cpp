@@ -94,6 +94,11 @@ auto handleTouch(GdkEvent* event) -> bool {
                 releaseTap();
                 if (clicked) {
                     gtk_button_clicked(GTK_BUTTON(button));
+                    if (!passThrough) {
+                        // Some dialogs react to "released" (e.g. the alignment toggles of the link dialog). GTK never
+                        // saw this touch, so the default handler of "released" does nothing and does not click again.
+                        g_signal_emit_by_name(button, "released");
+                    }
                 }
                 if (button) {
                     g_object_unref(button);
