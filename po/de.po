@@ -5076,3 +5076,7 @@ msgstr "Die entfernten Änderungen konnten nicht heruntergeladen oder übernomme
 #: src/core/gui/sidebar/ProjectExplorerSidebar.cpp
 msgid "Searching…"
 msgstr "Suche läuft …"
+
+#: src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "“{1}” could not be updated to use the renamed PDF."
+msgstr "„{1}“ konnte nicht auf das umbenannte PDF umgestellt werden."

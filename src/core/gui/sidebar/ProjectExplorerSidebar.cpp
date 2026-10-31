@@ -1877,6 +1877,9 @@ private:
                 showError(problem->first, problem->second);
                 continue;
             }
+            // Fork: the document annotating a renamed PDF keeps using it as background
+            const auto annotating =
+                    Util::hasPdfFileExt(oldPath) ? AnnotationFiles::documentForSource(oldPath) : std::nullopt;
             std::error_code error;
             fs::rename(oldPath, newPath, error);
             if (error) {
@@ -1884,8 +1887,28 @@ private:
                 return;
             }
             movedEntry(oldPath, newPath);
+            if (annotating) {
+                relinkSourcePdf(*annotating, newPath);
+            }
             showEntry(newPath);
             return;
+        }
+    }
+
+    void relinkSourcePdf(const fs::path& xopp, const fs::path& pdf) {
+        Document* document = control->getDocument();
+        if (Util::isChildOrEquivalent(document->getFilepath(), xopp)) {
+            // Open: point it at the new name and save it, so the file records it as well
+            document->lock();
+            document->setPdfAttributes(pdf, document->isAttachPdf());
+            document->unlock();
+            if (control->isAutoSaveAllowed()) {
+                control->save([](bool) {});
+            }
+            return;
+        }
+        if (auto problem = AnnotationFiles::relinkSourcePdf(xopp, pdf, *control->getSettings()); !problem.empty()) {
+            showError(FC(_F("“{1}” could not be updated to use the renamed PDF.") % utf8(xopp.filename())), problem);
         }
     }
 

@@ -15,6 +15,8 @@
 #include "control/Control.h"
 #include "control/jobs/ProgressListener.h"
 #include "control/settings/Settings.h"
+#include "control/xojfile/LoadHandler.h"
+#include "control/xojfile/SaveHandler.h"
 #include "model/Document.h"
 #include "model/DocumentHandler.h"
 #include "model/Image.h"
@@ -367,6 +369,33 @@ auto AnnotationFiles::exportFilenameForSave(const Document& doc, const fs::path&
     }
     const auto path = safeTarget(exportPathFromSetting(doc, target, settings), target, doc.getPdfFilepath());
     return path.empty() ? std::string() : utf8(path.filename());
+}
+
+auto AnnotationFiles::relinkSourcePdf(const fs::path& xopp, const fs::path& pdf, const Settings& settings)
+        -> std::string {
+    // Loading does not need the PDF: a missing one is only recorded, which is replaced here anyway
+    std::unique_ptr<Document> doc;
+    try {
+        doc = LoadHandler().loadDocument(xopp);
+    } catch (const std::exception& e) {
+        return e.what();
+    }
+    // Without a path it was not loaded completely (or is an old Xournal file): saving it would lose content
+    if (!doc || doc->getFilepath().empty()) {
+        return "The document could not be loaded completely.";
+    }
+    const auto exported = exportPathForFile(xopp, settings);
+    const bool exportUpToDate = isExportUpToDate(xopp, exported);
+    doc->setPdfAttributes(pdf, doc->isAttachPdf());
+    SaveHandler saver;
+    saver.prepareSave(doc.get(), xopp);
+    saver.setExportFilename(recordedExportFilename(xopp));
+    saver.saveTo(xopp);
+    if (saver.getErrorMessage().empty() && exportUpToDate) {
+        std::error_code error;  // the annotations did not change
+        fs::last_write_time(exported, fs::file_time_type::clock::now(), error);
+    }
+    return saver.getErrorMessage();
 }
 
 auto AnnotationFiles::documentForExport(const fs::path& pdf, const Settings& settings) -> std::optional<fs::path> {

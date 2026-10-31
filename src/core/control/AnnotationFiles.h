@@ -56,6 +56,13 @@ std::optional<std::filesystem::path> documentForSource(const std::filesystem::pa
 /// The export file name to record when saving doc to target: the one already recorded there, or a new one
 std::string exportFilenameForSave(const Document& doc, const std::filesystem::path& target, const Settings& settings);
 
+/**
+ * Makes the closed document xopp use pdf as its background PDF, e.g. after the PDF was renamed; keeps the recorded
+ * export name, and an up-to-date export stays up to date. Returns an error message, empty on success.
+ */
+std::string relinkSourcePdf(const std::filesystem::path& xopp, const std::filesystem::path& pdf,
+                            const Settings& settings);
+
 /// The .xopp document in the same folder whose exported PDF is pdf, if any
 std::optional<std::filesystem::path> documentForExport(const std::filesystem::path& pdf, const Settings& settings);
 

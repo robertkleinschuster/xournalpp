@@ -142,6 +142,32 @@ TEST_F(AnnotationFilesTest, renamedDocumentIsFoundByItsSourcePdf) {
     EXPECT_FALSE(AnnotationFiles::documentForSource(dir / "Skript.pdf"));
 }
 
+TEST_F(AnnotationFilesTest, documentFollowsItsRenamedPdf) {
+    fs::copy_file(GET_TESTFILE(u8"packaged_xopp/pdfBackground/old.xopp.bg.pdf"), dir / "Lecture.pdf");
+    const auto xopp = dir / "Lecture.xopp";
+    {
+        DocumentHandler handler;
+        Document doc(&handler);
+        ASSERT_TRUE(doc.readPdf(dir / "Lecture.pdf", true, false));
+        doc.setFilepath(xopp);
+        SaveHandler saver;
+        saver.prepareSave(&doc, xopp);
+        saver.setExportFilename("Lecture_annotated.pdf");
+        saver.saveTo(xopp);
+        ASSERT_TRUE(saver.getErrorMessage().empty()) << saver.getErrorMessage();
+    }
+    fs::rename(dir / "Lecture.pdf", dir / "Lecture 3.pdf");
+    EXPECT_EQ(AnnotationFiles::relinkSourcePdf(xopp, dir / "Lecture 3.pdf", *settings), "");
+
+    EXPECT_EQ(AnnotationFiles::recordedSourcePdf(xopp).filename(), "Lecture 3.pdf");
+    EXPECT_EQ(AnnotationFiles::recordedExportFilename(xopp), "Lecture_annotated.pdf");
+    LoadHandler loader;
+    auto doc = loader.loadDocument(xopp);
+    ASSERT_TRUE(doc);
+    EXPECT_TRUE(loader.getMissingPdfFilename().empty());
+    EXPECT_GT(doc->getPdfPageCount(), 0U);
+}
+
 TEST_F(AnnotationFilesTest, recoveryCopiesAreNotTheDocumentOfAPdf) {
     fs::copy_file(GET_TESTFILE(u8"packaged_xopp/pdfBackground/old.xopp.bg.pdf"), dir / "Lecture.pdf");
     DocumentHandler handler;
