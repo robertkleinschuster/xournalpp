@@ -5,7 +5,6 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
-#include <deque>
 #include <iterator>
 #include <map>
 #include <mutex>
@@ -16,6 +15,7 @@
 #include "control/zoom/ZoomControl.h"
 #include "gui/Layout.h"
 #include "gui/XournalView.h"
+#include "gui/inputdevices/ScrollMomentum.h"
 #include "util/Point.h"
 
 // Windows headers last: their macros clash with names in Xournal++ headers
@@ -47,21 +47,12 @@ constexpr double PAN_GAIN = 1.7;
 constexpr double ZOOM_THRESHOLD_MM = 6.0;
 /// A gesture that zoomed by less than this in the end still counts as a swipe, which may glide on
 constexpr double NEGLIGIBLE_ZOOM = 0.05;
-/// Momentum after a swipe: speed measurement, deceleration and limits
-/// (the speed is measured over the last VELOCITY_WINDOW_US of movement, so a short stop when lifting does not count)
-constexpr gint64 VELOCITY_WINDOW_US = 100'000;
-constexpr double MOMENTUM_TIME_CONSTANT_S = 0.325;
-constexpr double MOMENTUM_MIN_SPEED = 150.0;  ///< pixels per second
-constexpr double MOMENTUM_STOP_SPEED = 20.0;
-constexpr gint64 MOMENTUM_MAX_REST_US = 120'000;
 /// After the fingers are lifted, Windows keeps sending synthesized scroll events (inertia) with short gaps
 constexpr gint64 INERTIA_GAP_US = 200'000;
 constexpr gint64 INERTIA_MAX_US = 2'500'000;
 /// Touchpads report resting fingers as well; without reports for this long the lift report was lost (e.g. the touchpad
 /// was unplugged or the computer suspended), so the gesture is over
 constexpr gint64 CONTACTS_STALE_US = 300'000;
-/// Longest frame step for the momentum, so it does not jump after the window was hidden
-constexpr double MAX_INERTIA_STEP_S = 0.05;
 /// Closer fingers are a misread, they would make the zoom ratio meaningless
 constexpr double MIN_DISTANCE_MM = 1.0;
 
@@ -350,13 +341,8 @@ struct TouchpadGestures::Impl {
     int contentDirection = systemContentDirection();  ///< +1: content follows the fingers, -1: opposite
     bool directionKnown = false;
 
-    // Momentum after a two-finger swipe, in pixels per second of content movement
-    Point<double> velocity;
-    gint64 lastMoveTime = 0;
-    Point<double> travelled;                               ///< content movement in this gesture
-    std::deque<std::pair<gint64, Point<double>>> samples;  ///< recent (time, travelled)
-    guint inertiaTickId = 0;
-    gint64 inertiaLastFrame = 0;
+    /// Momentum after a two-finger swipe, the same as after a swipe on the touchscreen
+    ScrollMomentum momentum{[this](Point<double> move) { view->getLayout()->scrollRelative(-move.x, -move.y); }};
 
     /// "Scrolling direction" of the touchpad settings; 0 (the default) moves the content with the fingers
     static auto systemContentDirection() -> int {
@@ -468,16 +454,12 @@ struct TouchpadGestures::Impl {
             if (distance < MIN_DISTANCE_MM || !pointerOverDocument(pointer)) {
                 return;
             }
-            stopInertia();  // touching the touchpad again catches the gliding document
+            momentum.begin();  // touching the touchpad again catches the gliding document
             tracking = true;
             zooming = false;
             startDistance = distance;
             centroid = current;
             appliedCentroid = current;
-            velocity = {0, 0};
-            lastMoveTime = 0;
-            travelled = {0, 0};
-            samples.clear();
             return;
         }
         fingerTravelY += current.y - centroid.y;
@@ -534,27 +516,7 @@ struct TouchpadGestures::Impl {
             view->getLayout()->scrollRelative(-move.x, -move.y);
         }
 
-        // Remember where the content was recently, for the swipe speed when the fingers are lifted
-        if (move.x != 0.0 || move.y != 0.0) {
-            const gint64 now = g_get_monotonic_time();
-            travelled = travelled + move;
-            samples.emplace_back(now, travelled);
-            while (!samples.empty() && now - samples.front().first > VELOCITY_WINDOW_US) {
-                samples.pop_front();
-            }
-            lastMoveTime = now;
-        }
-    }
-
-    /// Speed of the content over the last moments of the swipe, in pixels per second
-    auto swipeVelocity() const -> Point<double> {
-        if (samples.size() < 2) {
-            return {0, 0};
-        }
-        const auto& [firstTime, firstPosition] = samples.front();
-        const auto& [lastTime, lastPosition] = samples.back();
-        const double seconds = static_cast<double>(lastTime - firstTime) / 1e6;
-        return seconds > 0 ? (lastPosition - firstPosition) / seconds : Point<double>{0, 0};
+        momentum.addMovement(move);
     }
 
     void finishGesture() {
@@ -566,13 +528,12 @@ struct TouchpadGestures::Impl {
             applyMovement();
             releasedAt = g_get_monotonic_time();
             lastIgnoredAt = releasedAt;
-            // A swipe glides on, unless it was a pinch or the fingers rested before lifting
-            const bool recentlyMoved = lastMoveTime && releasedAt - lastMoveTime < MOMENTUM_MAX_REST_US;
-            velocity = swipeVelocity();
+            // A swipe glides on, unless it was a pinch
             const bool pinched = zooming && std::abs(distance / startDistance - 1.0) >= NEGLIGIBLE_ZOOM;
-            if (!pinched && recentlyMoved && std::hypot(velocity.x, velocity.y) > MOMENTUM_MIN_SPEED) {
-                startInertia();
+            if (pinched) {
+                momentum.forgetMovement();
             }
+            momentum.release(toplevel);
         }
         if (zooming) {
             zoom->endZoomSequence();
@@ -581,40 +542,7 @@ struct TouchpadGestures::Impl {
         zooming = false;
     }
 
-    void startInertia() {
-        if (inertiaTickId || !toplevel) {
-            return;
-        }
-        inertiaLastFrame = 0;
-        inertiaTickId = gtk_widget_add_tick_callback(
-                toplevel,
-                +[](GtkWidget*, GdkFrameClock* clock, gpointer data) -> gboolean {
-                    return static_cast<Impl*>(data)->inertiaStep(gdk_frame_clock_get_frame_time(clock));
-                },
-                this, nullptr);
-    }
-
-    auto inertiaStep(gint64 frameTime) -> gboolean {
-        const double elapsed = inertiaLastFrame ? static_cast<double>(frameTime - inertiaLastFrame) / 1e6 : 1.0 / 60.0;
-        const double seconds = std::min(elapsed, MAX_INERTIA_STEP_S);
-        inertiaLastFrame = frameTime;
-        const Point<double> move = velocity * seconds;
-        view->getLayout()->scrollRelative(-move.x, -move.y);
-        // Exponential deceleration, like scrolling on phones and in browsers
-        velocity = velocity * std::exp(-seconds / MOMENTUM_TIME_CONSTANT_S);
-        if (std::hypot(velocity.x, velocity.y) < MOMENTUM_STOP_SPEED) {
-            inertiaTickId = 0;
-            return G_SOURCE_REMOVE;
-        }
-        return G_SOURCE_CONTINUE;
-    }
-
-    void stopInertia() {
-        if (inertiaTickId && toplevel) {
-            gtk_widget_remove_tick_callback(toplevel, inertiaTickId);
-        }
-        inertiaTickId = 0;
-    }
+    void stopInertia() { momentum.stop(); }
 
     auto consumeSynthesizedScroll(double dy) -> bool {
         const gint64 now = g_get_monotonic_time();
