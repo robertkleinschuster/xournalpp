@@ -125,6 +125,8 @@ if (WIN32)
     add_custom_command (
                 OUTPUT ${RESIZED_ICON}
                 COMMAND rsvg-convert ${PROJECT_SOURCE_DIR}/ui/pixmaps/com.github.xournalpp.xournalpp.svg --width=${SIZE} --height=${SIZE} -o ${RESIZED_ICON}
+                # Fork: regenerate the icon when it changes
+                DEPENDS ${PROJECT_SOURCE_DIR}/ui/pixmaps/com.github.xournalpp.xournalpp.svg
 	)
   set (ICON_DEPS ${ICON_DEPS} ${RESIZED_ICON})
   unset (RESIZED_ICON)
@@ -158,6 +160,9 @@ if (WIN32)
   configure_file(exe/win32/xpp.rc.in ${CMAKE_CURRENT_BINARY_DIR}/win32/xpp.rc)
   target_sources(xournalpp PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/win32/xpp.rc)
   target_sources(xournalpp-wrapper PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/win32/xpp.rc)
+  # Fork: the resources embed the icon, so recompile them when it changes
+  set_source_files_properties(${CMAKE_CURRENT_BINARY_DIR}/win32/xpp.rc PROPERTIES
+                              OBJECT_DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/win32/xournalpp.ico)
 endif ()
 # Until here
 ################################
