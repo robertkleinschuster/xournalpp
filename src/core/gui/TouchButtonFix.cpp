@@ -55,8 +55,70 @@ auto isInScrolledWindow(GtkWidget* widget) -> bool {
     return gtk_widget_get_ancestor(widget, GTK_TYPE_SCROLLED_WINDOW) != nullptr;
 }
 
+// --- Menus of a menu bar ---
+
+/// The menu bar whose menu is open (holding the grab), or nullptr
+auto activeMenuBar() -> GtkMenuShell* {
+    GtkWidget* grab = gtk_grab_get_current();
+    // Walk from the open (sub)menu up to the menu bar it was opened from
+    while (grab && GTK_IS_MENU(grab)) {
+        GtkWidget* item = gtk_menu_get_attach_widget(GTK_MENU(grab));
+        grab = item ? gtk_widget_get_parent(item) : nullptr;
+    }
+    return grab && GTK_IS_MENU_BAR(grab) ? GTK_MENU_SHELL(grab) : nullptr;
+}
+
+/// The touch sequence tapping beside the open menu, handled here
+GdkEventSequence* menuTap = nullptr;
+
+/**
+ * While a menu of a menu bar is open, GTK 3 on Windows does not reliably handle taps on the menu bar or beside the
+ * menu, so menus stayed open. A tap on another menu bar item opens its menu, a tap on the open one or anywhere beside
+ * the menus closes it. Taps inside the menus are left to GTK. Returns true if the event was consumed.
+ */
+auto handleMenuTouch(GdkEvent* event) -> bool {
+    if (event->type != GDK_TOUCH_BEGIN && event->type != GDK_TOUCH_UPDATE && event->type != GDK_TOUCH_END &&
+        event->type != GDK_TOUCH_CANCEL) {
+        return false;
+    }
+    if (event->type != GDK_TOUCH_BEGIN) {
+        if (!menuTap || event->touch.sequence != menuTap) {
+            return false;
+        }
+        if (event->type == GDK_TOUCH_UPDATE) {
+            return true;
+        }
+        menuTap = nullptr;
+        GtkMenuShell* bar = activeMenuBar();
+        if (!bar || event->type == GDK_TOUCH_CANCEL) {
+            return true;
+        }
+        GtkWidget* widget = gtk_get_event_widget(event);
+        if (widget && GTK_IS_MENU_ITEM(widget) && gtk_widget_get_parent(widget) == GTK_WIDGET(bar) && isInside(event) &&
+            gtk_menu_shell_get_selected_item(bar) != widget) {
+            gtk_menu_shell_select_item(bar, widget);  // opens its menu
+        } else {
+            gtk_menu_shell_deactivate(bar);
+        }
+        return true;
+    }
+    GtkMenuShell* bar = activeMenuBar();
+    if (!bar) {
+        return false;
+    }
+    GtkWidget* widget = gtk_get_event_widget(event);
+    if (widget && gtk_widget_get_ancestor(widget, GTK_TYPE_MENU)) {
+        return false;  // inside an open menu
+    }
+    menuTap = event->touch.sequence;
+    return true;
+}
+
 /// Returns true if the event was consumed
 auto handleTouch(GdkEvent* event) -> bool {
+    if (handleMenuTouch(event)) {
+        return true;
+    }
     switch (event->type) {
         case GDK_TOUCH_BEGIN:
             if (auto* button = buttonFor(event)) {
