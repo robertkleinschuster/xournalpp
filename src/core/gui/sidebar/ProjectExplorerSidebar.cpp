@@ -1989,7 +1989,15 @@ private:
         // The open document no longer exists on disk: replace it with a new, empty one
         const auto documentPath = control->getDocument()->getFilepath();
         if (!documentPath.empty() && Util::isChildOrEquivalent(documentPath, path)) {
-            control->newFile();
+            // The user deleted it on purpose: discard its unsaved changes instead of offering to save (which would
+            // write the deleted file again) and do not export it on closing
+            control->close(
+                    [ctrl = control](bool closed) {
+                        if (closed) {
+                            ctrl->newFile();
+                        }
+                    },
+                    true, false, true);
         }
         refresh(true);
     }
