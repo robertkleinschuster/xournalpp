@@ -137,12 +137,8 @@ auto runSync(const std::string& git, const fs::path& dir, const std::vector<std:
     PROCESS_INFORMATION process{};
     const auto workingDirectory = dir.wstring();
     // git and its helpers (ssh, credential managers) are in one job, so a timeout can terminate all of them
+    // (Closing the job does not end them: e.g. git's automatic maintenance keeps running in the background.)
     HANDLE job = CreateJobObjectW(nullptr, nullptr);
-    if (job) {
-        JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
-        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-        SetInformationJobObject(job, JobObjectExtendedLimitInformation, &limits, sizeof(limits));
-    }
     const bool started = listReady && input != INVALID_HANDLE_VALUE &&
                          CreateProcessW(nullptr, commandLine.data(), nullptr, nullptr, TRUE,
                                         CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT | CREATE_SUSPENDED, nullptr,
@@ -181,10 +177,6 @@ auto runSync(const std::string& git, const fs::path& dir, const std::vector<std:
             TerminateProcess(process.hProcess, 1);
         }
         WaitForSingleObject(process.hProcess, INFINITE);
-    }
-    // Helpers that git left running in the background would keep the pipes open
-    if (job) {
-        TerminateJobObject(job, 1);
     }
     outputReader.join();
     errorReader.join();

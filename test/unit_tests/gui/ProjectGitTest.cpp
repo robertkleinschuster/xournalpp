@@ -96,6 +96,36 @@ TEST(ProjectGit, runsGitAndDropsResultsOfExpiredOwners) {
     EXPECT_FALSE(expiredCalled);
 }
 
+#ifdef _WIN32
+TEST(ProjectGit, stopsHangingCommandsWithTheirChildren) {
+    if (!ProjectGit::isAvailable()) {
+        GTEST_SKIP() << "git is not installed";
+    }
+    // A shell alias runs sh and sleep as children of git, like ssh waiting for a passphrase. They hold the output
+    // pipes, so the result only arrives if they are terminated as well.
+    auto owner = std::make_shared<int>(0);
+    bool done = false;
+    ProjectGit::CommandResult result;
+    const gint64 start = g_get_monotonic_time();
+    ProjectGit::run(
+            fs::current_path(), {"-c", "alias.hang=!sleep 60", "hang"}, owner,
+            [&](ProjectGit::CommandResult r) {
+                result = std::move(r);
+                done = true;
+            },
+            2);
+    const gint64 deadline = start + 20 * G_TIME_SPAN_SECOND;
+    while (!done && g_get_monotonic_time() < deadline) {
+        g_main_context_iteration(nullptr, false);
+        g_usleep(10'000);
+    }
+    ASSERT_TRUE(done);
+    EXPECT_TRUE(result.timedOut);
+    EXPECT_FALSE(result.success);
+    EXPECT_LT(g_get_monotonic_time() - start, 15 * G_TIME_SPAN_SECOND);
+}
+#endif
+
 TEST(ProjectGit, quotesArgumentsWithSpacesAndQuotes) {
     if (!ProjectGit::isAvailable()) {
         GTEST_SKIP() << "git is not installed";
