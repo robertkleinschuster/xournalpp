@@ -316,12 +316,13 @@ public:
 
         auto* column = gtk_tree_view_column_new();
         auto* iconRenderer = gtk_cell_renderer_pixbuf_new();
-        g_object_set(iconRenderer, "stock-size", GTK_ICON_SIZE_MENU, "xpad", 4, "ypad", 3, nullptr);
+        g_object_set(iconRenderer, "stock-size", GTK_ICON_SIZE_MENU, "xpad", 4, "ypad", 5,
+                     nullptr);  // Fork: rows tall enough to tap
         gtk_tree_view_column_pack_start(column, iconRenderer, false);
         gtk_tree_view_column_add_attribute(column, iconRenderer, "gicon", COL_ICON);
         gtk_tree_view_column_add_attribute(column, iconRenderer, "sensitive", COL_SENSITIVE);
         auto* textRenderer = gtk_cell_renderer_text_new();
-        g_object_set(textRenderer, "ellipsize", PANGO_ELLIPSIZE_END, "ypad", 3, nullptr);
+        g_object_set(textRenderer, "ellipsize", PANGO_ELLIPSIZE_END, "ypad", 5, nullptr);
         gtk_tree_view_column_pack_start(column, textRenderer, true);
         gtk_tree_view_column_add_attribute(column, textRenderer, "markup", COL_MARKUP);
         gtk_tree_view_column_add_attribute(column, textRenderer, "sensitive", COL_SENSITIVE);

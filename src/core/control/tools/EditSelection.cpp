@@ -216,7 +216,10 @@ auto addElementsFromActiveLayer(Control* ctrl, EditSelection* base, const Insert
 };  // namespace SelectionFactory
 
 static int getBtnWidth(Control* c) {
-    return std::max(10, round_cast<int>(c->getZoomControl()->getZoom100Value() * Util::DPI_NORMALIZATION_FACTOR / 8));
+    // Fork: large enough to grab with a finger (the handles to resize, rotate and delete a selection)
+    constexpr int TOUCH_HANDLE_SIZE = 28;
+    return std::max(TOUCH_HANDLE_SIZE,
+                    round_cast<int>(c->getZoomControl()->getZoom100Value() * Util::DPI_NORMALIZATION_FACTOR / 8));
 }
 
 EditSelection::EditSelection(Control* ctrl, InsertionOrder elts, const PageRef& page, Layer* layer, XojPageView* view,
@@ -977,8 +980,12 @@ auto EditSelection::getSelectionTypeForPos(double x, double y, double zoom) -> C
     cairo_matrix_transform_point(&this->cmatrix, &x, &y);
 
 
-    const int EDGE_PADDING = (this->btnWidth / 2) + 2;
-    const int BORDER_PADDING = (this->btnWidth / 2);
+    // Fork: the handles are large for touch; on a small selection they must not cover all of it, so it can still be
+    // moved: they reach at most a quarter of its size into it
+    const int insideLimit = std::max(4, static_cast<int>(std::min(xmax - xmin, ymax - ymin) / 4));
+    const int EDGE_PADDING = std::min((this->btnWidth / 2) + 2, insideLimit);
+    const int BORDER_PADDING = std::min(this->btnWidth / 2, insideLimit);
+    const int BUTTON_PADDING = this->btnWidth / 2;  // delete and rotate are outside of the selection
 
     if (x1 - EDGE_PADDING <= x && x <= x1 + EDGE_PADDING && y1 - EDGE_PADDING <= y && y <= y1 + EDGE_PADDING) {
         return CURSOR_SELECTION_TOP_LEFT;
@@ -996,16 +1003,16 @@ auto EditSelection::getSelectionTypeForPos(double x, double y, double zoom) -> C
         return CURSOR_SELECTION_BOTTOM_RIGHT;
     }
 
-    if (xmin - (DELETE_PADDING + this->btnWidth) - BORDER_PADDING <= x &&
-        x <= xmin - (DELETE_PADDING + this->btnWidth) + BORDER_PADDING && y1 - BORDER_PADDING <= y &&
-        y <= y1 + BORDER_PADDING) {
+    if (xmin - (DELETE_PADDING + this->btnWidth) - BUTTON_PADDING <= x &&
+        x <= xmin - (DELETE_PADDING + this->btnWidth) + BUTTON_PADDING && y1 - BUTTON_PADDING <= y &&
+        y <= y1 + BUTTON_PADDING) {
         return CURSOR_SELECTION_DELETE;
     }
 
 
-    if (xmax - BORDER_PADDING + ROTATE_PADDING + this->btnWidth <= x &&
-        x <= xmax + BORDER_PADDING + ROTATE_PADDING + this->btnWidth && (y2 + y1) / 2 - 4 - BORDER_PADDING <= y &&
-        (y2 + y1) / 2 + 4 + BORDER_PADDING >= y) {
+    if (xmax - BUTTON_PADDING + ROTATE_PADDING + this->btnWidth <= x &&
+        x <= xmax + BUTTON_PADDING + ROTATE_PADDING + this->btnWidth && (y2 + y1) / 2 - 4 - BUTTON_PADDING <= y &&
+        (y2 + y1) / 2 + 4 + BUTTON_PADDING >= y) {
         return CURSOR_SELECTION_ROTATE;
     }
 
