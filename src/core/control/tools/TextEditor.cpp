@@ -12,6 +12,7 @@
 #include "control/Control.h"  // for Control
 #include "control/actions/ActionDatabase.h"
 #include "control/settings/Settings.h"
+#include "gui/ConvertibleSupport.h"  // Fork
 #include "gui/FlyingClickableIcon.h"
 #include "gui/XournalppCursor.h"  // for XournalppCursor
 #include "model/Document.h"       // for Document
@@ -299,10 +300,12 @@ TextEditor::TextEditor(Control* control, const PageRef& page, GtkWidget* xournal
         icon->addSignal(vadj, g_signal_connect(vadj, "changed", cb, this));
         return icon;
     }();
+    ConvertibleSupport::textEditingStarted();  // Fork: touch keyboard in tablet mode
 }
 
 TextEditor::~TextEditor() {
     gtk_im_context_focus_out(this->imContext.get());
+    ConvertibleSupport::textEditingEnded();  // Fork
 
     this->xournalWidget = nullptr;
     control->setCopyCutEnabled(false);

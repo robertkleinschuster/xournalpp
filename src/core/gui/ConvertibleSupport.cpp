@@ -75,13 +75,40 @@ void toggleTouchKeyboard() {
     HRESULT result = CoCreateInstance(CLSID_UIHostNoLaunch, nullptr, CLSCTX_INPROC_HANDLER | CLSCTX_LOCAL_SERVER,
                                       IID_ITipInvocation, reinterpret_cast<void**>(&tip));
     if (FAILED(result)) {
-        // The keyboard service is started on demand
+        // The keyboard service is started on demand; show the keyboard once it runs
         ShellExecuteW(nullptr, L"open", L"C:\\Program Files\\Common Files\\microsoft shared\\ink\\TabTip.exe", nullptr,
                       nullptr, SW_SHOWNOACTIVATE);
+        static int retries = 0;
+        if (retries++ < 5) {
+            g_timeout_add(
+                    300,
+                    +[](gpointer) -> gboolean {
+                        if (!touchKeyboardVisible()) {
+                            toggleTouchKeyboard();
+                        }
+                        return G_SOURCE_REMOVE;
+                    },
+                    nullptr);
+        }
         return;
     }
     tip->Toggle(GetDesktopWindow());
     tip->Release();
+}
+
+/// Shows the touch keyboard if it is not shown
+void showTouchKeyboard() {
+    // Focusing a field by a tap reports both the tap and the focus; the keyboard takes a moment to appear, so a second
+    // request right after the first would toggle it off again
+    static gint64 lastRequest = 0;
+    const gint64 now = g_get_monotonic_time();
+    if (now - lastRequest < G_TIME_SPAN_SECOND) {
+        return;
+    }
+    lastRequest = now;
+    if (!touchKeyboardVisible()) {
+        toggleTouchKeyboard();
+    }
 }
 
 // --- State ---
@@ -96,6 +123,7 @@ struct State {
     guint keyboardHideSource = 0;
     gulong focusInHook = 0;
     gulong focusOutHook = 0;
+    gulong pressHook = 0;
 };
 
 State* state = nullptr;  // one main window
@@ -173,10 +201,25 @@ auto onFocusIn(GSignalInvocationHint*, guint, const GValue* params, gpointer) ->
         g_source_remove(state->keyboardHideSource);
         state->keyboardHideSource = 0;
     }
-    if (state->tablet && focusedByTouchOrPen() && !touchKeyboardVisible()) {
-        toggleTouchKeyboard();
+    if (state->tablet && focusedByTouchOrPen()) {
+        showTouchKeyboard();
         state->keyboardShown = true;
     }
+    return TRUE;
+}
+
+/// A tap into a field that has the focus already: the keyboard may have been closed meanwhile, open it again
+auto onButtonPress(GSignalInvocationHint*, guint, const GValue* params, gpointer) -> gboolean {
+    auto* widget = GTK_WIDGET(g_value_get_object(&params[0]));
+    if (!state || !state->tablet || !isTextField(widget) || !gtk_widget_has_focus(widget) || !focusedByTouchOrPen()) {
+        return TRUE;
+    }
+    if (state->keyboardHideSource) {
+        g_source_remove(state->keyboardHideSource);
+        state->keyboardHideSource = 0;
+    }
+    showTouchKeyboard();
+    state->keyboardShown = true;
     return TRUE;
 }
 
@@ -217,6 +260,26 @@ auto messageFilter(GdkXEvent* xevent, GdkEvent*, gpointer) -> GdkFilterReturn {
 
 }  // namespace
 
+void ConvertibleSupport::textEditingStarted() {
+    if (state && state->tablet && focusedByTouchOrPen()) {
+        if (state->keyboardHideSource) {
+            g_source_remove(state->keyboardHideSource);
+            state->keyboardHideSource = 0;
+        }
+        showTouchKeyboard();
+        state->keyboardShown = true;
+    }
+}
+
+void ConvertibleSupport::textEditingEnded() {
+    if (state && state->keyboardShown && touchKeyboardVisible()) {
+        toggleTouchKeyboard();
+    }
+    if (state) {
+        state->keyboardShown = false;
+    }
+}
+
 void ConvertibleSupport::install(MainWindow* win, Control* control) {
     if (state) {
         return;
@@ -248,12 +311,15 @@ void ConvertibleSupport::install(MainWindow* win, Control* control) {
                                                     nullptr, nullptr);
     state->focusOutHook = g_signal_add_emission_hook(g_signal_lookup("focus-out-event", GTK_TYPE_WIDGET), 0, onFocusOut,
                                                      nullptr, nullptr);
+    state->pressHook = g_signal_add_emission_hook(g_signal_lookup("button-press-event", GTK_TYPE_WIDGET), 0,
+                                                  onButtonPress, nullptr, nullptr);
 
     g_signal_connect(
             window, "destroy", G_CALLBACK(+[](GtkWidget*, gpointer) {
                 gdk_window_remove_filter(nullptr, messageFilter, nullptr);
                 g_signal_remove_emission_hook(g_signal_lookup("focus-in-event", GTK_TYPE_WIDGET), state->focusInHook);
                 g_signal_remove_emission_hook(g_signal_lookup("focus-out-event", GTK_TYPE_WIDGET), state->focusOutHook);
+                g_signal_remove_emission_hook(g_signal_lookup("button-press-event", GTK_TYPE_WIDGET), state->pressHook);
                 if (state->keyboardHideSource) {
                     g_source_remove(state->keyboardHideSource);
                 }
@@ -266,5 +332,7 @@ void ConvertibleSupport::install(MainWindow* win, Control* control) {
 #else
 
 void ConvertibleSupport::install(MainWindow*, Control*) {}
+void ConvertibleSupport::textEditingStarted() {}
+void ConvertibleSupport::textEditingEnded() {}
 
 #endif
