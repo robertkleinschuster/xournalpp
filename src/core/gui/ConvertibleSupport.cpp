@@ -6,11 +6,14 @@
 #include <string>
 
 #include <gtk/gtk.h>
-#include <windows.h>  // last: its macros clash with names in the headers above
 
 #include "control/Control.h"
 #include "control/settings/Settings.h"
 #include "gui/MainWindow.h"
+
+#ifdef _WIN32  // separate block, so it stays last: its macros clash with names in the headers above
+#include <windows.h>
+#endif
 
 namespace {
 
@@ -87,7 +90,6 @@ struct State {
     MainWindow* win;
     Control* control;
     bool tablet = false;
-    bool menubarHidden = false;  ///< hidden by us for tablet mode
     bool portrait = false;
     bool sidebarHidden = false;  ///< hidden by us for portrait orientation
     bool keyboardShown = false;  ///< opened by us
@@ -100,21 +102,7 @@ State* state = nullptr;  // one main window
 
 auto isTabletMode() -> bool { return GetSystemMetrics(SM_CONVERTIBLESLATEMODE) == 0; }
 
-void updateTabletMode() {
-    const bool tablet = isTabletMode();
-    if (tablet == state->tablet) {
-        return;
-    }
-    state->tablet = tablet;
-    const bool menubarSetting = state->control->getSettings()->isMenubarVisible();
-    if (tablet && menubarSetting) {
-        state->win->setMenubarVisible(false);
-        state->menubarHidden = true;
-    } else if (!tablet && state->menubarHidden) {
-        state->win->setMenubarVisible(menubarSetting);
-        state->menubarHidden = false;
-    }
-}
+void updateTabletMode() { state->tablet = isTabletMode(); }
 
 void updateOrientation(int width, int height) {
     if (width <= 0 || height <= 0) {
