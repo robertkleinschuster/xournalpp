@@ -16,6 +16,20 @@ longer shown; `TouchButtonFix` handles taps on buttons and the menu bar.
 - Goal: no state in which a menu, tooltip or grab can block the window; menus switch and close reliably by touch
   and pen.
 
+### Follow PDF links without switching tools
+
+Links in a PDF (references in the text, its own table of contents, URLs) only react to the PDF tools today: a tap
+with one of them shows a popover with "Go to …" / "Open link" (`XojPageView::displayLinkPopover`, only called when
+`isPdfSelectionTool`). With the pen, highlighter or lasso nothing happens, on purpose, since every stroke over a link
+would jump; in practice links seem broken.
+
+- Make them reachable while writing, e.g.: a tap (no movement) with the finger on a link shows the popover; with the
+  pen, a long press on a link; the "Select object" tool follows links on tap.
+- Show where links are, e.g. a faint underline or outline of link areas (toggle), so they can be found.
+- After following an internal link, a way back (upstream has NAVIGATE_BACK / NAVIGATE_FORWARD; consider a back
+  button in the popover or the toolbar while a jump is pending).
+- The PDF outline (bookmarks) is in the sidebar's second tab and works; consider a hint or making it easier to find.
+
 ### Clipboard buttons in the toolbar
 
 Copy and paste without a keyboard, e.g. to insert a copied PDF area with the pen or by touch in tablet mode.
