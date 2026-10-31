@@ -94,6 +94,8 @@ enum ToolType {
     TOOL_LASER_POINTER_HIGHLIGHTER = 24,
     TOOL_LINK = 25,
     TOOL_LATEX = 26,
+    /// Fork: drawing a rectangle on a PDF page copies that area with its graphics and formatting
+    TOOL_COPY_PDF_AREA = 27,
 
     TOOL_END_ENTRY
 };
@@ -123,7 +125,8 @@ static constexpr std::array<std::string_view, TOOL_END_ENTRY> toolNames{"none",
                                                                         "laserPointerPen",
                                                                         "laserPointerHighlighter",
                                                                         "link",
-                                                                        "latex"};
+                                                                        "latex",
+                                                                        "copyPdfArea"};
 
 auto isSelectToolType(ToolType type) -> bool;
 auto isSelectToolTypeSingleLayer(ToolType type) -> bool;

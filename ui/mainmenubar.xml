@@ -555,6 +555,11 @@
      <attribute name="accel">&lt;Ctrl&gt;&lt;Shift&gt;y</attribute>
     </item>
     <item>
+     <attribute name="label" translatable="yes">Copy PDF Area</attribute>
+     <attribute name="action">win.select-tool</attribute>
+     <attribute name="target" type="t">27</attribute> <!-- TOOL_COPY_PDF_AREA -->
+    </item>
+    <item>
      <attribute name="label" translatable="yes">_Highlighter</attribute>
      <attribute name="action">win.select-tool</attribute>
      <attribute name="target" type="t">3</attribute> <!-- TOOL_HIGHLIGHTER -->

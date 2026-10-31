@@ -128,6 +128,9 @@ void ToolHandler::initTools() {
     tools[TOOL_SELECT_PDF_TEXT_RECT - TOOL_PEN] =
             std::make_unique<ToolSelectPDFText>("selectPdfTextRect", TOOL_SELECT_PDF_TEXT_RECT, Colors::black);
 
+    tools[TOOL_COPY_PDF_AREA - TOOL_PEN] =
+            std::make_unique<Tool>("copyPdfArea", TOOL_COPY_PDF_AREA, Colors::black, std::nullopt);
+
     thickness[TOOL_SIZE_VERY_FINE] = .7;
     thickness[TOOL_SIZE_FINE] = 1.41;
     thickness[TOOL_SIZE_MEDIUM] = 2.4;
@@ -657,7 +660,7 @@ auto ToolHandler::isSinglePageTool() const -> bool {
            toolType == TOOL_SELECT_MULTILAYER_REGION || toolType == TOOL_SELECT_OBJECT || toolType == TOOL_DRAW_RECT ||
            toolType == TOOL_DRAW_ELLIPSE || toolType == TOOL_DRAW_COORDINATE_SYSTEM || toolType == TOOL_DRAW_ARROW ||
            toolType == TOOL_DRAW_DOUBLE_ARROW || toolType == TOOL_FLOATING_TOOLBOX || toolType == TOOL_DRAW_SPLINE ||
-           toolType == TOOL_SELECT_PDF_TEXT_LINEAR || toolType == TOOL_SELECT_PDF_TEXT_RECT || toolType == TOOL_LINK;
+           xoj::tool::isPdfSelectionTool(toolType) || toolType == TOOL_LINK;
 }
 
 auto ToolHandler::acceptsOutOfPageEvents() const -> bool {

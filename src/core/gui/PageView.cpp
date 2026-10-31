@@ -233,6 +233,7 @@ static auto blockedWhileReadOnly(Control* control) -> bool {
         case TOOL_HAND:
         case TOOL_SELECT_PDF_TEXT_LINEAR:
         case TOOL_SELECT_PDF_TEXT_RECT:
+        case TOOL_COPY_PDF_AREA:
         case TOOL_LASER_POINTER_PEN:
         case TOOL_LASER_POINTER_HIGHLIGHTER:
         case TOOL_PLAY_OBJECT:
@@ -350,7 +351,7 @@ auto XojPageView::onButtonPressEvent(const PositionInputData& pos) -> bool {
     } else if (h->getToolType() == TOOL_SELECT_RECT || h->getToolType() == TOOL_SELECT_REGION ||
                h->getToolType() == TOOL_SELECT_MULTILAYER_RECT || h->getToolType() == TOOL_SELECT_MULTILAYER_REGION ||
                h->getToolType() == TOOL_PLAY_OBJECT || h->getToolType() == TOOL_SELECT_OBJECT ||
-               h->getToolType() == TOOL_SELECT_PDF_TEXT_LINEAR || h->getToolType() == TOOL_SELECT_PDF_TEXT_RECT) {
+               xoj::tool::isPdfSelectionTool(h->getToolType())) {
         if (h->getToolType() == TOOL_SELECT_RECT) {
             if (!selector) {
                 this->selector = std::make_unique<RectangularSelector>(x, y);
@@ -395,14 +396,15 @@ auto XojPageView::onButtonPressEvent(const PositionInputData& pos) -> bool {
                         "the selection has already been created by a stylus button press while the stylus was "
                         "hovering!");
             }
-        } else if (h->getToolType() == TOOL_SELECT_PDF_TEXT_LINEAR || h->getToolType() == TOOL_SELECT_PDF_TEXT_RECT) {
+        } else if (xoj::tool::isPdfSelectionTool(h->getToolType())) {
             // so if we selected something && the pdf selection toolbox is hidden && we hit within the selection
             // we could call the pdf floating toolbox again
             auto* pdfToolbox = control->getWindow()->getPdfToolbox();
 
             if (pdfToolbox->hasSelection()) {
                 bool isPdfToolboxHidden = pdfToolbox->isHidden();
-                bool keepOldSelection = isPdfToolboxHidden && pdfToolbox->getSelection()->contains(x, y);
+                bool keepOldSelection = isPdfToolboxHidden && h->getToolType() != TOOL_COPY_PDF_AREA &&
+                                        pdfToolbox->getSelection()->contains(x, y);
                 if (!keepOldSelection) {
                     pdfToolbox->userCancelSelection();
                     repaintPage();
@@ -765,8 +767,13 @@ auto XojPageView::onButtonReleaseEvent(const PositionInputData& pos) -> bool {
     auto* pdfToolbox = control->getWindow()->getPdfToolbox();
     if (auto* selection = pdfToolbox->getSelection()) {
         if (!selection->isFinalized() && selection->finalizeSelectionAndRepaint(pdfToolbox->selectionStyle)) {
-            // Selection was created, so reposition the toolbox and display.
-            showPdfToolbox(pos);
+            if (control->getToolHandler()->getToolType() == TOOL_COPY_PDF_AREA) {
+                // Fork: the mode copies the area right away
+                pdfToolbox->copyFinishedArea();
+            } else {
+                // Selection was created, so reposition the toolbox and display.
+                showPdfToolbox(pos);
+            }
         }
     }
 

@@ -621,11 +621,6 @@
       </object>
     </child>
   </object>
-  <object class="GtkImage" id="pdfTbCopyAreaImage">
-    <property name="visible">True</property>
-    <property name="can-focus">False</property>
-    <property name="icon-name">xopp-select-rect</property>
-  </object>
   <object class="GtkRevealer" id="pdfFloatingToolbox">
     <property name="name">pdfFloatingTool</property>
     <property name="visible">True</property>
@@ -743,22 +738,6 @@
             <property name="left-attach">0</property>
             <property name="top-attach">2</property>
             <property name="width">2</property>
-          </packing>
-        </child>
-        <child>
-          <object class="GtkButton" id="pdfTbCopyArea">
-            <property name="label" translatable="yes">Copy area</property>
-            <property name="visible">True</property>
-            <property name="can-focus">True</property>
-            <property name="receives-default">True</property>
-            <property name="tooltip-text" translatable="yes">Copy the selected area with graphics and formatting, to paste it anywhere</property>
-            <property name="always-show-image">True</property>
-            <property name="image">pdfTbCopyAreaImage</property>
-          </object>
-          <packing>
-            <property name="left-attach">0</property>
-            <property name="top-attach">3</property>
-            <property name="width">3</property>
           </packing>
         </child>
       </object>

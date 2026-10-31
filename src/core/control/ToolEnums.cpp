@@ -35,7 +35,7 @@ auto isSelectToolTypeSingleLayer(ToolType type) -> bool {
 auto requiresClearedSelection(ToolType type) -> bool {
     return type == TOOL_PEN || type == TOOL_HIGHLIGHTER || type == TOOL_ERASER || type == TOOL_TEXT ||
            type == TOOL_LATEX || type == TOOL_IMAGE || type == TOOL_SELECT_PDF_TEXT_RECT ||
-           type == TOOL_SELECT_PDF_TEXT_RECT || type == TOOL_VERTICAL_SPACE;
+           type == TOOL_COPY_PDF_AREA || type == TOOL_VERTICAL_SPACE;
 }
 
 
@@ -97,7 +97,8 @@ auto strokeTypeFromString(const std::string& type) -> StrokeType {
 }
 
 bool xoj::tool::isPdfSelectionTool(ToolType toolType) {
-    return toolType == TOOL_SELECT_PDF_TEXT_LINEAR || toolType == TOOL_SELECT_PDF_TEXT_RECT;
+    return toolType == TOOL_SELECT_PDF_TEXT_LINEAR || toolType == TOOL_SELECT_PDF_TEXT_RECT ||
+           toolType == TOOL_COPY_PDF_AREA;
 }
 
 static constexpr auto makeToolCaps() {
@@ -133,6 +134,7 @@ static constexpr auto makeToolCaps() {
     caps[TOOL_LASER_POINTER_HIGHLIGHTER - TOOL_PEN] = TOOL_CAP_COLOR | TOOL_CAP_SIZE;
     caps[TOOL_LINK - TOOL_PEN] = TOOL_CAP_NONE;
     caps[TOOL_LATEX - TOOL_PEN] = TOOL_CAP_COLOR;
+    caps[TOOL_COPY_PDF_AREA - TOOL_PEN] = TOOL_CAP_NONE;
 
     return caps;
 }

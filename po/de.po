@@ -5060,13 +5060,10 @@ msgstr ""
 "Dieses PDF ist schreibgeschützt geöffnet. Es gibt bereits ein Dokument mit "
 "Ihren Notizen; „Bearbeitung aktivieren“ öffnet es."
 
-#: ../ui/main.glade
-msgid "Copy area"
-msgstr "Bereich kopieren"
-
-#: ../ui/main.glade
-msgid "Copy the selected area with graphics and formatting, to paste it anywhere"
-msgstr "Den ausgewählten Bereich mit Grafiken und Formatierung kopieren, um ihn überall einzufügen"
+#: ../ui/mainmenubar.xml src/core/gui/toolbarMenubar/ToolMenuHandler.cpp
+#: src/core/gui/toolbarMenubar/ToolPdfCombocontrol.cpp src/core/gui/dialog/ButtonConfigGui.cpp
+msgid "Copy PDF Area"
+msgstr "PDF-Bereich kopieren"
 
 #: src/core/control/xojfile/SaveHandler.cpp
 msgid "Could not replace \"{1}\": {2}"

@@ -167,6 +167,7 @@ auto PdfElemSelection::createAreaElement(const XojPdfPage& page, const xoj::util
 XojPdfPageSelectionStyle PdfElemSelection::selectionStyleForToolType(ToolType type) {
     switch (type) {
         case ToolType::TOOL_SELECT_PDF_TEXT_RECT:
+        case ToolType::TOOL_COPY_PDF_AREA:
             return XojPdfPageSelectionStyle::Area;
         default:
             return XojPdfPageSelectionStyle::Linear;

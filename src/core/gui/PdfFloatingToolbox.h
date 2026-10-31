@@ -68,6 +68,12 @@ public:
     /// Fork: copy the selected area with all its PDF content (as vector graphics) to the clipboard.
     void copyAreaToClipboard();
 
+    /**
+     * Fork: in the "Copy PDF area" mode, copies the area of the just finished selection right away. The area stays
+     * visible for a moment as confirmation, without the toolbox.
+     */
+    void copyFinishedArea();
+
 private:
     void show();
 
@@ -81,7 +87,6 @@ private:
     static void strikethroughCb(GtkButton* button, PdfFloatingToolbox* pft);
     static void underlineCb(GtkButton* button, PdfFloatingToolbox* pft);
     static void copyTextCb(GtkButton* button, PdfFloatingToolbox* pft);
-    static void copyAreaCb(GtkButton* button, PdfFloatingToolbox* pft);
     static void highlightCb(GtkButton* button, PdfFloatingToolbox* pft);
 
     void createStrokes(PdfMarkerStyle position, PdfMarkerStyle width, int markerOpacity);
@@ -95,6 +100,10 @@ private:
     xoj::util::GObjectSPtr<GtkOverlay> overlay;
 
     std::unique_ptr<PdfElemSelection> pdfElemSelection;
+
+    /// Fork: removes the selection shown after copying its area
+    guint clearCopiedTimeout = 0;
+    void cancelClearCopied();
 
     struct {
         int x;

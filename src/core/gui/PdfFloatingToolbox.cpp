@@ -44,7 +44,6 @@ PdfFloatingToolbox::PdfFloatingToolbox(MainWindow* theMainWindow, GtkOverlay* ov
 
     g_signal_connect(theMainWindow->get("pdfTbHighlight"), "clicked", G_CALLBACK(this->highlightCb), this);
     g_signal_connect(theMainWindow->get("pdfTbCopyText"), "clicked", G_CALLBACK(this->copyTextCb), this);
-    g_signal_connect(theMainWindow->get("pdfTbCopyArea"), "clicked", G_CALLBACK(this->copyAreaCb), this);
     g_signal_connect(theMainWindow->get("pdfTbUnderline"), "clicked", G_CALLBACK(this->underlineCb), this);
     g_signal_connect(theMainWindow->get("pdfTbStrikethrough"), "clicked", G_CALLBACK(this->strikethroughCb), this);
     g_signal_connect(theMainWindow->get("pdfTbChangeType"), "clicked", G_CALLBACK(this->switchSelectTypeCb), this);
@@ -53,14 +52,18 @@ PdfFloatingToolbox::PdfFloatingToolbox(MainWindow* theMainWindow, GtkOverlay* ov
     this->hide();
 }
 
-PdfFloatingToolbox::~PdfFloatingToolbox() = default;
+PdfFloatingToolbox::~PdfFloatingToolbox() { cancelClearCopied(); }
 
 PdfElemSelection* PdfFloatingToolbox::getSelection() const { return this->pdfElemSelection.get(); }
 bool PdfFloatingToolbox::hasSelection() const { return this->getSelection() != nullptr; }
 
-void PdfFloatingToolbox::clearSelection() { this->pdfElemSelection.reset(); }
+void PdfFloatingToolbox::clearSelection() {
+    cancelClearCopied();
+    this->pdfElemSelection.reset();
+}
 
 auto PdfFloatingToolbox::newSelection(double x, double y) -> const PdfElemSelection* {
+    cancelClearCopied();
     this->pdfElemSelection = std::make_unique<PdfElemSelection>(x, y, this->theMainWindow->getControl());
     return this->pdfElemSelection.get();
 }
@@ -115,8 +118,39 @@ auto PdfFloatingToolbox::getOverlayPosition(GtkOverlay* overlay, GtkWidget* widg
 }
 
 void PdfFloatingToolbox::userCancelSelection() {
+    cancelClearCopied();
     this->pdfElemSelection.reset();
     this->hide();
+}
+
+void PdfFloatingToolbox::cancelClearCopied() {
+    if (clearCopiedTimeout) {
+        g_source_remove(clearCopiedTimeout);
+        clearCopiedTimeout = 0;
+    }
+}
+
+void PdfFloatingToolbox::copyFinishedArea() {
+    xoj_assert(this->pdfElemSelection);
+    const auto area = this->pdfElemSelection->getSelectedArea();
+    if (!this->pdfElemSelection->isAreaSelected() || area.width < 1 || area.height < 1) {
+        // Just a tap
+        userCancelSelection();
+        return;
+    }
+    copyAreaToClipboard();
+    this->hide();
+    cancelClearCopied();
+    constexpr guint SHOW_COPIED_MS = 400;
+    clearCopiedTimeout = g_timeout_add(
+            SHOW_COPIED_MS,
+            +[](gpointer data) -> gboolean {
+                auto* self = static_cast<PdfFloatingToolbox*>(data);
+                self->clearCopiedTimeout = 0;
+                self->pdfElemSelection.reset();  // repaints the area
+                return G_SOURCE_REMOVE;
+            },
+            this);
 }
 
 void PdfFloatingToolbox::highlightCb(GtkButton* button, PdfFloatingToolbox* pft) {
@@ -127,11 +161,6 @@ void PdfFloatingToolbox::highlightCb(GtkButton* button, PdfFloatingToolbox* pft)
 
 void PdfFloatingToolbox::copyTextCb(GtkButton* button, PdfFloatingToolbox* pft) {
     pft->copyTextToClipboard();
-    pft->userCancelSelection();
-}
-
-void PdfFloatingToolbox::copyAreaCb(GtkButton* button, PdfFloatingToolbox* pft) {
-    pft->copyAreaToClipboard();
     pft->userCancelSelection();
 }
 
@@ -159,9 +188,6 @@ void PdfFloatingToolbox::updateButtons() {
     for (const char* id: {"pdfTbHighlight", "pdfTbUnderline", "pdfTbStrikethrough"}) {
         gtk_widget_set_visible(theMainWindow->get(id), hasText && editable);
     }
-    const auto area = this->pdfElemSelection->getSelectedArea();
-    gtk_widget_set_visible(theMainWindow->get("pdfTbCopyArea"),
-                           this->pdfElemSelection->isAreaSelected() && area.width >= 1 && area.height >= 1);
 }
 
 void PdfFloatingToolbox::copyTextToClipboard() {

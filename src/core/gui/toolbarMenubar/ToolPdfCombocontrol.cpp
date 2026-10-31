@@ -13,5 +13,6 @@ ToolPdfCombocontrol::ToolPdfCombocontrol(std::string id, IconNameHelper& icons, 
                 _("PDF text selection dropdown menu"),
                 {Entry(_("Select Linear PDF Text"), icons.iconName("select-pdf-text-ht"), TOOL_SELECT_PDF_TEXT_LINEAR),
                  Entry(_("Select PDF Text In Rectangle"), icons.iconName("select-pdf-text-area"),
-                       TOOL_SELECT_PDF_TEXT_RECT)},
+                       TOOL_SELECT_PDF_TEXT_RECT),
+                 Entry(_("Copy PDF Area"), icons.iconName("copy-pdf-area"), TOOL_COPY_PDF_AREA)},
                 db.getAction(Action::SELECT_TOOL)) {}
