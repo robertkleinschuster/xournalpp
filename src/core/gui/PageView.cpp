@@ -1158,9 +1158,13 @@ auto XojPageView::paintPage(cairo_t* cr, GdkRectangle* rect) -> bool {
 
         if (this->buffer.getZoom() != zoom) {
             rerenderPage();
-            cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_FAST);
+            // Fork: shown scaled until it is rerendered (e.g. while zooming). The default filter shrinks it with a
+            // convolution that took up to 90 ms per frame; bilinear is cheap. (Upstream set the filter on the previous
+            // source, so it had no effect.)
+            this->buffer.paintTo(cr, CAIRO_FILTER_BILINEAR);
+        } else {
+            this->buffer.paintTo(cr);
         }
-        this->buffer.paintTo(cr);
     }  // Restore the state of cr and then release the mutex
        // restoring the state of cr ensures this->buffer.surface is not longer referenced as the source in cr.
 

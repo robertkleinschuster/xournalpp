@@ -58,6 +58,10 @@ public:
      */
     void paintTo(cairo_t* targetCr) const;
     /**
+     * @brief Paint the content of the surface with the given filter, e.g. a cheaper one while it is scaled
+     */
+    void paintTo(cairo_t* targetCr, cairo_filter_t filter) const;
+    /**
      * @brief Paint the content of the surface to the target cairo context
      */
     void paintToWithAlpha(cairo_t* targetCr, uint8_t alpha) const;
