@@ -48,7 +48,6 @@ class MetadataManager;
 class XournalppCursor;
 class ToolbarDragDropHandler;
 class MetadataEntry;
-class MetadataCallbackData;
 class PageBackgroundChangeController;
 class PageTemplateSettings;
 class PageTypeHandler;
@@ -214,6 +213,10 @@ public:
     void customizeToolbars();
     void setFullscreen(bool enabled);
     void setShowSidebar(bool enabled);
+
+    /// Fork: applies the view of the document opened at startup once the window knows its screen (and so the zoom
+    /// factor of 100 %); called when the window is configured
+    void applyPendingViewPosition();
     void setShowToolbar(bool enabled);
     void setShowMenubar(bool enabled);
 
@@ -434,11 +437,9 @@ protected:
     static bool autosaveCallback(Control* control);
 
     /**
-     * Load metadata later, md will be deleted
+     * Applies the stored view of the document just opened (now, or once the window is shown)
      */
     void loadMetadata(MetadataEntry md);
-
-    static bool loadMetadataCallback(MetadataCallbackData* data);
 
     /// Fork: applies the stored zoom and view position of the document that was just opened
     void applyViewPosition(const MetadataEntry& md);
@@ -636,7 +637,7 @@ private:
     bool audioEnabled = false;
     bool readOnly = false;
     bool autoSaveAllowed = true;
-    /// Fork: the view of the document just opened is applied once the window is shown (at startup)
-    bool viewRestorePending = false;
+    /// Fork: the view of the document opened at startup, applied once the window is shown on its screen
+    std::unique_ptr<MetadataEntry> pendingViewPosition;
     guint audioInitSource = 0;
 };

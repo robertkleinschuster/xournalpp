@@ -1,12 +1,14 @@
 #include "SidebarPreviewBase.h"
 
 #include <cstdlib>  // for abs, size_t
+#include <mutex>    // for lock_guard
 
 #include <glib-object.h>  // for g_object_ref, G_CALLBACK, g_sig...
 #include <glib.h>         // for g_idle_add
 
 #include "control/Control.h"   // for Control
 #include "control/PdfCache.h"  // for PdfCache
+#include "control/jobs/XournalScheduler.h"
 #include "gui/Builder.h"       // for Builder
 #include "gui/MainWindow.h"    // for MainWindow
 #include "model/Document.h"    // for Document
@@ -94,14 +96,19 @@ auto SidebarPreviewBase::getWidget() -> GtkWidget* { return this->mainBox.get();
 
 void SidebarPreviewBase::documentChanged(DocumentChangeType type) {
     if (type == DOCUMENT_CHANGE_COMPLETE || type == DOCUMENT_CHANGE_CLEARED) {
-        this->cache.reset();
+        {
+            // Fork: preview jobs use the cache while they run (with the scheduler locked); replacing it under a
+            // running one would free it while in use, which happens easily when switching documents quickly
+            std::lock_guard schedulerLock(*control->getScheduler());
+            this->cache.reset();
 
-        Document* doc = control->getDocument();
-        doc->lock_shared();
-        if (doc->getPdfPageCount() != 0) {
-            this->cache = std::make_unique<PdfCache>(doc->getPdfDocument(), control->getSettings());
+            Document* doc = control->getDocument();
+            doc->lock_shared();
+            if (doc->getPdfPageCount() != 0) {
+                this->cache = std::make_unique<PdfCache>(doc->getPdfDocument(), control->getSettings());
+            }
+            doc->unlock_shared();
         }
-        doc->unlock_shared();
         updatePreviews();
     }
 }

@@ -91,6 +91,8 @@ public:
     void setMenubarVisible(bool visible);
     void setSidebarVisible(bool visible);
     bool isSidebarVisible() const { return sidebarVisible; }
+    /// Fork: whether the window is shown on a screen, so its DPI (the zoom factor of 100 %) and layout are known
+    bool isShownOnScreen() const;
     void setToolbarVisible(bool visible);
 
     Control* getControl() const;

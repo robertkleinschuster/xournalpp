@@ -50,6 +50,7 @@ PdfCache::~PdfCache() = default;
 void PdfCache::setRefreshThreshold(double threshold) { this->zoomRefreshThreshold = threshold; }
 
 void PdfCache::setMaxSize(size_t newSize) {
+    std::lock_guard<std::mutex> lock(this->renderMutex);  // Fork: render() may use the entries meanwhile
     this->maxSize = newSize;
     if (this->data.size() > this->maxSize) {
         this->data.resize(this->maxSize);

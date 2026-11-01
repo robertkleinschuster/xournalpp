@@ -3,6 +3,7 @@
 #include <algorithm>  // for max, min
 #include <iterator>   // for begin
 #include <memory>     // for unique_ptr, make_unique
+#include <mutex>      // for lock_guard
 #include <optional>   // for optional
 #include <unordered_set>
 
@@ -682,11 +683,12 @@ auto XournalView::takeRendering() -> std::unique_ptr<KeptRendering> {
     auto rendering = std::make_unique<KeptRendering>();
     {
         // Render jobs use the cache while they run (with the scheduler locked): wait for a running one, so that none
-        // uses it once it is handed out (it may be destroyed later, e.g. when the cache of documents is full)
+        // uses it once it is handed out (it may be destroyed later, e.g. when the cache of documents is full). The
+        // renderings still waiting would only draw pages about to be closed, without their PDF background.
         XournalScheduler* scheduler = control->getScheduler();
-        scheduler->lock();
+        std::lock_guard schedulerLock(*scheduler);
+        scheduler->removeQueuedPageRenders();
         rendering->pdfCache = std::move(this->cache);
-        scheduler->unlock();
     }
     // Only the visible pages: they are what is shown first when coming back, and other pages would cost memory
     for (auto& view: this->viewPages) {
@@ -708,10 +710,8 @@ void XournalView::adoptRendering(std::unique_ptr<KeptRendering> rendering) {
     if (pdfMatches) {
         rendering->pdfCache->updateSettings(control->getSettings());
         // Replacing the cache destroys the one created for the opened document, which a render job may be using
-        XournalScheduler* scheduler = control->getScheduler();
-        scheduler->lock();
+        std::lock_guard schedulerLock(*control->getScheduler());
         this->cache = std::move(rendering->pdfCache);
-        scheduler->unlock();
     }
     // The pages are the same objects as when they were drawn and were not changed since (the document was closed)
     for (auto& [page, buffer]: rendering->pages) {

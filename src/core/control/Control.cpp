@@ -1,15 +1,16 @@
 #include "Control.h"
 
-#include <algorithm>   // for max
-#include <cstdlib>     // for size_t
-#include <exception>   // for exce...
-#include <functional>  // for bind
-#include <iterator>    // for end
-#include <memory>      // for make...
-#include <optional>    // for opti...
-#include <regex>       // for regex
-#include <string>      // for string
-#include <utility>     // for move
+#include <algorithm>     // for max
+#include <cstdlib>       // for size_t
+#include <exception>     // for exce...
+#include <functional>    // for bind
+#include <iterator>      // for end
+#include <memory>        // for make...
+#include <optional>      // for opti...
+#include <regex>         // for regex
+#include <shared_mutex>  // for shared_lock
+#include <string>        // for string
+#include <utility>       // for move
 
 #include "control/AnnotationFiles.h"                             // for AnnotationFiles
 #include "control/AudioController.h"                             // for Audi...
@@ -1585,28 +1586,30 @@ void Control::keepOpenDocument(const Document& next) {
     if (!this->win) {
         return;
     }
-    this->doc->lock_shared();
-    const auto key = DocumentCache::keyOf(*this->doc);
-    // Only an unchanged document (saved before switching) that was loaded without problems; not when it is reloaded
-    const bool keep = !key.empty() && key != DocumentCache::keyOf(next) && !this->undoRedo->isChanged() &&
-                      (this->autoSaveAllowed || this->readOnly) && this->documentCache->canKeep(*this->doc);
-    this->doc->unlock_shared();
+    bool keep = false;
+    {
+        std::shared_lock lock(*this->doc);
+        const auto key = DocumentCache::keyOf(*this->doc);
+        // Only an unchanged document (saved before switching) that was loaded without problems; not on a reload
+        keep = !key.empty() && key != DocumentCache::keyOf(next) && !this->undoRedo->isChanged() &&
+               (this->autoSaveAllowed || this->readOnly) && this->documentCache->canKeep(*this->doc);
+    }
     if (!keep) {
         return;
     }
     // Not while the document is locked: this waits for a running render job, which locks the document itself
     auto rendering = this->win->getXournal()->takeRendering();
-    this->doc->lock_shared();
+    std::shared_lock lock(*this->doc);
     this->documentCache->keep(*this->doc, std::move(rendering));
-    this->doc->unlock_shared();
 }
 
 void Control::replaceDocument(std::unique_ptr<Document> doc, int scrollToPage,
                               std::unique_ptr<KeptRendering> rendering) {
-    keepOpenDocument(*doc);  // before closing, which discards the rendered PDF pages
+    this->pendingViewPosition.reset();  // belongs to the document being replaced
     // Fork: pages become visible while the document is swapped, still at the zoom of the previous document. Hold
     // their rendering until the document's own zoom and position are applied, so each page is rendered only once.
     scheduler->blockRerenderZoom();
+    keepOpenDocument(*doc);  // before closing, which discards the rendered PDF pages
     this->closeDocument();
     setReadOnly(false);
     this->autoSaveAllowed = true;
@@ -1631,7 +1634,7 @@ void Control::replaceDocument(std::unique_ptr<Document> doc, int scrollToPage,
     }
 
     fileLoaded(scrollToPage);
-    if (!this->viewRestorePending) {
+    if (!this->pendingViewPosition) {
         scheduler->unblockRerenderZoom();
     }
 }
@@ -2065,22 +2068,6 @@ void Control::missingPdfDialogResponseHandler(fs::path proposedPdfFilepath, int 
     }
 }
 
-class MetadataCallbackData {
-public:
-    Control* ctrl{};
-    MetadataEntry md;
-};
-
-/**
- * Load the data after processing the document...
- */
-auto Control::loadMetadataCallback(MetadataCallbackData* data) -> bool {
-    data->ctrl->viewRestorePending = false;
-    data->ctrl->applyViewPosition(data->md);
-    // Do not call again!
-    return false;
-}
-
 void Control::applyViewPosition(const MetadataEntry& md) {
     // Fork: entries stored on closing know whether the zoom fitted the page; older ones use the current mode
     const bool fit = md.hasViewPosition ? md.zoomFit : zoom->isZoomFitMode();
@@ -2105,18 +2092,26 @@ void Control::applyViewPosition(const MetadataEntry& md) {
 
 void Control::loadMetadata(MetadataEntry md) {
     // Fork: when switching documents the window is shown already: apply the view before anything is drawn, so pages
-    // are rendered once at the right zoom and position. At startup the layout is only known later.
-    if (win && gtk_widget_get_mapped(win->getXournal()->getWidget())) {
+    // are rendered once at the right zoom and position
+    if (win && win->isShownOnScreen()) {
         applyViewPosition(md);
         return;
     }
-    this->viewRestorePending = true;
-    auto* data = new MetadataCallbackData();
-    data->md = std::move(md);
-    data->ctrl = this;
+    // At startup the zoom factor of 100 % (the screen's DPI) and the layout are only known once the window is shown
+    // on its screen: MainWindow calls applyPendingViewPosition() then
+    this->pendingViewPosition = std::make_unique<MetadataEntry>(std::move(md));
+}
 
-    g_idle_add_full(G_PRIORITY_DEFAULT_IDLE, xoj::util::wrap_v<loadMetadataCallback>, data,
-                    &xoj::util::destroy_cb<MetadataCallbackData>);
+void Control::applyPendingViewPosition() {
+    if (!this->pendingViewPosition || !win || !win->isShownOnScreen()) {
+        return;
+    }
+    // After the configure event that set the DPI, once the new size has been laid out
+    Util::execInUiThread([this]() {
+        if (auto md = std::move(this->pendingViewPosition); md && win && win->isShownOnScreen()) {
+            applyViewPosition(*md);
+        }
+    });
 }
 
 void Control::askToAnnotatePdf() {

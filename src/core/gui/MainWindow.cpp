@@ -122,9 +122,15 @@ MainWindow::MainWindow(GladeSearchpath* gladeSearchPath, Control* control, GtkAp
                     g_debug("Window moved to monitor \"%s\"", monitorName);
                     win->setDPI();
                 }
+                // Fork: the view of the document opened at startup needs the DPI set above
+                win->getControl()->applyPendingViewPosition();
                 return false;
             }),
             this);
+    g_signal_connect_after(this->window, "map", G_CALLBACK(+[](GtkWidget*, gpointer self) {
+                               static_cast<MainWindow*>(self)->getControl()->applyPendingViewPosition();
+                           }),
+                           this);
 
     // "watch over" all key events
     auto keyPropagate = +[](GtkWidget* w, GdkEvent* e, gpointer) {
@@ -920,6 +926,10 @@ void MainWindow::loadMainCSS(GladeSearchpath* gladeSearchPath, const gchar* cssF
 PdfFloatingToolbox* MainWindow::getPdfToolbox() const { return this->pdfFloatingToolBox.get(); }
 
 FloatingToolbox* MainWindow::getFloatingToolbox() const { return this->floatingToolbox.get(); }
+
+auto MainWindow::isShownOnScreen() const -> bool {
+    return this->lastMonitor != nullptr && this->xournal && gtk_widget_get_mapped(this->xournal->getWidget());
+}
 
 void MainWindow::setDPI() const {
     if (auto dpi = this->getControl()->getSettings()->getDisplayDpi(); dpi == -1) {
