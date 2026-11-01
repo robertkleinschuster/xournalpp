@@ -339,9 +339,12 @@ private:
     }
 
     static void onLongPress(GtkGesture* gesture, double x, double y, TasksSidebar* self) {
-        GdkDevice* device = gtk_gesture_get_device(gesture);
+        // The physical device (gtk_gesture_get_device() returns the logical pointer, which is always a mouse)
+        const GdkEvent* event = gtk_gesture_get_last_event(
+                gesture, gtk_gesture_single_get_current_sequence(GTK_GESTURE_SINGLE(gesture)));
+        GdkDevice* device = event ? gdk_event_get_source_device(event) : nullptr;
         const auto source = device ? gdk_device_get_source(device) : GDK_SOURCE_MOUSE;
-        if (source != GDK_SOURCE_TOUCHSCREEN && source != GDK_SOURCE_PEN) {
+        if (source != GDK_SOURCE_TOUCHSCREEN && source != GDK_SOURCE_PEN && source != GDK_SOURCE_ERASER) {
             return;  // the mouse opens the menu with a right click
         }
         gint binX = 0;
