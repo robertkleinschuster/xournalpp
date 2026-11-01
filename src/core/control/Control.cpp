@@ -683,12 +683,15 @@ void Control::setShowSidebar(bool enabled) {
     win->setSidebarVisible(enabled);
     actionDB->setActionState(Action::SHOW_SIDEBAR, enabled);
 
-    if (settings->isSidebarVisible() != enabled &&
-        settings->getActiveViewMode() == PresetViewModeIds::VIEW_MODE_DEFAULT) {
+    // The sidebar keeps its state when toggling fullscreen: normal and fullscreen view share it
+    const auto activeMode = settings->getActiveViewMode();
+    if (activeMode == PresetViewModeIds::VIEW_MODE_DEFAULT || activeMode == PresetViewModeIds::VIEW_MODE_FULLSCREEN) {
         settings->setSidebarVisible(enabled);
-        ViewMode viewMode = settings->getViewModes()[PresetViewModeIds::VIEW_MODE_DEFAULT];
-        viewMode.showSidebar = enabled;
-        settings->setViewMode(PresetViewModeIds::VIEW_MODE_DEFAULT, viewMode);
+        for (auto mode: {PresetViewModeIds::VIEW_MODE_DEFAULT, PresetViewModeIds::VIEW_MODE_FULLSCREEN}) {
+            ViewMode viewMode = settings->getViewModes()[mode];
+            viewMode.showSidebar = enabled;
+            settings->setViewMode(mode, viewMode);
+        }
     }
 }
 
@@ -2400,9 +2403,17 @@ auto Control::loadViewMode(ViewModeId mode) -> bool {
     if (!settings->loadViewMode(mode)) {
         return false;
     }
+    if (mode == PresetViewModeIds::VIEW_MODE_DEFAULT || mode == PresetViewModeIds::VIEW_MODE_FULLSCREEN) {
+        // Normal and fullscreen view share the sidebar state (older configs may store different values)
+        settings->setSidebarVisible(settings->getViewModes()[PresetViewModeIds::VIEW_MODE_DEFAULT].showSidebar);
+    }
     this->win->setMenubarVisible(settings->isMenubarVisible());
     this->win->setToolbarVisible(settings->isToolbarVisible());
     this->win->setSidebarVisible(settings->isSidebarVisible());
+    // Keep the toggle buttons and menu check items in sync with what is shown
+    actionDB->setActionState(Action::SHOW_MENUBAR, settings->isMenubarVisible());
+    actionDB->setActionState(Action::SHOW_TOOLBAR, settings->isToolbarVisible());
+    actionDB->setActionState(Action::SHOW_SIDEBAR, settings->isSidebarVisible());
     setFullscreen(settings->isFullscreen());
     return false;
 }

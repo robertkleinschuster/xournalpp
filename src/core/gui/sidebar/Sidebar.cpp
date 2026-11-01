@@ -150,7 +150,7 @@ void Sidebar::selectTasks() {
         return;
     }
     if (!control->getWindow()->isSidebarVisible()) {
-        control->getWindow()->setSidebarVisible(true);
+        control->setShowSidebar(true);  // also updates the toggle button and the setting
     }
     setSelectedTab(tasksTabIndex);
 }
