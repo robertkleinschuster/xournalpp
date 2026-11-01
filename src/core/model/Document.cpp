@@ -326,6 +326,15 @@ auto Document::readPdf(const fs::path& filename, bool initPages, bool attachToDo
 
     lock();
 
+    if (data == nullptr) {
+        // Fork: read the PDF into memory. Poppler would otherwise keep the file open, which on Windows prevents
+        // replacing, renaming or deleting it (git, the project explorer) while the document is open or kept in the
+        // document cache. If it cannot be read here, poppler reports the error below.
+        if (auto content = Util::readString(filename, false, std::ios::in | std::ios::binary)) {
+            data = std::make_unique<std::string>(std::move(*content));
+        }
+    }
+
     if (data != nullptr) {
         if (!pdfDocument.load(std::move(data), password, &popplerError)) {
             lastError = FS(_F("Document not loaded! ({1}), {2}") % filename.u8string() % popplerError->message);
