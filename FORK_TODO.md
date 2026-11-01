@@ -42,12 +42,13 @@ the device. Open:
 
 ### Insert pages from other PDFs
 
-Done: "Journal → Insert Pages from PDF…" (`InsertPdfPages`, `PdfCombiner`, undoable via
-`InsertPdfPagesUndoAction`). The chosen pages are appended to a combined copy of the background PDF next to the
-document, marked in its document info (`/XournalStudioCombined`); the source PDF stays untouched. Open:
+Done: "Journal → Insert Pages…" (`InsertPagesDialog`, `InsertPdfPages`, `PdfCombiner`) shows the pages of the
+document's PDF (missing ones preselected; replaces "Append New PDF Pages") or of another PDF as thumbnails to tap.
+Pages of another PDF go into a combined copy of the background PDF (`/XournalStudioCombined`), which belongs to the
+document group (renamed, moved, deleted with it). Open:
 
-- A thumbnail picker instead of typing page ranges.
 - Removing pages that are no longer used from the combined PDF (it only grows; undo keeps them).
+- Range selection by dragging over thumbnails.
 
 ### Tasks with reminders (todo.txt)
 
