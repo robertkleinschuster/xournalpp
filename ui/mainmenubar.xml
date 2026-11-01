@@ -470,11 +470,7 @@
      <attribute name="action">win.move-page-towards-end</attribute>
     </item>
     <item>
-     <attribute name="label" translatable="yes">Append New PDF Pages</attribute>
-     <attribute name="action">win.append-new-pdf-pages</attribute>
-    </item>
-    <item>
-     <attribute name="label" translatable="yes">Insert Pages from PDF…</attribute>
+     <attribute name="label" translatable="yes">Insert _Pages…</attribute>
      <attribute name="action">win.insert-pdf-pages</attribute>
     </item>
     <item>

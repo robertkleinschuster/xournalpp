@@ -26,8 +26,6 @@ void showOpenFileDialog(GtkWindow* parent, Settings* settings, std::function<voi
 /// @param callback(path, attachPdf)
 void showAnnotatePdfDialog(GtkWindow* parent, Settings* settings, std::function<void(fs::path, bool)> callback);
 void showOpenTemplateDialog(GtkWindow* parent, Settings* settings, std::function<void(fs::path)> callback);
-/// Fork: chooses the PDF to insert pages from
-void showInsertPdfPagesDialog(GtkWindow* parent, Settings* settings, std::function<void(fs::path)> callback);
 
 /// @param callback(path, attachImg)
 void showOpenImageDialog(GtkWindow* parent, Settings* settings, std::function<void(fs::path, bool)> callback);

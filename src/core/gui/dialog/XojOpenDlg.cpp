@@ -168,20 +168,6 @@ void xoj::OpenDlg::showAnnotatePdfDialog(GtkWindow* parent, Settings* settings,
     popup.show(parent);
 }
 
-void xoj::OpenDlg::showInsertPdfPagesDialog(GtkWindow* parent, Settings* settings,
-                                            std::function<void(fs::path)> callback) {
-    auto popup = xoj::popup::PopupWindowWrapper<FileDlg>(_("Insert Pages from PDF"),
-                                                         addSetLastSavePathToCallback(std::move(callback), settings));
-
-    auto* fc = GTK_FILE_CHOOSER(popup.getPopup()->getWindow());
-    xoj::addFilterPdf(fc);
-    xoj::addFilterAllFiles(fc);
-    addlastSavePathShortcut(fc, settings);
-    setCurrentFolderToLastOpenPath(fc, settings);
-
-    popup.show(parent);
-}
-
 void xoj::OpenDlg::showOpenImageDialog(GtkWindow* parent, Settings* settings,
                                        std::function<void(fs::path, bool)> callback) {
     auto popup = xoj::popup::PopupWindowWrapper<FileDlg>(_("Choose image file"),

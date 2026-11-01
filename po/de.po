@@ -5117,13 +5117,7 @@ msgstr "Verschieben nach…"
 msgid "Move “{1}”"
 msgstr "„{1}“ verschieben"
 
-#: ../src/core/control/InsertPdfPages.cpp
-msgid "Insert Pages from PDF"
-msgstr "Seiten aus PDF einfügen"
 
-#: ../ui/mainmenubar.xml
-msgid "Insert Pages from PDF…"
-msgstr "Seiten aus PDF einfügen…"
 
 #: ../src/core/undo/InsertPdfPagesUndoAction.cpp
 msgid "Insert pages from PDF"
@@ -5133,25 +5127,10 @@ msgstr "Seiten aus PDF einfügen"
 msgid "Insert"
 msgstr "Einfügen"
 
-#: ../src/core/control/InsertPdfPages.cpp
-msgid "“{1}” has {2} pages."
-msgstr "„{1}“ hat {2} Seiten."
 
-#: ../src/core/control/InsertPdfPages.cpp
-msgid "_Pages (e.g. 1-3, 5; empty for all):"
-msgstr "_Seiten (z. B. 1-3, 5; leer für alle):"
 
-#: ../src/core/control/InsertPdfPages.cpp
-msgid "After the _current page"
-msgstr "Nach der _aktuellen Seite"
 
-#: ../src/core/control/InsertPdfPages.cpp
-msgid "At the _end"
-msgstr "Am _Ende"
 
-#: ../src/core/control/InsertPdfPages.cpp
-msgid "Please enter page numbers between 1 and the number of pages, e.g. 1-3, 5."
-msgstr "Bitte Seitenzahlen zwischen 1 und der Seitenanzahl eingeben, z. B. 1-3, 5."
 
 #: ../src/core/control/InsertPdfPages.cpp
 msgid "{1} (combined).pdf"
@@ -5430,3 +5409,57 @@ msgstr "Änderungen verwerfen"
 #: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
 msgid "The changes could not be discarded."
 msgstr "Die Änderungen konnten nicht verworfen werden."
+
+#: ../src/core/gui/dialog/InsertPagesDialog.cpp
+msgid "Insert Pages"
+msgstr "Seiten einfügen"
+
+#: ../src/core/gui/dialog/InsertPagesDialog.cpp
+msgid "Pages of this document's PDF"
+msgstr "Seiten des Dokument-PDFs"
+
+#: ../src/core/gui/dialog/InsertPagesDialog.cpp
+msgid "Another PDF:"
+msgstr "Anderes PDF:"
+
+#: ../src/core/gui/dialog/InsertPagesDialog.cpp
+msgid "Choose PDF…"
+msgstr "PDF wählen…"
+
+#: ../src/core/gui/dialog/InsertPagesDialog.cpp
+msgid "Choose PDF"
+msgstr "PDF wählen"
+
+#: ../src/core/gui/dialog/InsertPagesDialog.cpp
+msgid "The PDF could not be read: {1}"
+msgstr "Das PDF konnte nicht gelesen werden: {1}"
+
+#: ../src/core/gui/dialog/InsertPagesDialog.cpp
+msgid "Pages already in the document are marked; the others are selected."
+msgstr "Seiten, die schon im Dokument sind, sind markiert; die anderen sind ausgewählt."
+
+#: ../src/core/gui/dialog/InsertPagesDialog.cpp
+msgid "Tap the pages to insert. They are stored with the document in a combined PDF."
+msgstr "Tippe auf die Seiten, die eingefügt werden sollen. Sie werden mit dem Dokument in einem zusammengeführten PDF gespeichert."
+
+#: ../src/core/gui/dialog/InsertPagesDialog.cpp
+msgid "in the document"
+msgstr "im Dokument"
+
+#: ../ui/mainmenubar.xml
+msgid "Insert _Pages…"
+msgstr "_Seiten einfügen…"
+
+#: ../src/core/gui/dialog/InsertPagesDialog.cpp
+msgid "{1} page selected"
+msgid_plural "{1} pages selected"
+msgstr[0] "{1} Seite ausgewählt"
+msgstr[1] "{1} Seiten ausgewählt"
+
+#: ../src/core/gui/dialog/InsertPagesDialog.cpp
+msgid "At the end"
+msgstr "Am Ende"
+
+#: ../src/core/gui/dialog/InsertPagesDialog.cpp
+msgid "After the current page"
+msgstr "Nach der aktuellen Seite"

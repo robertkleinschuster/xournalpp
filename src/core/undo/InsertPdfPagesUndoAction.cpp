@@ -22,7 +22,12 @@ InsertPdfPagesUndoAction::InsertPdfPagesUndoAction(std::vector<PageRef> pages, s
 auto InsertPdfPagesUndoAction::apply(Control* control, const fs::path& pdf, std::unique_ptr<std::string> pdfData,
                                      const std::vector<PageRef>& pages, size_t position) -> bool {
     Document* doc = control->getDocument();
-    if (pdf.empty()) {
+    doc->lock_shared();
+    const bool samePdf = !pdfData && pdf == doc->getPdfFilepath() && doc->getPdfPageCount() > 0;
+    doc->unlock_shared();
+    if (samePdf) {
+        // Pages of the background PDF it has already: nothing to load
+    } else if (pdf.empty()) {
         doc->lock();
         doc->resetPdf();
         doc->setPdfAttributes({}, false);

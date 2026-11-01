@@ -1,7 +1,7 @@
 /*
  * Xournal++
  *
- * Fork: combines pages of several PDFs into one background PDF ("Insert Pages from PDF")
+ * Fork: combines pages of several PDFs into one background PDF ("Insert Pages")
  *
  * @license GNU GPLv2 or later
  */

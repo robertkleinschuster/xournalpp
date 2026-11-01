@@ -914,42 +914,6 @@ void Control::insertNewPage(size_t position, bool automatedInsertion) {
     pageBackgroundChangeController->insertNewPage(position, automatedInsertion);
 }
 
-void Control::appendNewPdfPages() {
-    auto pageCount = this->doc->getPageCount();
-    // find last page with pdf background and get its pdf page number
-    auto currentPdfPageCount = [&]() {
-        for (size_t i = pageCount; i != 0; --i) {
-            if (auto page = doc->getPage(i - 1); page && page->getBackgroundType().isPdfPage()) {
-                return page->getPdfPageNr() + 1;
-            }
-        }
-        return size_t{0U};
-    }();
-
-    auto pdfPageCount = this->doc->getPdfPageCount();
-    auto insertCount = pdfPageCount - currentPdfPageCount;
-
-    if (insertCount == 0) {
-        string msg = FS(_F("No pdf pages available to append. You may need to reopen the document first."));
-        XojMsgBox::showErrorToUser(getGtkWindow(), msg);
-    }
-    for (size_t i = 0; i != insertCount; ++i) {
-
-        doc->lock_shared();
-        XojPdfPageSPtr pdf = doc->getPdfPage(currentPdfPageCount + i);
-        doc->unlock_shared();
-
-        if (pdf) {
-            auto newPage = std::make_shared<XojPage>(pdf->getWidth(), pdf->getHeight());
-            newPage->setBackgroundPdfPageNr(currentPdfPageCount + i);
-            insertPage(newPage, pageCount + i);
-        } else {
-            string msg = FS(_F("Unable to retrieve pdf page."));  // should not happen
-            XojMsgBox::showErrorToUser(getGtkWindow(), msg);
-        }
-    }
-}
-
 void Control::insertPage(const PageRef& page, size_t position, bool shouldScrollToPage) {
     this->doc->lock();
     this->doc->insertPage(page, position);  // insert the new page to the document and update page numbers

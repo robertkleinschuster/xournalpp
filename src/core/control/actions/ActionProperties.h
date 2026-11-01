@@ -592,7 +592,8 @@ struct ActionProperties<Action::MOVE_PAGE_TOWARDS_END> {
 
 template <>
 struct ActionProperties<Action::APPEND_NEW_PDF_PAGES> {
-    static void callback(GSimpleAction*, GVariant*, Control* ctrl) { ctrl->appendNewPdfPages(); }
+    // Fork: merged into the "Insert Pages" dialog, which preselects the pages not in the document yet
+    static void callback(GSimpleAction*, GVariant*, Control* ctrl) { InsertPdfPages::run(ctrl); }
 };
 template <>
 struct ActionProperties<Action::INSERT_PDF_PAGES> {
