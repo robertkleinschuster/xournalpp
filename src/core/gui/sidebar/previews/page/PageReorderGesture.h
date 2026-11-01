@@ -29,8 +29,13 @@ class PageReorderGesture {
 public:
     using Entries = std::vector<std::unique_ptr<SidebarPreviewBaseEntry>>;
 
+    /**
+     * @param onHold a finger held an entry and was lifted without moving: (entry, x, y in the entry's coordinates),
+     *               e.g. for its context menu
+     */
     PageReorderGesture(GtkFixed* container, GtkScrolledWindow* scrolledWindow, const Entries& entries,
-                       std::function<void(size_t from, size_t to)> onMove);
+                       std::function<void(size_t from, size_t to)> onMove,
+                       std::function<void(size_t entry, double x, double y)> onHold);
     ~PageReorderGesture();
 
     PageReorderGesture(const PageReorderGesture&) = delete;
@@ -55,6 +60,7 @@ private:
     GtkScrolledWindow* scrolledWindow;
     const Entries& entries;
     std::function<void(size_t, size_t)> onMove;
+    std::function<void(size_t, double, double)> onHold;
 
     xoj::util::GObjectSPtr<GtkGesture> gesture;
     xoj::util::WidgetSPtr marker;  ///< the line showing where the page goes
@@ -64,6 +70,7 @@ private:
     bool dragging = false;
     double startX = 0;
     double startY = 0;
+    double moved = 0;         ///< the farthest the pointer got from the start
     double pointerX = 0;      ///< container coordinates
     double pointerViewY = 0;  ///< relative to the visible part of the list, for auto scrolling
     guint holdTimeout = 0;

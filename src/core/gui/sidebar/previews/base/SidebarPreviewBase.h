@@ -17,6 +17,7 @@
 
 #include <gtk/gtk.h>  // for GtkWidget, GtkAllocation
 
+#include "gui/ContextMenuTrigger.h"           // for ContextMenuTrigger
 #include "gui/sidebar/AbstractSidebarPage.h"  // for AbstractSidebarPage
 #include "model/DocumentChangeType.h"         // for DocumentChangeType
 #include "util/Util.h"
@@ -83,9 +84,14 @@ protected:
 
 public:
     /**
-     * Opens a context menu, at the current cursor position.
+     * Opens the context menu where it was requested on the anchor (Fork: by right click, long press or keyboard, see
+     * ContextMenuTrigger)
      */
-    void openPreviewContextMenu(GdkEvent* currentEvent);
+    void openPreviewContextMenu(const ContextMenuTrigger::Request& request, GtkWidget* anchor);
+
+    /// Fork: whether holding a finger on a miniature opens the context menu; otherwise another gesture uses the hold
+    /// (pages: dragging, see PageReorderGesture) and asks for the menu if the finger is lifted without moving
+    virtual auto touchHoldOpensMenu() const -> bool { return true; }
 
 private:
     /**

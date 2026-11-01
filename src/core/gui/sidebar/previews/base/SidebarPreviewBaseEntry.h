@@ -11,7 +11,8 @@
 
 #pragma once
 
-#include <mutex>  // for mutex
+#include <memory>  // for unique_ptr
+#include <mutex>   // for mutex
 
 #include <cairo.h>    // for cairo_t, cairo_surface_t
 #include <glib.h>     // for gboolean
@@ -22,6 +23,7 @@
 #include "util/raii/GObjectSPtr.h"
 
 class SidebarPreviewBase;
+class ContextMenuTrigger;
 
 typedef enum {
     /**
@@ -52,6 +54,9 @@ public:
     virtual int getHeight() const;
 
     virtual void setSelected(bool selected);
+
+    /// Fork: opens the context menu as if requested at (x, y) in the widget's coordinates
+    void requestContextMenu(double x, double y);
 
     virtual void repaint();
     virtual void updateSize();
@@ -98,6 +103,9 @@ protected:
 
     /// The main widget, containing the miniature
     xoj::util::WidgetSPtr button;
+
+    /// Fork: declared after the button, so it is destroyed first
+    std::unique_ptr<ContextMenuTrigger> contextMenu;
 
     friend class PreviewJob;
 };

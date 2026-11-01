@@ -4,12 +4,13 @@
 #include <cmath>      // for hypot
 #include <utility>    // for move
 
+#include "gui/InputModality.h"                                  // for modalityOf, TOUCH_SLOP
 #include "gui/sidebar/previews/base/SidebarPreviewBaseEntry.h"  // for SidebarPreviewBaseEntry
 
 namespace {
-constexpr double DRAG_THRESHOLD = 12;  ///< pixels the mouse or pen moves before a drag starts
-constexpr double TOUCH_SLOP = 10;      ///< pixels a finger may move while holding; more is a swipe (scrolling)
-constexpr guint TOUCH_HOLD_MS = 400;   ///< how long a finger holds a miniature before it can be dragged
+using xoj::input::DRAG_THRESHOLD;      // the mouse or pen moves this far before a drag starts
+using xoj::input::TOUCH_HOLD_MS;       // a finger holds a miniature this long before it can be dragged
+using xoj::input::TOUCH_SLOP;          // a finger moving farther while holding is a swipe (scrolling)
 constexpr double SCROLL_EDGE = 48;     ///< pixels from the top or bottom edge in which the list scrolls
 constexpr double SCROLL_SPEED = 0.35;  ///< pixels per frame for each pixel the pointer is into the edge
 constexpr int MARKER_THICKNESS = 4;
@@ -35,11 +36,13 @@ auto drawMarker(GtkWidget* widget, cairo_t* cr, gpointer) -> gboolean {
 }  // namespace
 
 PageReorderGesture::PageReorderGesture(GtkFixed* container, GtkScrolledWindow* scrolledWindow, const Entries& entries,
-                                       std::function<void(size_t, size_t)> onMove):
+                                       std::function<void(size_t, size_t)> onMove,
+                                       std::function<void(size_t, double, double)> onHold):
         container(container),
         scrolledWindow(scrolledWindow),
         entries(entries),
         onMove(std::move(onMove)),
+        onHold(std::move(onHold)),
         gesture(gtk_gesture_drag_new(GTK_WIDGET(container)), xoj::util::adopt),
         marker(gtk_drawing_area_new(), xoj::util::adopt) {
     gtk_gesture_single_set_touch_only(GTK_GESTURE_SINGLE(gesture.get()), false);
@@ -88,10 +91,8 @@ void PageReorderGesture::begin(double x, double y) {
     startY = y;
     setPointer(x, y);
 
-    auto* sequence = gtk_gesture_single_get_current_sequence(GTK_GESTURE_SINGLE(gesture.get()));
-    const GdkEvent* event = gtk_gesture_get_last_event(gesture.get(), sequence);
-    GdkDevice* device = event ? gdk_event_get_source_device(event) : nullptr;
-    touch = device && gdk_device_get_source(device) == GDK_SOURCE_TOUCHSCREEN;
+    moved = 0;
+    touch = xoj::input::modalityOf(gesture.get()) == xoj::input::Modality::Touch;
     if (touch) {
         holdTimeout = g_timeout_add(
                 TOUCH_HOLD_MS,
@@ -109,6 +110,7 @@ void PageReorderGesture::update(double dx, double dy) {
     if (source == npos) {
         return;
     }
+    moved = std::max(moved, std::hypot(dx, dy));
     if (!dragging) {
         const double distance = std::hypot(dx, dy);
         if (touch && distance > TOUCH_SLOP) {
@@ -155,6 +157,21 @@ void PageReorderGesture::startDragging() {
 void PageReorderGesture::end() {
     if (!dragging) {
         reset();
+        return;
+    }
+    if (touch && moved <= TOUCH_SLOP) {
+        // Held and lifted without moving: the context menu, as a long press elsewhere
+        const size_t entry = source;
+        int x = 0;
+        int y = 0;
+        if (entry < entries.size()) {
+            gtk_widget_translate_coordinates(GTK_WIDGET(container), entries[entry]->getWidget(),
+                                             static_cast<int>(startX), static_cast<int>(startY), &x, &y);
+        }
+        reset();
+        if (entry < entries.size() && onHold) {
+            onHold(entry, x, y);
+        }
         return;
     }
     auto* adjustment = gtk_scrolled_window_get_vadjustment(scrolledWindow);

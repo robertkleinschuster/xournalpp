@@ -5,13 +5,14 @@
 
 #include <gtk/gtk.h>
 
+#include "gui/InputModality.h"  // for modalityOf, TOUCH_SLOP
 #include "gui/InputSafety.h"
 
 #ifdef _WIN32
 namespace {
 
 /// Movement (in pixels) after which a touch counts as a drag (e.g. scrolling a list) instead of a tap
-constexpr double TAP_SLOP = 12.0;
+constexpr double TAP_SLOP = xoj::input::TOUCH_SLOP;
 
 /// The touch sequence currently tapping a button, if any
 struct Tap {
@@ -171,10 +172,7 @@ auto handleMenuTouch(GdkEvent* event) -> bool {
 /// A tap emulated as mouse press was consumed by handleMenuPointer(); its release decides what happens
 bool menuPressConsumed = false;
 
-auto isFromTouchscreen(GdkEvent* event) -> bool {
-    GdkDevice* device = gdk_event_get_source_device(event);
-    return device && gdk_device_get_source(device) == GDK_SOURCE_TOUCHSCREEN;
-}
+auto isFromTouchscreen(GdkEvent* event) -> bool { return xoj::input::modalityOf(event) == xoj::input::Modality::Touch; }
 
 /**
  * Windows delivers taps on the menu bar as emulated mouse events from the touchscreen (enter, press, leave, release

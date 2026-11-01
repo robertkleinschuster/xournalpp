@@ -3,6 +3,7 @@
 #include <algorithm>  // for sort, find
 #include <array>      // for array
 #include <cstdint>    // for INT32_MAX
+#include <memory>     // for unique_ptr
 #include <optional>   // for optional
 #include <set>        // for set
 #include <string>     // for string
@@ -15,6 +16,7 @@
 #include "control/Control.h"                  // for Control
 #include "control/tasks/TaskFiles.h"          // for TaskFiles
 #include "control/tasks/TodoTxt.h"            // for TodoTxt
+#include "gui/ContextMenuTrigger.h"           // for ContextMenuTrigger
 #include "gui/TaskNotifier.h"                 // for TaskNotifier
 #include "gui/sidebar/AbstractSidebarPage.h"  // for AbstractSidebarPage
 #include "gui/sidebar/Sidebar.h"              // for Sidebar
@@ -241,12 +243,8 @@ public:
                              static_cast<TasksSidebar*>(self)->activated(path, column);
                          }),
                          this);
-        g_signal_connect(tree, "button-press-event", G_CALLBACK(onButtonPress), this);
-        // A long press opens the menu by touch; taps arrive as emulated mouse events, so it cannot be touch only
-        longPress = gtk_gesture_long_press_new(GTK_WIDGET(tree));
-        gtk_gesture_single_set_touch_only(GTK_GESTURE_SINGLE(longPress), false);
-        g_signal_connect(longPress, "pressed", G_CALLBACK(onLongPress), this);
-        g_signal_connect(longPress, "end", G_CALLBACK(onLongPressEnd), this);
+        contextMenu = std::make_unique<ContextMenuTrigger>(
+                GTK_WIDGET(tree), [this](const ContextMenuTrigger::Request& request) { showMenu(request); });
 
         scrolled = gtk_scrolled_window_new(nullptr, nullptr);
         gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scrolled), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
@@ -298,7 +296,7 @@ public:
                 g_source_remove(source);
             }
         }
-        g_object_unref(longPress);
+        contextMenu.reset();
         g_object_unref(store);
         g_object_unref(root);
     }
@@ -328,39 +326,6 @@ private:
         fs::path document;
         int page = -1;
     };
-
-    static auto onButtonPress(GtkWidget*, GdkEventButton* event, TasksSidebar* self) -> gboolean {
-        if (event->type == GDK_BUTTON_PRESS && event->button == 3) {
-            self->showMenu(static_cast<gint>(event->x), static_cast<gint>(event->y),
-                           reinterpret_cast<GdkEvent*>(event));
-            return true;
-        }
-        return false;
-    }
-
-    static void onLongPress(GtkGesture* gesture, double x, double y, TasksSidebar* self) {
-        // The physical device (gtk_gesture_get_device() returns the logical pointer, which is always a mouse)
-        const GdkEvent* event = gtk_gesture_get_last_event(
-                gesture, gtk_gesture_single_get_current_sequence(GTK_GESTURE_SINGLE(gesture)));
-        GdkDevice* device = event ? gdk_event_get_source_device(event) : nullptr;
-        const auto source = device ? gdk_device_get_source(device) : GDK_SOURCE_MOUSE;
-        if (source != GDK_SOURCE_TOUCHSCREEN) {
-            return;  // the mouse and the pen open the menu with a right click (pen: barrel button)
-        }
-        gint binX = 0;
-        gint binY = 0;
-        gtk_tree_view_convert_widget_to_bin_window_coords(self->tree, static_cast<gint>(x), static_cast<gint>(y), &binX,
-                                                          &binY);
-        gtk_gesture_set_state(gesture, GTK_EVENT_SEQUENCE_CLAIMED);  // the release does not also activate the row
-        self->longPressAt = std::pair{binX, binY};
-    }
-
-    /// Opens the menu once the finger is lifted, otherwise lifting it would choose the menu entry below it
-    static void onLongPressEnd(GtkGesture*, GdkEventSequence*, TasksSidebar* self) {
-        if (auto at = std::exchange(self->longPressAt, std::nullopt)) {
-            self->showMenuAtBin(at->first, at->second, nullptr);
-        }
-    }
 
     // --- Loading ---
 
@@ -757,16 +722,10 @@ private:
 
     // --- Context menu ---
 
-    void showMenu(gint x, gint y, GdkEvent* event) {
-        gint binX = 0;
-        gint binY = 0;
-        gtk_tree_view_convert_widget_to_bin_window_coords(tree, x, y, &binX, &binY);
-        showMenuAtBin(binX, binY, event);
-    }
-
-    void showMenuAtBin(gint x, gint y, GdkEvent* event) {
-        GtkTreePath* path = nullptr;
-        if (!gtk_tree_view_get_path_at_pos(tree, x, y, &path, nullptr, nullptr, nullptr)) {
+    void showMenu(const ContextMenuTrigger::Request& request) {
+        auto at = request;
+        GtkTreePath* path = ContextMenuTrigger::rowOf(tree, at);
+        if (!path) {
             return;
         }
         const Entry* found = entryAt(path);
@@ -793,19 +752,7 @@ private:
                 replace(entry, {});
             }
         });
-        gtk_widget_show_all(menu);
-        gtk_menu_attach_to_widget(GTK_MENU(menu), GTK_WIDGET(tree), nullptr);
-        // Items are activated after "deactivate", so destroy the menu only once the main loop is idle again
-        g_signal_connect(menu, "deactivate", G_CALLBACK(+[](GtkMenuShell* shell, gpointer) {
-                             g_idle_add(
-                                     +[](gpointer widget) -> gboolean {
-                                         gtk_widget_destroy(GTK_WIDGET(widget));
-                                         return G_SOURCE_REMOVE;
-                                     },
-                                     shell);
-                         }),
-                         nullptr);
-        gtk_menu_popup_at_pointer(GTK_MENU(menu), event);
+        ContextMenuTrigger::popup(GTK_MENU(menu), GTK_WIDGET(tree), at, true);
     }
 
     template <class Fn>
@@ -983,7 +930,6 @@ private:
     std::set<int> collapsed;   ///< groups the user collapsed
     std::set<int> seenGroups;  ///< groups shown before, so the completed ones only start collapsed
     std::optional<PendingLink> pendingLink;
-    std::optional<std::pair<gint, gint>> longPressAt;
 
     GtkWidget* root{};
     GtkWidget* entry{};
@@ -994,7 +940,7 @@ private:
     GtkTreeView* tree{};
     GtkTreeViewColumn* toggleColumn{};
     GtkTreeStore* store{};
-    GtkGesture* longPress{};
+    std::unique_ptr<ContextMenuTrigger> contextMenu;
 };
 
 }  // namespace

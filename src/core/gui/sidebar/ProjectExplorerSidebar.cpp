@@ -22,6 +22,7 @@
 #include "control/settings/Settings.h"
 #include "control/tasks/TaskFiles.h"  // for isTaskFile
 #include "control/xojfile/SaveHandler.h"
+#include "gui/ContextMenuTrigger.h"
 #include "gui/GladeSearchpath.h"
 #include "gui/MainWindow.h"
 #include "gui/sidebar/AbstractSidebarPage.h"
@@ -333,7 +334,6 @@ public:
         g_signal_connect(tree, "row-expanded", G_CALLBACK(onRowExpanded), this);
         g_signal_connect(tree, "row-collapsed", G_CALLBACK(onRowCollapsed), this);
         g_signal_connect(tree, "row-activated", G_CALLBACK(onRowActivated), this);
-        g_signal_connect(tree, "button-press-event", G_CALLBACK(onButtonPress), this);
         g_signal_connect(tree, "key-press-event", G_CALLBACK(onKeyPress), this);
         g_signal_connect(gtk_tree_view_get_selection(tree), "changed",
                          G_CALLBACK(+[](GtkTreeSelection*, gpointer data) {
@@ -348,13 +348,8 @@ public:
                          }),
                          this);
 
-        longPress = gtk_gesture_long_press_new(GTK_WIDGET(tree));
-        // Windows does not turn a long press into a right click here: GTK receives touch as touch events, and
-        // PenFeedbackFix turns off press-and-hold for the window (it fired while writing). The gesture cannot be touch
-        // only, as Windows delivers taps as emulated mouse events; onLongPress() reacts to the touchscreen only.
-        gtk_gesture_single_set_touch_only(GTK_GESTURE_SINGLE(longPress), false);
-        g_signal_connect(longPress, "pressed", G_CALLBACK(onLongPress), this);
-        g_signal_connect(longPress, "end", G_CALLBACK(onLongPressEnd), this);
+        contextMenu = std::make_unique<ContextMenuTrigger>(
+                GTK_WIDGET(tree), [this](const ContextMenuTrigger::Request& request) { showContextMenu(request); });
 
         scrolled = gtk_scrolled_window_new(nullptr, nullptr);
         gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scrolled), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
@@ -455,7 +450,7 @@ public:
             g_signal_handlers_disconnect_by_data(searchEntry, this);
             g_object_remove_weak_pointer(G_OBJECT(searchEntry), reinterpret_cast<gpointer*>(&searchEntry));
         }
-        g_object_unref(longPress);
+        contextMenu.reset();
         g_object_unref(root);
         for (auto* icon: {folderIcon, folderOpenIcon, imageIcon, fileIcon, xournalIcon, pdfIcon, annotatedPdfIcon,
                           trashIcon, tasksIcon}) {
@@ -1626,51 +1621,14 @@ private:
         return Util::fromUtf8(pathAt(&parentIter).c_str());
     }
 
-    static auto onButtonPress(GtkWidget*, GdkEventButton* event, ProjectExplorerSidebar* self) -> gboolean {
-        if (!gdk_event_triggers_context_menu(reinterpret_cast<GdkEvent*>(event)) ||
-            event->window != gtk_tree_view_get_bin_window(self->tree)) {
-            return false;
-        }
-        self->showContextMenu(static_cast<gint>(event->x), static_cast<gint>(event->y),
-                              reinterpret_cast<GdkEvent*>(event));
-        return true;
-    }
-
-    static void onLongPress(GtkGesture* gesture, gdouble x, gdouble y, ProjectExplorerSidebar* self) {
-        // The physical device: gtk_gesture_get_device() returns the logical pointer, which is always a mouse, so a
-        // long press never opened the menu
-        const GdkEvent* event = gtk_gesture_get_last_event(
-                gesture, gtk_gesture_single_get_current_sequence(GTK_GESTURE_SINGLE(gesture)));
-        GdkDevice* device = event ? gdk_event_get_source_device(event) : nullptr;
-        const auto source = device ? gdk_device_get_source(device) : GDK_SOURCE_MOUSE;
-        if (source != GDK_SOURCE_TOUCHSCREEN) {
-            return;  // the mouse and the pen open the menu with a right click (pen: barrel button)
-        }
-        gint binX = 0;
-        gint binY = 0;
-        gtk_tree_view_convert_widget_to_bin_window_coords(self->tree, static_cast<gint>(x), static_cast<gint>(y), &binX,
-                                                          &binY);
-        // Claim the sequence so the release does not also activate the row
-        gtk_gesture_set_state(gesture, GTK_EVENT_SEQUENCE_CLAIMED);
-        self->longPressAt = std::pair{binX, binY};
-    }
-
-    /// Opens the context menu once the finger is lifted: under a finger still on the screen, lifting it would
-    /// activate the menu entry below it
-    static void onLongPressEnd(GtkGesture*, GdkEventSequence*, ProjectExplorerSidebar* self) {
-        if (auto at = std::exchange(self->longPressAt, std::nullopt)) {
-            self->showContextMenu(at->first, at->second, nullptr);
-        }
-    }
-
     // --- Context menu ---
 
-    void showContextMenu(gint x, gint y, GdkEvent* event) {
-        GtkTreePath* path = nullptr;
+    void showContextMenu(const ContextMenuTrigger::Request& request) {
+        auto at = request;
         gint kind = KIND_PLACEHOLDER;
         std::string target;
         fs::path document;  // what "Open" opens: the entry itself, or the document a nested PDF belongs to
-        if (gtk_tree_view_get_path_at_pos(tree, x, y, &path, nullptr, nullptr, nullptr)) {
+        if (GtkTreePath* path = ContextMenuTrigger::rowOf(tree, at)) {
             GtkTreeIter iter;
             if (gtk_tree_model_get_iter(model(), &iter, path)) {
                 kind = kindAt(&iter);
@@ -1689,7 +1647,7 @@ private:
             addMenuItem(menu, _("Copy Path"), [target] {
                 gtk_clipboard_set_text(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD), target.c_str(), -1);
             });
-            popupMenu(menu, event);
+            popupMenu(menu, at);
             return;
         }
         if (kind == KIND_DOCUMENT || kind == KIND_NESTED) {
@@ -1741,23 +1699,11 @@ private:
         addMenuItem(menu, _("Open Folder…"), [this] { chooseFolder(); });
         addMenuItem(menu, _("Close Folder"), [this] { closeProject(); }, !projectRoot.empty());
 
-        popupMenu(menu, event);
+        popupMenu(menu, at);
     }
 
-    void popupMenu(GtkWidget* menu, GdkEvent* event) {
-        gtk_widget_show_all(menu);
-        gtk_menu_attach_to_widget(GTK_MENU(menu), GTK_WIDGET(tree), nullptr);
-        // Items are activated after "deactivate", so destroy the menu only once the main loop is idle again
-        g_signal_connect(menu, "deactivate", G_CALLBACK(+[](GtkMenuShell* shell, gpointer) {
-                             g_idle_add(
-                                     +[](gpointer widget) -> gboolean {
-                                         gtk_widget_destroy(GTK_WIDGET(widget));
-                                         return G_SOURCE_REMOVE;
-                                     },
-                                     shell);
-                         }),
-                         nullptr);
-        gtk_menu_popup_at_pointer(GTK_MENU(menu), event);
+    void popupMenu(GtkWidget* menu, const ContextMenuTrigger::Request& at) {
+        ContextMenuTrigger::popup(GTK_MENU(menu), GTK_WIDGET(tree), at, true);
     }
 
     void collapseAll() {
@@ -2817,8 +2763,7 @@ private:
             refreshGit();
         }
     }
-    GtkGesture* longPress{};
-    std::optional<std::pair<gint, gint>> longPressAt;  ///< where a long press was recognized, until it ends
+    std::unique_ptr<ContextMenuTrigger> contextMenu;
     fs::path projectRoot;
     std::string query;
     bool searching = false;

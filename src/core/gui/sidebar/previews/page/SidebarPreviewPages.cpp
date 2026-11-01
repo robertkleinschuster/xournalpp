@@ -25,9 +25,14 @@ constexpr auto TOOLBAR_ID = "PreviewPagesToolbar";
 
 SidebarPreviewPages::SidebarPreviewPages(Control* control):
         SidebarPreviewBase(control, MENU_ID, TOOLBAR_ID), iconNameHelper(control->getSettings()) {
-    reorder = std::make_unique<PageReorderGesture>(miniaturesContainer.get(), GTK_SCROLLED_WINDOW(scrollableBox.get()),
-                                                   previews,
-                                                   [control](size_t from, size_t to) { control->movePage(from, to); });
+    reorder = std::make_unique<PageReorderGesture>(
+            miniaturesContainer.get(), GTK_SCROLLED_WINDOW(scrollableBox.get()), previews,
+            [control](size_t from, size_t to) { control->movePage(from, to); },
+            [this](size_t entry, double x, double y) {
+                if (entry < previews.size()) {
+                    previews[entry]->requestContextMenu(x, y);
+                }
+            });
 }
 
 SidebarPreviewPages::~SidebarPreviewPages() = default;

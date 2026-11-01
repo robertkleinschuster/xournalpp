@@ -34,6 +34,10 @@ public:
     SidebarPreviewPages(Control* control);
     ~SidebarPreviewPages() override;
 
+    /// Fork: holding a finger on a miniature starts dragging it (PageReorderGesture); lifted without moving, it
+    /// opens the context menu
+    auto touchHoldOpensMenu() const -> bool override { return false; }
+
 public:
     void enableSidebar() override;
 

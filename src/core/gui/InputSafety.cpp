@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <string>
 
+#include "gui/InputModality.h"  // for modalityOf
 #include "util/PathUtil.h"
 
 #include "filesystem.h"
@@ -142,14 +143,7 @@ void hideTooltips() {
     g_list_free(windows);
 }
 
-auto isPenOrTouch(GdkEvent* event) -> bool {
-    GdkDevice* device = gdk_event_get_source_device(event);
-    if (!device) {
-        return false;
-    }
-    const auto source = gdk_device_get_source(device);
-    return source == GDK_SOURCE_PEN || source == GDK_SOURCE_ERASER || source == GDK_SOURCE_TOUCHSCREEN;
-}
+auto isPenOrTouch(GdkEvent* event) -> bool { return xoj::input::modalityOf(event) != xoj::input::Modality::Mouse; }
 
 // --- Menu grabs ---
 

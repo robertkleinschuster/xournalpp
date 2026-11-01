@@ -7,6 +7,7 @@
 #include "control/Control.h"                // for Control
 #include "control/jobs/XournalScheduler.h"  // for XournalScheduler
 #include "control/settings/Settings.h"      // for Settings
+#include "gui/ContextMenuTrigger.h"         // for ContextMenuTrigger
 #include "gui/Shadow.h"                     // for Shadow
 #include "model/XojPage.h"                  // for XojPage
 #include "util/Color.h"                     // for cairo_set_source_rgbi
@@ -31,20 +32,18 @@ SidebarPreviewBaseEntry::SidebarPreviewBaseEntry(SidebarPreviewBase* sidebar, co
                      }),
                      this);
 
-    const auto clickCallback = G_CALLBACK(+[](GtkWidget*, GdkEvent* event, gpointer self) {
-        // Open context menu on right mouse click
-        if (event->type == GDK_BUTTON_PRESS) {
-            auto mouseEvent = reinterpret_cast<GdkEventButton*>(event);
-            if (mouseEvent->button == 3) {
-                static_cast<SidebarPreviewBaseEntry*>(self)->mouseButtonPressCallback();
-                static_cast<SidebarPreviewBaseEntry*>(self)->sidebar->openPreviewContextMenu(event);
-                return true;
-            }
-        }
-        return false;
-    });
-    g_signal_connect_after(this->button.get(), "button-press-event", clickCallback, this);
+    // Fork: right click, long press or keyboard; the entry is selected first, as the menu acts on the selection
+    this->contextMenu = std::make_unique<ContextMenuTrigger>(
+            this->button.get(),
+            [this](const ContextMenuTrigger::Request& request) {
+                mouseButtonPressCallback();
+                this->sidebar->openPreviewContextMenu(request, this->button.get());
+            },
+            sidebar->touchHoldOpensMenu() ? ContextMenuTrigger::TouchHold::OpensMenu :
+                                            ContextMenuTrigger::TouchHold::HandledElsewhere);
 }
+
+void SidebarPreviewBaseEntry::requestContextMenu(double x, double y) { this->contextMenu->request(x, y); }
 
 SidebarPreviewBaseEntry::~SidebarPreviewBaseEntry() {
     this->sidebar->getControl()->getScheduler()->removeSidebar(this);

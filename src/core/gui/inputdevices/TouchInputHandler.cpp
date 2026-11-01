@@ -10,6 +10,7 @@
 #include "control/Control.h"                        // for Control
 #include "control/settings/Settings.h"              // for Settings
 #include "control/zoom/ZoomControl.h"               // for ZoomControl
+#include "gui/InputModality.h"                      // for TOUCH_SLOP, TOUCH_HOLD_MS
 #include "gui/Layout.h"                             // for Layout
 #include "gui/MainWindow.h"                         // for MainWindow
 #include "gui/PageView.h"                           // for XojPageView
@@ -20,8 +21,9 @@
 #include "InputContext.h"  // for InputContext
 
 namespace {
-constexpr double TAP_SLOP = 12;  ///< pixels a finger may move during a tap
-constexpr guint32 TAP_MAX_DURATION_MS = 500;
+constexpr double TAP_SLOP = xoj::input::TOUCH_SLOP;  ///< pixels a finger may move during a tap
+/// A tap is shorter than a long press (the same everywhere, see InputModality.h)
+constexpr guint32 TAP_MAX_DURATION_MS = xoj::input::TOUCH_HOLD_MS;
 }  // namespace
 
 #ifdef _WIN32

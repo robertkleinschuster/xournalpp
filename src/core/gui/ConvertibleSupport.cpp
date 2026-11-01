@@ -9,6 +9,7 @@
 
 #include "control/Control.h"
 #include "control/settings/Settings.h"
+#include "gui/InputModality.h"  // for modalityOf
 #include "gui/MainWindow.h"
 
 #ifdef _WIN32  // separate block, so it stays last: its macros clash with names in the headers above
@@ -197,10 +198,9 @@ auto focusedByTouchOrPen() -> bool {
     if (!event) {
         return false;
     }
-    GdkDevice* device = gdk_event_get_source_device(event);
-    const auto type = device ? gdk_device_get_source(device) : GDK_SOURCE_MOUSE;
+    const bool touchOrPen = xoj::input::modalityOf(event) != xoj::input::Modality::Mouse;
     gdk_event_free(event);
-    return type == GDK_SOURCE_TOUCHSCREEN || type == GDK_SOURCE_PEN || type == GDK_SOURCE_ERASER;
+    return touchOrPen;
 }
 
 auto onFocusIn(GSignalInvocationHint*, guint, const GValue* params, gpointer) -> gboolean {
