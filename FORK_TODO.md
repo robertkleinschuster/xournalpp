@@ -2,6 +2,16 @@
 
 Feature ideas for this fork that are not implemented yet. See `AGENTS.md` for the scope of the fork.
 
+## To check on the device
+
+Things that cannot be verified on the hidden test desktop (no real touch, no notification area):
+
+- Task reminders: a task due a few minutes ahead shows a Windows notification; a click opens the Tasks tab.
+- A short finger tap on a PDF link shows the "Go to" popover with any tool.
+- Page previews: dragging a miniature with the finger after holding it for 0.4 s; swiping still scrolls.
+- "Insert Pages": tapping thumbnails selects/deselects them smoothly by finger and pen.
+- Menus and tooltips by pen/touch: nothing stays open or blocks the window (see the input log below).
+
 ## Planned
 
 ### Robust pen and touch input in GTK widgets
