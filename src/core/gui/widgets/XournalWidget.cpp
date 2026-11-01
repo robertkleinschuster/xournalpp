@@ -251,6 +251,16 @@ static void gtk_xournal_draw_shadow(GtkXournal* xournal, cairo_t* cr, int left, 
     }
 }
 
+/**
+ * Fork: the scroll position the content is drawn at, rounded to whole device pixels. Touch and touchpad scrolling
+ * leave fractional positions, at which every page was blended with bilinear filtering: slower and blurry.
+ */
+static auto gtk_xournal_draw_origin(GtkXournal* xournal) -> xoj::util::Point<double> {
+    const double scale = gtk_widget_get_scale_factor(GTK_WIDGET(xournal));
+    return {std::round(gtk_adjustment_get_value(xournal->hadjustment) * scale) / scale,
+            std::round(gtk_adjustment_get_value(xournal->vadjustment) * scale) / scale};
+}
+
 void gtk_xournal_repaint_area(GtkWidget* widget, int x1, int y1, int x2, int y2) {
     g_return_if_fail(widget != nullptr);
     g_return_if_fail(GTK_IS_XOURNAL(widget));
@@ -260,8 +270,8 @@ void gtk_xournal_repaint_area(GtkWidget* widget, int x1, int y1, int x2, int y2)
         return;
     }
 
-    Range visible(xoj::util::Rectangle<double>(gtk_adjustment_get_value(GTK_XOURNAL(widget)->hadjustment),
-                                               gtk_adjustment_get_value(GTK_XOURNAL(widget)->vadjustment),
+    const auto origin = gtk_xournal_draw_origin(GTK_XOURNAL(widget));
+    Range visible(xoj::util::Rectangle<double>(origin.x, origin.y,
                                                gtk_adjustment_get_page_size(GTK_XOURNAL(widget)->hadjustment),
                                                gtk_adjustment_get_page_size(GTK_XOURNAL(widget)->vadjustment)));
 
@@ -317,8 +327,8 @@ static auto gtk_xournal_draw(GtkWidget* widget, cairo_t* cr) -> gboolean {
 
     GtkXournal* xournal = GTK_XOURNAL(widget);
 
-    cairo_translate(cr, -gtk_adjustment_get_value(xournal->hadjustment),
-                    -gtk_adjustment_get_value(xournal->vadjustment));
+    const auto origin = gtk_xournal_draw_origin(xournal);
+    cairo_translate(cr, -origin.x, -origin.y);
 
     Range clip;
     cairo_clip_extents(cr, &clip.minX, &clip.minY, &clip.maxX, &clip.maxY);
