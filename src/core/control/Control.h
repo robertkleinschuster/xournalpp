@@ -92,6 +92,11 @@ public:
 public:
     /// Asymchronously closes the current document and replaces it by a new file
     void newFile(fs::path filepath = {});
+    /**
+     * Fork: replaces the closed document with an empty one, without asking. Closing keeps the background PDF loaded,
+     * and poppler keeps its file open, so it could not be moved, deleted or restored on Windows until then.
+     */
+    void releaseDocumentFiles();
 
     /// @brief Shows an open file dialog and opens the selected file after closing the previously opened file
     void askToOpenFile();

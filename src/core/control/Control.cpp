@@ -1551,6 +1551,8 @@ void Control::newFile(fs::path filepath) {
             true);
 }
 
+void Control::releaseDocumentFiles() { replaceDocument(createNewDocument(this, fs::path(), std::nullopt), -1); }
+
 /**
  * Check if this is an autosave file, return false in this case and display a user instruction
  */

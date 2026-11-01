@@ -1704,6 +1704,9 @@ private:
             });
             addMenuItem(menu, _("Delete"),
                         [this, target, kind] { deleteEntry(Util::fromUtf8(target.c_str()), kind == KIND_DIRECTORY); });
+            if (auto changed = changedFilesOf(Util::fromUtf8(target.c_str()), kind); !changed.empty()) {
+                addMenuItem(menu, _("Discard Changes…"), [this, changed] { discardChanges(changed); });
+            }
             addMenuSeparator(menu);
         }
         if (kind != KIND_PLACEHOLDER) {
@@ -2276,6 +2279,7 @@ private:
                         if (alive.expired() || !closed) {
                             return;
                         }
+                        control->releaseDocumentFiles();
                         const auto reopen = perform(open).value_or(open);
                         std::error_code error;
                         if (!reopen.empty() && fs::exists(reopen, error)) {
@@ -2541,33 +2545,138 @@ private:
 
     void deleteEntry(const fs::path& path, bool directory) {
         const auto name = Util::toUtf8(path.filename());
+        // A document with its PDF and exported PDF: they can go along
+        const auto group = !directory && isXoppFile(path) ? AnnotationFiles::groupFiles(path, *control->getSettings()) :
+                                                            std::vector<fs::path>{path};
+        enum { DELETE_ONE = 1, DELETE_GROUP };
         auto* dialog = gtk_message_dialog_new(parent, GTK_DIALOG_MODAL, GTK_MESSAGE_QUESTION, GTK_BUTTONS_NONE, "%s",
                                               FC(_F("Delete “{1}”?") % name));
-        gtk_message_dialog_format_secondary_text(
-                GTK_MESSAGE_DIALOG(dialog), "%s",
-                directory ? _("The folder and everything in it will be moved to the trash.") :
-                            _("The file will be moved to the trash."));
+        std::string details = directory ? _("The folder and everything in it will be moved to the trash.") :
+                                          _("The file will be moved to the trash.");
+        if (group.size() > 1) {
+            details += std::string("\n\n") + _("Belonging to the document:");
+            for (size_t i = 1; i < group.size(); i++) {
+                details += "\n• " + Util::toUtf8(group[i].filename());
+            }
+        }
+        gtk_message_dialog_format_secondary_text(GTK_MESSAGE_DIALOG(dialog), "%s", details.c_str());
         gtk_dialog_add_button(GTK_DIALOG(dialog), _("Cancel"), GTK_RESPONSE_CANCEL);
-        auto* deleteButton = gtk_dialog_add_button(GTK_DIALOG(dialog), _("Delete"), GTK_RESPONSE_ACCEPT);
+        auto* deleteButton = gtk_dialog_add_button(GTK_DIALOG(dialog),
+                                                   group.size() > 1 ? _("Only the Document") : _("Delete"), DELETE_ONE);
+        if (group.size() > 1) {
+            deleteButton = gtk_dialog_add_button(GTK_DIALOG(dialog), _("Delete All"), DELETE_GROUP);
+        }
         gtk_style_context_add_class(gtk_widget_get_style_context(deleteButton), "destructive-action");
         gtk_dialog_set_default_response(GTK_DIALOG(dialog), GTK_RESPONSE_CANCEL);
         const auto response = gtk_dialog_run(GTK_DIALOG(dialog));
         gtk_widget_destroy(dialog);
-        if (response != GTK_RESPONSE_ACCEPT) {
+        if (response != DELETE_ONE && response != DELETE_GROUP) {
             return;
         }
+        const auto paths = response == DELETE_GROUP ? group : std::vector<fs::path>{path};
 
         // The user deletes the open document on purpose: its unsaved changes are discarded instead of saving them
         // (which would write the deleted file again). If only its PDF goes, the annotations are kept.
         const auto open = control->getDocument()->getFilepath();
         const bool deletesDocument = !open.empty() && Util::isChildOrEquivalent(open, path);
         withOpenDocumentClosed(
-                {path},
-                [this, path, deletesDocument](const fs::path& open) -> std::optional<fs::path> {
-                    trash(path);
+                paths,
+                [this, paths, deletesDocument](const fs::path& open) -> std::optional<fs::path> {
+                    for (const auto& file: paths) {
+                        if (!trash(file)) {
+                            break;  // the error was shown
+                        }
+                    }
                     return deletesDocument ? fs::path() : open;
                 },
                 deletesDocument);
+    }
+
+    // --- Discarding changes ---
+
+    /**
+     * The files git tracks that changed since the last commit: of a document, those of its group (the document, the
+     * PDF it owns, its export); otherwise the file itself. New, untracked files are not included: discarding them
+     * would mean deleting them.
+     */
+    auto changedFilesOf(const fs::path& path, gint kind) const -> std::vector<fs::path> {
+        std::vector<fs::path> changed;
+        if (!gitRepo || kind == KIND_DIRECTORY || isDeletedKind(kind) || kind == KIND_PLACEHOLDER) {
+            return changed;
+        }
+        const auto candidates = kind == KIND_DOCUMENT && isXoppFile(path) ?
+                                        AnnotationFiles::groupFiles(path, *control->getSettings()) :
+                                        std::vector<fs::path>{path};
+        for (const auto& file: candidates) {
+            auto state = gitStatus.files.find(ProjectGit::pathKey(file));
+            if (state != gitStatus.files.end() && state->second == ProjectGit::FileState::Modified) {
+                changed.push_back(file);
+            }
+        }
+        return changed;
+    }
+
+    /// Resets the files to the last commit, after asking. The open document is closed first, without saving.
+    void discardChanges(const std::vector<fs::path>& files) {
+        std::string names;
+        for (const auto& file: files) {
+            names += (names.empty() ? "• " : "\n• ") + Util::toUtf8(file.filename());
+        }
+        auto* dialog = gtk_message_dialog_new(parent, GTK_DIALOG_MODAL, GTK_MESSAGE_QUESTION, GTK_BUTTONS_NONE, "%s",
+                                              _("Discard the changes since the last sync?"));
+        gtk_message_dialog_format_secondary_text(
+                GTK_MESSAGE_DIALOG(dialog), "%s",
+                (names + "\n\n" + _("The files are reset to the state of the last sync. This cannot be undone."))
+                        .c_str());
+        gtk_dialog_add_button(GTK_DIALOG(dialog), _("Cancel"), GTK_RESPONSE_CANCEL);
+        auto* discard = gtk_dialog_add_button(GTK_DIALOG(dialog), _("Discard Changes"), GTK_RESPONSE_ACCEPT);
+        gtk_style_context_add_class(gtk_widget_get_style_context(discard), "destructive-action");
+        gtk_dialog_set_default_response(GTK_DIALOG(dialog), GTK_RESPONSE_CANCEL);
+        const auto response = gtk_dialog_run(GTK_DIALOG(dialog));
+        gtk_widget_destroy(dialog);
+        if (response != GTK_RESPONSE_ACCEPT || gitToplevel.empty()) {
+            return;
+        }
+
+        std::vector<std::string> args = {"restore", "--source=HEAD", "--staged", "--worktree", "--"};
+        for (const auto& file: files) {
+            args.push_back(Util::toUtf8(file));
+        }
+        auto restore = [this, args](std::function<void()> done) {
+            ProjectGit::run(gitToplevel, args, lifetime, [this, done](auto result) {
+                if (!result.success) {
+                    showError(_("The changes could not be discarded."), result.error);
+                }
+                refreshGit([this, done] {
+                    refresh(true);
+                    done();
+                });
+            });
+        };
+        if (!affectsOpenDocument(files)) {
+            restore([] {});
+            return;
+        }
+        // The open document goes back to the committed state: close it without saving, reopen it afterwards
+        const auto open = control->getDocument()->getFilepath();
+        const auto page = static_cast<int>(control->getCurrentPageNo());
+        std::weak_ptr<void> alive = lifetime;
+        control->close(
+                [this, alive, restore, open, page](bool closed) {
+                    if (alive.expired() || !closed) {
+                        return;
+                    }
+                    control->releaseDocumentFiles();  // git can only replace the PDF once it is no longer open
+                    restore([this, open, page] {
+                        std::error_code error;
+                        if (!open.empty() && fs::exists(open, error)) {
+                            control->openFileWithoutSavingTheCurrentDocument(open, false, page, [](bool) {});
+                        } else {
+                            control->newFile();
+                        }
+                    });
+                },
+                true, false, true);
     }
 
     auto trash(const fs::path& path) -> bool {

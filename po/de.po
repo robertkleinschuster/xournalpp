@@ -5398,3 +5398,35 @@ msgid "{1} task due today, {2} overdue"
 msgid_plural "{1} tasks due today, {2} overdue"
 msgstr[0] "{1} Aufgabe heute fällig, {2} überfällig"
 msgstr[1] "{1} Aufgaben heute fällig, {2} überfällig"
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "Discard Changes…"
+msgstr "Änderungen verwerfen…"
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "Belonging to the document:"
+msgstr "Zum Dokument gehören:"
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "Only the Document"
+msgstr "Nur das Dokument"
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "Delete All"
+msgstr "Alle löschen"
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "Discard the changes since the last sync?"
+msgstr "Änderungen seit dem letzten Sync verwerfen?"
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "The files are reset to the state of the last sync. This cannot be undone."
+msgstr "Die Dateien werden auf den Stand des letzten Syncs zurückgesetzt. Das kann nicht rückgängig gemacht werden."
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "Discard Changes"
+msgstr "Änderungen verwerfen"
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "The changes could not be discarded."
+msgstr "Die Änderungen konnten nicht verworfen werden."
