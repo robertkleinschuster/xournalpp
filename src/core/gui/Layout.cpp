@@ -34,12 +34,12 @@ constexpr auto const XOURNAL_ROOM_FOR_SHADOW = 3;
 /**
  * Padding between the pages. Fork: room for the page number shown below each page (XournalWidget)
  */
-constexpr auto const XOURNAL_PADDING_BETWEEN = 26;
+constexpr auto const XOURNAL_PADDING_BETWEEN = Layout::PAGE_GAP;
 
 /**
- * Fork: room for the page number below the last page
+ * Fork: room for the page number below the last page (together with XOURNAL_PADDING as large as the gap between pages)
  */
-constexpr auto const XOURNAL_PAGE_NUMBER_ROOM = 18;
+constexpr auto const XOURNAL_PAGE_NUMBER_ROOM = Layout::PAGE_GAP - XOURNAL_PADDING;
 
 
 Layout::Layout(XournalView* view, ScrollHandling* scrollHandling): view(view), scrollHandling(scrollHandling) {

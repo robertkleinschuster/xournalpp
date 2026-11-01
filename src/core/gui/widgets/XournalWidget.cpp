@@ -289,22 +289,44 @@ void gtk_xournal_repaint_area(GtkWidget* widget, int x1, int y1, int x2, int y2)
     gtk_widget_queue_draw_area(widget, minX, minY, width, height);
 }
 
-/// Fork: the page number, small and dimmed, centered in the gap below the page
-static void gtk_xournal_draw_page_number(cairo_t* cr, size_t index, size_t count, int left, int top, int width,
-                                         int height, Color background) {
+/// Fork: the page number as a rounded badge, centered in the gap below the page
+static void gtk_xournal_draw_page_number(GtkWidget* widget, cairo_t* cr, size_t index, size_t count, int left, int top,
+                                         int width, int height, Color background) {
     const auto label = std::to_string(index + 1) + " / " + std::to_string(count);
-    PangoLayout* layout = pango_cairo_create_layout(cr);
-    PangoFontDescription* font = pango_font_description_from_string("Sans Bold 9");
+    // The widget's layout uses the UI font at the screen's DPI
+    PangoLayout* layout = gtk_widget_create_pango_layout(widget, label.c_str());
+    PangoFontDescription* font =
+            pango_font_description_copy(pango_context_get_font_description(pango_layout_get_context(layout)));
+    pango_font_description_set_size(font, 10 * PANGO_SCALE);
+    pango_font_description_set_weight(font, PANGO_WEIGHT_SEMIBOLD);
     pango_layout_set_font_description(layout, font);
     pango_font_description_free(font);
-    pango_layout_set_text(layout, label.c_str(), -1);
     int textWidth = 0, textHeight = 0;
     pango_layout_get_pixel_size(layout, &textWidth, &textHeight);
-    // Light text on a dark background and the other way round
+
+    const double badgeHeight = std::min(textHeight + 2.0, Layout::PAGE_GAP - 16.0);
+    const double badgeWidth = textWidth + 1.2 * badgeHeight;
+    const double x = left + (width - badgeWidth) / 2.0;
+    const double y = top + height + (Layout::PAGE_GAP - badgeHeight) / 2.0 + 1;  // a bit lower, below the shadow
+    const double r = badgeHeight / 2.0;
+    cairo_new_sub_path(cr);
+    cairo_arc(cr, x + badgeWidth - r, y + r, r, -M_PI / 2, M_PI / 2);
+    cairo_arc(cr, x + r, y + r, r, M_PI / 2, 3 * M_PI / 2);
+    cairo_close_path(cr);
+
+    // A dark badge with light text on a light background and the other way round
     const double luminance = (0.299 * background.red + 0.587 * background.green + 0.114 * background.blue) / 255.0;
-    const double gray = luminance < 0.5 ? 1.0 : 0.0;
-    cairo_set_source_rgba(cr, gray, gray, gray, 0.7);
-    cairo_move_to(cr, left + (width - textWidth) / 2.0, top + height + 4);
+    const bool darkBackground = luminance < 0.5;
+    if (darkBackground) {
+        cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.85);
+    } else {
+        cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.42);
+    }
+    cairo_fill(cr);
+
+    const double text = darkBackground ? 0.1 : 1.0;
+    cairo_set_source_rgb(cr, text, text, text);
+    cairo_move_to(cr, x + (badgeWidth - textWidth) / 2.0, y + (badgeHeight - textHeight) / 2.0);
     pango_cairo_show_layout(cr, layout);
     g_object_unref(layout);
 }
@@ -339,7 +361,7 @@ static auto gtk_xournal_draw(GtkWidget* widget, cairo_t* cr) -> gboolean {
     cairo_paint(cr);
 
     // Add a padding for the shadow of the pages (Fork: and the page numbers below them)
-    clip.addPadding(30);
+    clip.addPadding(Layout::PAGE_GAP);
 
     const auto& views = xournal->view->getViewPages();
     // Store the pages to release the layout mutex ASAP
@@ -360,7 +382,8 @@ static auto gtk_xournal_draw(GtkWidget* widget, cairo_t* cr) -> gboolean {
         pv->paintPage(cr, nullptr);
         cairo_restore(cr);
 
-        gtk_xournal_draw_page_number(cr, index, views.size(), pos.x, pos.y, pw, ph, settings->getBackgroundColor());
+        gtk_xournal_draw_page_number(widget, cr, index, views.size(), pos.x, pos.y, pw, ph,
+                                     settings->getBackgroundColor());
     }
 
     if (xournal->selection) {

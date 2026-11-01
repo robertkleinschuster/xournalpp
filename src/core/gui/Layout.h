@@ -41,6 +41,9 @@ class Rectangle;
  */
 class Layout final {
 public:
+    /// Fork: gap between the pages, which holds the page number shown below each page (XournalWidget)
+    static constexpr int PAGE_GAP = 48;
+
     Layout(XournalView* view, ScrollHandling* scrollHandling);
 
 public:
