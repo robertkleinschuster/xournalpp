@@ -4,6 +4,7 @@
 
 #include "control/Control.h"
 #include "control/layer/LayerController.h"
+#include "control/tools/InputHandler.h"
 #include "gui/XournalView.h"
 #include "gui/XournalppCursor.h"
 #include "model/Document.h"
@@ -101,7 +102,7 @@ void GeometryToolController::initializeStroke() {
     const auto h = view->getXournal()->getControl()->getToolHandler();
     stroke = std::make_unique<Stroke>();
     geometryTool->setStroke(stroke.get());
-    stroke->setWidth(h->getThickness());
+    stroke->setWidth(h->getThickness());  // Fork: reduced to the handwriting's width below, once the tool type is set
     stroke->setColor(h->getColor());
     stroke->setFill(h->getFill());
     stroke->setLineStyle(h->getLineStyle());
@@ -119,6 +120,7 @@ void GeometryToolController::initializeStroke() {
             g_warning("Unhandled tool when initializing stroke in geometry tool controller");
             break;
     }
+    InputHandler::applyTypicalPenPressure(view->getXournal()->getControl(), *stroke);
 }
 
 auto GeometryToolController::getPage() const -> const PageRef { return view->getPage(); }

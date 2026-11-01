@@ -212,7 +212,7 @@ void SplineHandler::onButtonPressEvent(const PositionInputData& pos, double zoom
         // This should only happen right after the SplineHandler's creation, before any views got attached
         xoj_assert(this->viewPool->empty());
 
-        stroke = createStroke(this->control);
+        stroke = createShapeStroke(this->control);
         xoj_assert(this->knots.empty() && this->tangents.empty());
         this->buttonDownPoint = Point(pos.x / zoom, pos.y / zoom);
         this->currPoint = snappingHandler.snapToGrid(this->buttonDownPoint, pos.isAltDown());

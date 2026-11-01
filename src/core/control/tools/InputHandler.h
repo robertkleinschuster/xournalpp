@@ -92,6 +92,15 @@ public:
 protected:
     [[nodiscard]] static std::unique_ptr<Stroke> createStroke(Control* control);
 
+public:
+    /**
+     * Fork: a stroke for a line or shape (not drawn freehand). With pressure sensitivity, a pen stroke gets the width
+     * the handwriting typically has instead of the full width, which only the strongest pressure reaches.
+     */
+    [[nodiscard]] static std::unique_ptr<Stroke> createShapeStroke(Control* control);
+    static void applyTypicalPenPressure(Control* control, Stroke& stroke);
+
+protected:
     static bool validMotion(Point p, Point q);
 
     /**

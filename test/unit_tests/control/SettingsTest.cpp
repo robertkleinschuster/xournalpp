@@ -79,3 +79,23 @@ TEST(SettingsTest, testReadWrite) {
     };
     saveReloadTest(fs::temp_directory_path());
 }
+
+// Fork: the learned share of the pen width used for lines and shapes is kept across restarts and stays in range
+TEST(SettingsTest, testTypicalPenPressure) {
+    const fs::path outPath = fs::temp_directory_path() / "xournalpp-test-units_Settings_typicalPenPressure.xml";
+    fs::remove(outPath);
+    {
+        Settings settings(outPath);
+        EXPECT_DOUBLE_EQ(settings.getTypicalPenPressure(), 0.6);  // until something has been written
+        settings.setTypicalPenPressure(5.0);
+        EXPECT_DOUBLE_EQ(settings.getTypicalPenPressure(), 1.0);
+        settings.setTypicalPenPressure(0.0);
+        EXPECT_DOUBLE_EQ(settings.getTypicalPenPressure(), 0.1);
+        settings.setTypicalPenPressure(0.47);
+        settings.save();
+    }
+    Settings loaded(outPath);
+    loaded.load();
+    EXPECT_NEAR(loaded.getTypicalPenPressure(), 0.47, 1e-6);
+    fs::remove(outPath);
+}

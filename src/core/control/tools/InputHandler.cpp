@@ -9,6 +9,7 @@
 #include "control/Control.h"          // for Control
 #include "control/ToolEnums.h"        // for TOOL_ERASER, TOOL_HIGHLIGHTER
 #include "control/ToolHandler.h"      // for ToolHandler
+#include "control/settings/Settings.h"  // for Settings
 #include "model/Point.h"              // for Point, Point::NO_PRESSURE
 #include "model/Stroke.h"             // for Stroke, StrokeTool::ERASER, STR...
 #include "util/Color.h"               // for Color
@@ -55,6 +56,19 @@ auto InputHandler::createStroke(Control* control) -> std::unique_ptr<Stroke> {
     }
 
     return s;
+}
+
+auto InputHandler::createShapeStroke(Control* control) -> std::unique_ptr<Stroke> {
+    auto s = createStroke(control);
+    applyTypicalPenPressure(control, *s);
+    return s;
+}
+
+void InputHandler::applyTypicalPenPressure(Control* control, Stroke& stroke) {
+    Settings* settings = control->getSettings();
+    if (settings->isPressureSensitivity() && stroke.getToolType().isPressureSensitive()) {
+        stroke.setWidth(stroke.getWidth() * settings->getTypicalPenPressure());
+    }
 }
 
 auto InputHandler::validMotion(Point p, Point q) -> bool {

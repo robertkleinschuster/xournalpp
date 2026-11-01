@@ -128,7 +128,7 @@ void BaseShapeHandler::onButtonPressEvent(const PositionInputData& pos, double z
     this->startPoint = snappingHandler.snapToGrid(this->buttonDownPoint, pos.isAltDown());
     this->currPoint = this->startPoint;
 
-    this->stroke = createStroke(this->control);
+    this->stroke = createShapeStroke(this->control);
 }
 
 void BaseShapeHandler::onButtonDoublePressEvent(const PositionInputData&, double) {

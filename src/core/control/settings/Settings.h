@@ -150,6 +150,13 @@ public:
     void setPressureMultiplier(double multiplier);
 
     /**
+     * Fork: the share of the pen width that strokes written with the pen typically have (learned while writing,
+     * saved on exit). Lines and shapes drawn with the pen get this share, so they look like the handwriting.
+     */
+    double getTypicalPenPressure() const;
+    void setTypicalPenPressure(double share);
+
+    /**
      * Getter, enable/disable
      */
     bool isZoomGesturesEnabled() const;
@@ -657,6 +664,7 @@ private:
      */
     double minimumPressure{};
     double pressureMultiplier{};
+    double typicalPenPressure = 0.6;  ///< Fork
 
     /**
      * If the touch zoom gestures are enabled

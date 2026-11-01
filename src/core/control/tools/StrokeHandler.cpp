@@ -166,6 +166,15 @@ void StrokeHandler::onButtonReleaseEvent(const PositionInputData& pos, double zo
     }
     finalizeStroke(pos.pressure);
 
+    // Fork: learn the share of the width that handwriting typically has (see InputHandler::createShapeStroke). Only
+    // longer strokes count; dots and the first point's pressure ramp would distort it.
+    if (this->hasPressure && stroke->getToolType().isPressureSensitive() && stroke->getPointCount() >= 10 &&
+        stroke->getWidth() > 0) {
+        Settings* s = control->getSettings();
+        const double share = std::clamp(stroke->getAvgPressure() / stroke->getWidth(), 0.0, 1.0);
+        s->setTypicalPenPressure(0.95 * s->getTypicalPenPressure() + 0.05 * share);  // about the last 20 strokes
+    }
+
     Layer* layer = page->getSelectedLayer();
 
     UndoRedoHandler* undo = control->getUndoRedoHandler();

@@ -1,6 +1,7 @@
 #include "Settings.h"
 
 #include <algorithm>    // for max
+#include <cmath>        // for isfinite
 #include <cstdint>      // for uint32_t, int32_t
 #include <cstdio>       // for sscanf, size_t
 #include <cstdlib>      // for atoi
@@ -419,6 +420,8 @@ void Settings::parseItem(xmlDocPtr doc, xmlNodePtr cur) {
         this->minimumPressure = std::max(0.01, g_ascii_strtod(reinterpret_cast<const char*>(value), nullptr));
     } else if (xmlStrcmp(name, reinterpret_cast<const xmlChar*>("pressureMultiplier")) == 0) {
         this->pressureMultiplier = g_ascii_strtod(reinterpret_cast<const char*>(value), nullptr);
+    } else if (xmlStrcmp(name, reinterpret_cast<const xmlChar*>("typicalPenPressure")) == 0) {
+        setTypicalPenPressure(g_ascii_strtod(reinterpret_cast<const char*>(value), nullptr));
     } else if (xmlStrcmp(name, reinterpret_cast<const xmlChar*>("zoomGesturesEnabled")) == 0) {
         this->zoomGesturesEnabled = xmlStrcmp(value, reinterpret_cast<const xmlChar*>("true")) == 0;
     } else if (xmlStrcmp(name, reinterpret_cast<const xmlChar*>("selectedToolbar")) == 0) {
@@ -1030,6 +1033,7 @@ void Settings::save() {
     SAVE_BOOL_PROP(pressureSensitivity);
     SAVE_DOUBLE_PROP(minimumPressure);
     SAVE_DOUBLE_PROP(pressureMultiplier);
+    SAVE_DOUBLE_PROP(typicalPenPressure);
 
     SAVE_BOOL_PROP(zoomGesturesEnabled);
 
@@ -1716,6 +1720,14 @@ void Settings::setMinimumPressure(double minimumPressure) {
 
     this->minimumPressure = minimumPressure;
     save();
+}
+
+double Settings::getTypicalPenPressure() const { return this->typicalPenPressure; }
+void Settings::setTypicalPenPressure(double share) {
+    // Not saved right away: it changes with every written stroke and is saved on exit
+    if (std::isfinite(share)) {
+        this->typicalPenPressure = std::clamp(share, 0.1, 1.0);
+    }
 }
 
 double Settings::getPressureMultiplier() const { return this->pressureMultiplier; }
