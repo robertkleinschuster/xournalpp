@@ -77,17 +77,17 @@ TEST(PdfCombiner, choosesTheFileForTheCombinedPdf) {
     fs::remove_all(dir);
     fs::create_directories(dir);
     const auto xopp = dir / u8"VO8 Übung.xopp";
-    // Without a PDF named like the document, the combined PDF takes that name
-    EXPECT_EQ(InsertPdfPages::combinedPdfPath(xopp, {}), dir / u8"VO8 Übung.pdf");
-    // The source PDF named like the document stays untouched
+    // The hidden companion PDF, with or without a background PDF; the source PDF stays untouched
+    const auto companion = dir / u8".VO8 Übung.pages.pdf";
+    EXPECT_EQ(InsertPdfPages::combinedPdfPath(xopp, {}), companion);
     const auto source = dir / u8"VO8 Übung.pdf";
     fs::copy_file(GET_TESTFILE(u8"packaged_xopp/pdfBackground/old.xopp.bg.pdf"), source);
-    EXPECT_EQ(InsertPdfPages::combinedPdfPath(xopp, source), dir / u8"VO8 Übung (combined).pdf");
-    std::ofstream(dir / u8"VO8 Übung (combined).pdf") << "x";
-    EXPECT_EQ(InsertPdfPages::combinedPdfPath(xopp, source), dir / u8"VO8 Übung (combined 2).pdf");
+    EXPECT_EQ(InsertPdfPages::combinedPdfPath(xopp, source), companion);
+    // Taken by something else: another name
+    std::ofstream(companion) << "x";
+    EXPECT_EQ(InsertPdfPages::combinedPdfPath(xopp, source), dir / u8".VO8 Übung.pages 2.pdf");
     // A combined PDF is reused
-    const auto combined = dir / u8"VO8 Übung (combined).pdf";
-    std::ofstream(combined, std::ios::binary | std::ios::trunc) << PdfCombiner::append({}, source, {0});
-    EXPECT_EQ(InsertPdfPages::combinedPdfPath(xopp, combined), combined);
+    std::ofstream(companion, std::ios::binary | std::ios::trunc) << PdfCombiner::append({}, source, {0});
+    EXPECT_EQ(InsertPdfPages::combinedPdfPath(xopp, companion), companion);
     fs::remove_all(dir);
 }

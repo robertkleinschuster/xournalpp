@@ -110,7 +110,7 @@ auto escape(const std::string& value) -> std::string {
 }
 
 auto isIgnored(const fs::path& path) -> bool {
-    return path.filename() == ".git" || AnnotationFiles::isRecoveryCopy(path);
+    return path.filename() == ".git" || AnnotationFiles::isRecoveryCopy(path) || AnnotationFiles::isCompanionPdf(path);
 }
 
 /// Keeps Xournal++ recovery copies out of the sync, in any folder of the repository

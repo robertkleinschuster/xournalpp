@@ -420,9 +420,11 @@ auto AnnotationFiles::groupForRename(const fs::path& oldXopp, const fs::path& ne
     std::error_code error;
     if (const auto source = recordedSourcePdf(oldXopp);
         !source.empty() && fs::exists(source, error) && ownsSourcePdf(oldXopp, source)) {
-        // "VO8.pdf" becomes "VO9.pdf", "VO8 (combined).pdf" becomes "VO9 (combined).pdf"
+        // "VO8.pdf" becomes "VO9.pdf", the companion ".VO8.pages.pdf" becomes ".VO9.pages.pdf"
         const auto sourceName = Util::toUtf8(source.filename());
-        group.newSource = dir / Util::fromUtf8(newStem + sourceName.substr(oldStem.size()));
+        const size_t prefix = sourceName.front() == '.' ? 1 : 0;
+        group.newSource = dir / Util::fromUtf8(sourceName.substr(0, prefix) + newStem +
+                                               sourceName.substr(prefix + oldStem.size()));
         group.moves.emplace_back(source, *group.newSource);
     }
     const auto exported = exportPathForFile(oldXopp, settings);
@@ -456,13 +458,33 @@ auto AnnotationFiles::groupForMove(const fs::path& xopp, const fs::path& dir, co
     return group;
 }
 
+namespace {
+constexpr std::string_view COMPANION_SUFFIX = ".pages";
+}
+
+auto AnnotationFiles::companionPdf(const fs::path& xopp) -> fs::path {
+    return xopp.parent_path() /
+           Util::fromUtf8("." + Util::toUtf8(xopp.stem()) + std::string(COMPANION_SUFFIX) + ".pdf");
+}
+
+auto AnnotationFiles::isCompanionPdf(const fs::path& path) -> bool {
+    const auto name = Util::toUtf8(path.filename());
+    return name.size() > 1 && name.front() == '.' && Util::hasPdfFileExt(path) &&
+           name.find(std::string(COMPANION_SUFFIX)) != std::string::npos;
+}
+
 auto AnnotationFiles::ownsSourcePdf(const fs::path& xopp, const fs::path& pdf) -> bool {
     if (!samePath(pdf.parent_path(), xopp.parent_path())) {
         return false;
     }
     const auto stem = Util::toUtf8(xopp.stem());
     const auto pdfStem = Util::toUtf8(pdf.stem());
-    return pdfStem == stem || (pdfStem.rfind(stem, 0) == 0 && PdfCombiner::isCombined(pdf));
+    if (pdfStem == stem) {
+        return true;
+    }
+    // The companion ".VO8.pages.pdf", or "VO8 (combined).pdf" of an earlier version: the document's own copies
+    const bool companion = pdfStem.rfind("." + stem + std::string(COMPANION_SUFFIX), 0) == 0;
+    return (companion || pdfStem.rfind(stem, 0) == 0) && PdfCombiner::isCombined(pdf);
 }
 
 auto AnnotationFiles::groupFiles(const fs::path& xopp, const Settings& settings) -> std::vector<fs::path> {

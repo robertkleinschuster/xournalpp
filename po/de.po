@@ -5132,13 +5132,7 @@ msgstr "Einfügen"
 
 
 
-#: ../src/core/control/InsertPdfPages.cpp
-msgid "{1} (combined).pdf"
-msgstr "{1} (kombiniert).pdf"
 
-#: ../src/core/control/InsertPdfPages.cpp
-msgid "{1} (combined {2}).pdf"
-msgstr "{1} (kombiniert {2}).pdf"
 
 #: ../src/core/control/InsertPdfPages.cpp
 msgid "Pages cannot be inserted into a document with an attached PDF."

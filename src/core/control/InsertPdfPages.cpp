@@ -8,6 +8,7 @@
 
 #include <gtk/gtk.h>
 
+#include "control/AnnotationFiles.h"        // for companionPdf
 #include "control/Control.h"                // for Control
 #include "control/ScrollHandler.h"          // for ScrollHandler
 #include "gui/dialog/InsertPagesDialog.h"   // for InsertPagesDialog
@@ -22,10 +23,29 @@
 #include "util/XojMsgBox.h"                 // for XojMsgBox
 #include "util/i18n.h"                      // for _
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 namespace {
 
 void showError(Control* control, const std::string& message, const std::string& detail = {}) {
     XojMsgBox::showErrorToUser(control->getGtkWindow(), detail.empty() ? message : message + "\n\n" + detail);
+}
+
+/// The companion PDF is also hidden in the Windows Explorer (Git does not keep the attribute, the name still hides
+/// it in the project explorer)
+void setHidden(const fs::path& path, bool hidden) {
+#ifdef _WIN32
+    const DWORD attributes = GetFileAttributesW(path.c_str());
+    if (attributes != INVALID_FILE_ATTRIBUTES) {
+        SetFileAttributesW(path.c_str(),
+                           hidden ? attributes | FILE_ATTRIBUTE_HIDDEN : attributes & ~DWORD(FILE_ATTRIBUTE_HIDDEN));
+    }
+#else
+    (void)path;
+    (void)hidden;
+#endif
 }
 
 auto writeFile(const fs::path& path, const std::string& data) -> bool {
@@ -41,16 +61,16 @@ auto InsertPdfPages::combinedPdfPath(const fs::path& xopp, const fs::path& curre
     if (!current.empty() && PdfCombiner::isCombined(current)) {
         return current;
     }
-    const auto dir = xopp.parent_path();
-    const auto stem = Util::toUtf8(xopp.stem());
     std::error_code error;
-    // Named like the document, the explorer shows it as the document's PDF and renames it along with it
-    if (auto own = dir / Util::fromUtf8(stem + ".pdf"); !fs::exists(own, error)) {
-        return own;
+    const auto companion = AnnotationFiles::companionPdf(xopp);
+    if (!fs::exists(companion, error)) {
+        return companion;
     }
-    for (int n = 1;; n++) {
-        const auto name = n == 1 ? FS(_F("{1} (combined).pdf") % stem) : FS(_F("{1} (combined {2}).pdf") % stem % n);
-        if (auto candidate = dir / Util::fromUtf8(name); !fs::exists(candidate, error)) {
+    // Taken (e.g. still in use): ".VO8.pages 2.pdf"
+    const auto base = Util::toUtf8(companion.stem());
+    for (int n = 2;; n++) {
+        auto candidate = companion.parent_path() / Util::fromUtf8(base + " " + std::to_string(n) + ".pdf");
+        if (!fs::exists(candidate, error)) {
             return candidate;
         }
     }
@@ -123,6 +143,7 @@ auto InsertPdfPages::insert(Control* control, const fs::path& pdf, const std::ve
         fs::remove(part, fsError);
         return false;
     }
+    setHidden(target, false);  // Windows does not replace hidden files
     fs::rename(part, target, fsError);
     if (fsError) {
         // Still in use (e.g. by a running export): keep it under another name
@@ -139,6 +160,7 @@ auto InsertPdfPages::insert(Control* control, const fs::path& pdf, const std::ve
         doc->unlock();
     }
 
+    setHidden(target, true);
     control->getUndoRedoHandler()->addUndoAction(
             std::make_unique<InsertPdfPagesUndoAction>(newPages, position, base, target));
     control->firePageSelected(position);

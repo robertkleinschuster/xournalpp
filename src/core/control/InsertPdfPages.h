@@ -21,8 +21,8 @@ namespace InsertPdfPages {
 /**
  * "Insert Pages": shows the pages of the document's PDF (those not in the document preselected, like the former
  * "Append New PDF Pages") or of another PDF as thumbnails and inserts the chosen ones. Pages of another PDF are
- * appended to a combined copy of the background PDF next to the document ("<name> (combined).pdf", or "<name>.pdf"
- * if the document has no PDF yet), as a document has only one background PDF; the source PDF is never changed.
+ * appended to a copy of the background PDF in the document's hidden companion PDF (".<name>.pages.pdf"), as a
+ * document has only one background PDF; the original PDF and the source PDF are never changed.
  * Undoable.
  */
 void run(Control* control);
@@ -32,7 +32,7 @@ bool insertOwn(Control* control, const std::vector<size_t>& pages, size_t positi
 
 /**
  * The file for the combined background PDF of the document xopp with the background PDF current (empty if none): the
- * current one if it is a combined PDF already, otherwise a new name that does not exist yet
+ * current one if it is a combined PDF already, otherwise its companion PDF (another name if that exists)
  */
 fs::path combinedPdfPath(const fs::path& xopp, const fs::path& current);
 

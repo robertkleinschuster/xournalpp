@@ -44,8 +44,9 @@ the device. Open:
 
 Done: "Journal → Insert Pages…" (`InsertPagesDialog`, `InsertPdfPages`, `PdfCombiner`) shows the pages of the
 document's PDF (missing ones preselected; replaces "Append New PDF Pages") or of another PDF as thumbnails to tap.
-Pages of another PDF go into a combined copy of the background PDF (`/XournalStudioCombined`), which belongs to the
-document group (renamed, moved, deleted with it). Open:
+Pages of another PDF go into the hidden companion PDF `.<name>.pages.pdf` (a copy of the background PDF with the
+new pages, marked `/XournalStudioCombined`), referenced like any background PDF; it belongs to the document group
+(renamed, moved, deleted, synced with it), the original PDF stays unchanged. Open:
 
 - Removing pages that are no longer used from the combined PDF (it only grows; undo keeps them).
 - Range selection by dragging over thumbnails.

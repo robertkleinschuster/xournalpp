@@ -103,8 +103,17 @@ DocumentGroup groupForMove(const std::filesystem::path& xopp, const std::filesys
                            const Settings& settings);
 
 /**
+ * The hidden companion PDF of a document, ".VO8.pages.pdf" for "VO8.xopp": the background PDF with pages copied from
+ * other PDFs (see InsertPdfPages). The project explorer does not show it.
+ */
+std::filesystem::path companionPdf(const std::filesystem::path& xopp);
+/// Whether the file is a companion PDF (".<name>.pages.pdf", also with a number before ".pdf")
+bool isCompanionPdf(const std::filesystem::path& path);
+
+/**
  * Whether the document owns its background PDF, i.e. it is renamed, moved and deleted with it: the PDF is next to it
- * and named like it, or it is the document's combined PDF (see InsertPdfPages), e.g. "VO8 (combined).pdf".
+ * and named like it, or it is the document's companion PDF (or a combined PDF of an earlier version, named
+ * "VO8 (combined).pdf").
  */
 bool ownsSourcePdf(const std::filesystem::path& xopp, const std::filesystem::path& pdf);
 

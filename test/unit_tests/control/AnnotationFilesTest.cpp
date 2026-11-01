@@ -343,9 +343,12 @@ TEST_F(AnnotationFilesTest, reorderedPagesCountAsAnnotations) {
 }
 
 TEST_F(AnnotationFilesTest, theCombinedPdfBelongsToTheGroup) {
-    // A course PDF named like the document, and the combined PDF made by "Insert Pages from PDF"
+    // A course PDF named like the document, and the companion PDF made by "Insert Pages"
     fs::copy_file(GET_TESTFILE(u8"packaged_xopp/pdfBackground/old.xopp.bg.pdf"), dir / "VO8.pdf");
-    const auto combined = dir / "VO8 (combined).pdf";
+    const auto combined = AnnotationFiles::companionPdf(dir / "VO8.xopp");
+    EXPECT_EQ(combined, dir / ".VO8.pages.pdf");
+    EXPECT_TRUE(AnnotationFiles::isCompanionPdf(combined));
+    EXPECT_FALSE(AnnotationFiles::isCompanionPdf(dir / "VO8.pdf"));
     std::ofstream(combined, std::ios::binary) << PdfCombiner::append(dir / "VO8.pdf", dir / "VO8.pdf", {0});
     saveAnnotation(dir / "VO8.xopp", combined, "VO8_annotated.pdf");
     std::ofstream(dir / "VO8_annotated.pdf") << "x";
@@ -353,18 +356,22 @@ TEST_F(AnnotationFilesTest, theCombinedPdfBelongsToTheGroup) {
     EXPECT_TRUE(AnnotationFiles::ownsSourcePdf(dir / "VO8.xopp", combined));
     EXPECT_TRUE(AnnotationFiles::ownsSourcePdf(dir / "VO8.xopp", dir / "VO8.pdf"));
     EXPECT_FALSE(AnnotationFiles::ownsSourcePdf(dir / "VO8.xopp", dir / "VO8 Skript.pdf"));  // not combined
+    // A combined PDF of an earlier version is still recognized
+    fs::copy_file(combined, dir / "VO8 (combined).pdf");
+    EXPECT_TRUE(AnnotationFiles::ownsSourcePdf(dir / "VO8.xopp", dir / "VO8 (combined).pdf"));
+    fs::remove(dir / "VO8 (combined).pdf");
     EXPECT_EQ(AnnotationFiles::groupFiles(dir / "VO8.xopp", *settings),
               (std::vector<fs::path>{dir / "VO8.xopp", combined, dir / "VO8_annotated.pdf"}));
 
     const auto group = AnnotationFiles::groupForRename(dir / "VO8.xopp", dir / "VO9.xopp", *settings);
     EXPECT_FALSE(AnnotationFiles::groupConflict(group));
     applyGroup(group, *settings);
-    EXPECT_TRUE(fs::exists(dir / "VO9 (combined).pdf"));
+    EXPECT_TRUE(fs::exists(dir / ".VO9.pages.pdf"));
     EXPECT_TRUE(fs::exists(dir / "VO8.pdf"));  // the course PDF is no longer the document's background
     expectLoadsWithPdf(dir / "VO9.xopp");
 
     fs::create_directory(dir / "Archiv");
     applyGroup(AnnotationFiles::groupForMove(dir / "VO9.xopp", dir / "Archiv", *settings), *settings);
-    EXPECT_TRUE(fs::exists(dir / "Archiv" / "VO9 (combined).pdf"));
+    EXPECT_TRUE(fs::exists(dir / "Archiv" / ".VO9.pages.pdf"));
     expectLoadsWithPdf(dir / "Archiv" / "VO9.xopp");
 }
