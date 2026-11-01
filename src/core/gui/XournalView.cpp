@@ -466,6 +466,57 @@ void XournalView::scrollTo(size_t pageNo, XojPdfRectangle rect) {
     control->firePageSelected(pageNo);
 }
 
+auto XournalView::getViewOffsetInPage(size_t pageNo) const -> std::pair<double, double> {
+    if (pageNo >= this->viewPages.size()) {
+        return {0, 0};
+    }
+    Layout* layout = this->getLayout();
+    const auto visible = layout->getVisibleRect();
+    const auto p = layout->getPixelCoordinatesOfEntry(pageNo);
+    const double zoom = getZoom();
+    return {(visible.x - p.x) / zoom, (visible.y - p.y) / zoom};
+}
+
+void XournalView::scrollToPageOffset(size_t pageNo, double x, double y) {
+    if (pageNo >= this->viewPages.size()) {
+        return;
+    }
+    Layout* layout = this->getLayout();
+    const auto p = layout->getPixelCoordinatesOfEntry(pageNo);
+    const double zoom = getZoom();
+    layout->scrollAbs(p.x + x * zoom, p.y + y * zoom);
+    control->firePageSelected(pageNo);
+}
+
+void XournalView::renderCurrentPagesFirst() {
+    const size_t current = getCurrentPage();
+    if (current >= this->viewPages.size()) {
+        return;
+    }
+    control->getScheduler()->removeQueuedPageRenders();
+
+    std::vector<size_t> order;
+    order.push_back(current);
+    for (size_t i = 0; i < this->viewPages.size(); i++) {
+        if (i != current && this->viewPages[i]->isVisible()) {
+            order.push_back(i);
+        }
+    }
+    const auto& [lower, upper] = preloadPageBounds(current, this->viewPages.size());
+    for (size_t distance = 1; current + distance < upper || current >= lower + distance; distance++) {
+        if (current + distance < upper) {
+            order.push_back(current + distance);
+        }
+        if (current >= lower + distance) {
+            order.push_back(current - distance);
+        }
+    }
+    for (size_t i: order) {
+        if (!this->viewPages[i]->hasBuffer()) {
+            this->viewPages[i]->rerenderPage();  // queued once, even if a page is listed twice
+        }
+    }
+}
 
 void XournalView::pageRelativeXY(int offCol, int offRow) {
     Layout* layout = this->getLayout();
@@ -624,6 +675,43 @@ auto XournalView::getTextEditor() const -> TextEditor* {
 }
 
 auto XournalView::getCache() const -> PdfCache* { return this->cache.get(); }
+
+KeptRendering::~KeptRendering() = default;
+
+auto XournalView::takeRendering() -> std::unique_ptr<KeptRendering> {
+    auto rendering = std::make_unique<KeptRendering>();
+    rendering->pdfCache = std::move(this->cache);
+    // Only the visible pages: they are what is shown first when coming back, and other pages would cost memory
+    for (auto& view: this->viewPages) {
+        if (view->isVisible() && view->hasBuffer()) {
+            rendering->pages.emplace_back(view->getPage(), view->takeBuffer());
+        }
+    }
+    return rendering;
+}
+
+void XournalView::adoptRendering(std::unique_ptr<KeptRendering> rendering) {
+    if (!rendering) {
+        return;
+    }
+    Document* doc = control->getDocument();
+    doc->lock_shared();
+    const bool pdfMatches = rendering->pdfCache && rendering->pdfCache->isFor(doc->getPdfDocument());
+    doc->unlock_shared();
+    if (pdfMatches) {
+        rendering->pdfCache->updateSettings(control->getSettings());
+        this->cache = std::move(rendering->pdfCache);
+    }
+    // The pages are the same objects as when they were drawn and were not changed since (the document was closed)
+    for (auto& [page, buffer]: rendering->pages) {
+        for (auto& view: this->viewPages) {
+            if (view->getPage() == page) {
+                view->adoptBuffer(std::move(buffer));
+                break;
+            }
+        }
+    }
+}
 
 void XournalView::pageInserted(size_t page) {
     Document* doc = control->getDocument();

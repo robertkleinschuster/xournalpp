@@ -53,6 +53,21 @@ void XournalScheduler::removeAllJobs() {
     }
 }
 
+void XournalScheduler::removeQueuedPageRenders() {
+    std::lock_guard lock{this->jobQueueMutex};
+    std::deque<Job*>& queue = *this->jobQueue[JOB_PRIORITY_URGENT];
+    for (auto it = queue.begin(); it != queue.end();) {
+        Job* job = *it;
+        if (job->getType() == JOB_TYPE_RENDER) {
+            it = queue.erase(it);
+            job->deleteJob();
+            job->unref();
+        } else {
+            ++it;
+        }
+    }
+}
+
 void XournalScheduler::finishTask() { std::lock_guard lock{this->jobRunningMutex}; }
 
 void XournalScheduler::removeSource(void* source, JobType type, JobPriority priority, bool awaitFinishTask) {

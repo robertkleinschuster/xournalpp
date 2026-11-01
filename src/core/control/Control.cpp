@@ -1,8 +1,8 @@
 #include "Control.h"
 
-#include <algorithm>  // for max
-#include <cstdlib>    // for size_t
-#include <exception>  // for exce...
+#include <algorithm>   // for max
+#include <cstdlib>     // for size_t
+#include <exception>   // for exce...
 #include <functional>  // for bind
 #include <iterator>    // for end
 #include <memory>      // for make...
@@ -15,7 +15,9 @@
 #include "control/AudioController.h"                             // for Audi...
 #include "control/ClipboardHandler.h"                            // for Clip...
 #include "control/CompassController.h"                           // for Comp...
+#include "control/DocumentCache.h"                               // for DocumentCache
 #include "control/NavigationHistory.h"                           // for Navi...
+#include "control/PdfCache.h"                                    // for PdfCache
 #include "control/RecentManager.h"                               // for Rece...
 #include "control/ScrollHandler.h"                               // for Scro...
 #include "control/SetsquareController.h"                         // for Sets...
@@ -131,6 +133,7 @@ Control::Control(GApplication* gtkApp, GladeSearchpath* gladeSearchPath): gtkApp
     this->gladeSearchPath = gladeSearchPath;
 
     this->metadata = new MetadataManager();
+    this->documentCache = std::make_unique<DocumentCache>();
     this->cursor = new XournalppCursor(this);
 
     auto name = Util::getConfigFileWithFallback(SETTINGS_XML_FILE);
@@ -187,6 +190,7 @@ Control::~Control() {
 
     deleteLastAutosaveFile();
     this->scheduler->stop();
+    this->documentCache.reset();
     this->changedPages.clear();  // can be removed, will be done by implicit destructor
 
     delete this->pluginController;
@@ -1574,6 +1578,30 @@ void Control::askToOpenFile() {
 }
 
 void Control::replaceDocument(std::unique_ptr<Document> doc, int scrollToPage) {
+    replaceDocument(std::move(doc), scrollToPage, nullptr);
+}
+
+void Control::keepOpenDocument(const Document& next) {
+    if (!this->win) {
+        return;
+    }
+    this->doc->lock_shared();
+    const auto key = DocumentCache::keyOf(*this->doc);
+    // Only an unchanged document (saved before switching) that was loaded without problems; not when it is reloaded
+    const bool keep = !key.empty() && key != DocumentCache::keyOf(next) && !this->undoRedo->isChanged() &&
+                      (this->autoSaveAllowed || this->readOnly) && this->documentCache->canKeep(*this->doc);
+    if (keep) {
+        this->documentCache->keep(*this->doc, this->win->getXournal()->takeRendering());
+    }
+    this->doc->unlock_shared();
+}
+
+void Control::replaceDocument(std::unique_ptr<Document> doc, int scrollToPage,
+                              std::unique_ptr<KeptRendering> rendering) {
+    keepOpenDocument(*doc);  // before closing, which discards the rendered PDF pages
+    // Fork: pages become visible while the document is swapped, still at the zoom of the previous document. Hold
+    // their rendering until the document's own zoom and position are applied, so each page is rendered only once.
+    scheduler->blockRerenderZoom();
     this->closeDocument();
     setReadOnly(false);
     this->autoSaveAllowed = true;
@@ -1583,6 +1611,10 @@ void Control::replaceDocument(std::unique_ptr<Document> doc, int scrollToPage) {
     this->doc->lock();
     *this->doc = *doc;  // This calls fireDocumentChanged(DOCUMENT_CHANGE_COMPLETE). No need to fire it again
     this->doc->unlock();
+
+    if (rendering && this->win) {
+        this->win->getXournal()->adoptRendering(std::move(rendering));
+    }
 
     setEmergencyDocument(this->doc);
 
@@ -1594,6 +1626,9 @@ void Control::replaceDocument(std::unique_ptr<Document> doc, int scrollToPage) {
     }
 
     fileLoaded(scrollToPage);
+    if (!this->viewRestorePending) {
+        scheduler->unblockRerenderZoom();
+    }
 }
 
 static auto formatErrorMessages(const std::vector<std::string>& errorMessages) -> std::string {
@@ -1646,10 +1681,22 @@ static auto formatErrorMessages(const std::vector<std::string>& errorMessages) -
 }
 
 void Control::openXoppFile(fs::path filepath, int scrollToPage, std::function<void(bool)> callback) {
+    // Fork: a document opened shortly before is reused if it is unchanged on disk (see DocumentCache)
+    if (auto cached = this->documentCache->take(filepath)) {
+        replaceDocument(std::move(cached->doc), scrollToPage, std::move(cached->rendering));
+        this->doc->lock_shared();
+        this->documentCache->openedFromDisk(*this->doc);
+        this->doc->unlock_shared();
+        callback(true);
+        return;
+    }
+
     std::unique_ptr<Document> doc{};
     std::optional<MissingPdfData> missingPdf{};
     int fileVersion{};
     std::vector<std::string> errorMessages{};
+    // Taken before loading: if the file changes meanwhile, the kept document does not match it later
+    const auto stampBeforeLoading = AnnotationFiles::fileStamp(filepath);
 
     try {
         LoadHandler loadHandler(&errorMessages);
@@ -1671,9 +1718,12 @@ void Control::openXoppFile(fs::path filepath, int scrollToPage, std::function<vo
     }
 
     auto afterOpen = [ctrl = this, missingPdf = std::move(missingPdf), errorMessages = std::move(errorMessages),
-                      doc = std::move(doc), filepath, scrollToPage,
+                      doc = std::move(doc), filepath, scrollToPage, stampBeforeLoading,
                       newerVersion = fileVersion > FILE_FORMAT_VERSION]() mutable {
         ctrl->replaceDocument(std::move(doc), scrollToPage);
+        ctrl->doc->lock_shared();
+        ctrl->documentCache->openedFromDisk(*ctrl->doc, stampBeforeLoading);
+        ctrl->doc->unlock_shared();
         // Fork: never overwrite such a file automatically, only when the user saves it
         ctrl->autoSaveAllowed = errorMessages.empty() && !newerVersion;
 
@@ -1715,11 +1765,26 @@ void Control::openXoppFile(fs::path filepath, int scrollToPage, std::function<vo
 }
 
 bool Control::openPdfFile(fs::path filepath, bool attachToDocument, int scrollToPage) {
+    // Fork: a PDF viewed shortly before is reused if it is unchanged on disk (see DocumentCache)
+    if (!attachToDocument) {
+        if (auto cached = this->documentCache->take(filepath)) {
+            replaceDocument(std::move(cached->doc), scrollToPage, std::move(cached->rendering));
+            this->doc->lock_shared();
+            this->documentCache->openedFromDisk(*this->doc);
+            this->doc->unlock_shared();
+            return true;
+        }
+    }
     this->getCursor()->setCursorBusy(true);
     auto doc = std::make_unique<Document>(this);
     bool success = doc->readPdf(filepath, /*initPages=*/true, attachToDocument);
     if (success) {
         this->replaceDocument(std::move(doc), scrollToPage);
+        if (!attachToDocument) {
+            this->doc->lock_shared();
+            this->documentCache->openedFromDisk(*this->doc);
+            this->doc->unlock_shared();
+        }
     } else {
         std::string msg = FS(_F("Error reading PDF file \"{1}\"\n{2}") % filepath.u8string() % doc->getLastErrorMsg());
         XojMsgBox::showErrorToUser(this->getGtkWindow(), msg);
@@ -1875,9 +1940,16 @@ void Control::fileLoaded(int scrollToPage) {
 
     if (!filepath.empty()) {
         auto md = MetadataManager::getForFile(filepath);
+        const bool exactView = md && md->hasViewPosition;  // already applies "force zoom to fit" below
         if (md) {
-            if (scrollToPage >= 0) {
+            if (scrollToPage >= 0 && scrollToPage != md->page) {
+                // Another page was requested (e.g. a link): show it from its top left corner
                 md->page = scrollToPage;
+                md->offsetX = 0;
+                md->offsetY = 0;
+            }
+            if (settings->getForceZoomToFitOnLoad()) {
+                md->zoomFit = true;
             }
             loadMetadata(*md);
         } else if (scrollToPage >= 0) {
@@ -1891,7 +1963,7 @@ void Control::fileLoaded(int scrollToPage) {
         }
         RecentManager::addRecentFileFilename(filepath);
 
-        if (settings->getForceZoomToFitOnLoad()) {
+        if (settings->getForceZoomToFitOnLoad() && !exactView) {
             zoom->updateZoomFitValue();
             zoom->setZoomFitMode(true);
         }
@@ -1998,22 +2070,42 @@ public:
  * Load the data after processing the document...
  */
 auto Control::loadMetadataCallback(MetadataCallbackData* data) -> bool {
-    ZoomControl* zoom = data->ctrl->zoom;
-    if (zoom->isZoomPresentationMode()) {
-        data->ctrl->setViewPresentationMode(true);
-    } else if (zoom->isZoomFitMode()) {
-        zoom->updateZoomFitValue();
-        zoom->setZoomFitMode(true);
-    } else {
-        zoom->setZoomFitMode(false);
-        zoom->setZoom(data->md.zoom * zoom->getZoom100Value());
-    }
-    data->ctrl->scrollHandler->scrollToPage(as_unsigned(data->md.page));
+    data->ctrl->viewRestorePending = false;
+    data->ctrl->applyViewPosition(data->md);
     // Do not call again!
     return false;
 }
 
+void Control::applyViewPosition(const MetadataEntry& md) {
+    // Fork: entries stored on closing know whether the zoom fitted the page; older ones use the current mode
+    const bool fit = md.hasViewPosition ? md.zoomFit : zoom->isZoomFitMode();
+    if (zoom->isZoomPresentationMode()) {
+        setViewPresentationMode(true);
+    } else if (fit) {
+        zoom->updateZoomFitValue();
+        zoom->setZoomFitMode(true);
+    } else {
+        zoom->setZoomFitMode(false);
+        zoom->setZoom(md.zoom * zoom->getZoom100Value());
+    }
+    if (md.hasViewPosition && !zoom->isZoomPresentationMode()) {
+        win->getXournal()->scrollToPageOffset(as_unsigned(md.page), md.offsetX, md.offsetY);
+    } else {
+        scrollHandler->scrollToPage(as_unsigned(md.page));
+    }
+    win->getXournal()->renderCurrentPagesFirst();
+    // Restoring the view is no zoom gesture: render at once instead of waiting for further zoom steps
+    scheduler->unblockRerenderZoom();
+}
+
 void Control::loadMetadata(MetadataEntry md) {
+    // Fork: when switching documents the window is shown already: apply the view before anything is drawn, so pages
+    // are rendered once at the right zoom and position. At startup the layout is only known later.
+    if (win && gtk_widget_get_mapped(win->getXournal()->getWidget())) {
+        applyViewPosition(md);
+        return;
+    }
+    this->viewRestorePending = true;
     auto* data = new MetadataCallbackData();
     data->md = std::move(md);
     data->ctrl = this;
@@ -2226,11 +2318,16 @@ void Control::resetSavedStatus() {
 
     this->undoRedo->documentSaved();
     this->autoSaveAllowed = true;  // the user saved it in the current format
+    this->doc->lock_shared();
+    this->documentCache->openedFromDisk(*this->doc);  // what is in memory is now on disk
+    this->doc->unlock_shared();
     RecentManager::addRecentFileFilename(filepath);
     this->updateWindowTitle();
 }
 
-void Control::setBeforeCloseHook(std::function<void(std::function<void()>)> hook) { beforeCloseHook = std::move(hook); }
+void Control::setBeforeCloseHook(std::function<void(std::function<void()>, bool)> hook) {
+    beforeCloseHook = std::move(hook);
+}
 
 void Control::setUserSavedHook(std::function<void(bool)> hook) { userSavedHook = std::move(hook); }
 
@@ -2277,7 +2374,14 @@ void Control::close(std::function<void(bool)> callback, const bool allowDestroy,
     doc->lock_shared();
     auto const& file = doc->getEvMetadataFilename();
     doc->unlock_shared();
-    metadata->storeMetadata(file, static_cast<int>(getCurrentPageNo()), zoom->getZoomReal());
+    const auto page = getCurrentPageNo();
+    if (win && page != npos) {
+        // Fork: the exact view, so that switching back to the document shows it as it was left
+        const auto [x, y] = win->getXournal()->getViewOffsetInPage(page);
+        metadata->storeViewPosition(file, static_cast<int>(page), zoom->getZoomReal(), x, y, zoom->isZoomFitMode());
+    } else {
+        metadata->storeMetadata(file, static_cast<int>(page), zoom->getZoomReal());
+    }
     metadata->documentChanged();
 
     resetGeometryTool();
@@ -2303,9 +2407,11 @@ void Control::close(std::function<void(bool)> callback, const bool allowDestroy,
                         ctrl->saveImpl(saveAs, [ctrl, allowDestroy, allowCancel,
                                                 callback = std::move(callback)](bool saved) mutable {
                             if (saved && ctrl->beforeCloseHook) {
-                                ctrl->beforeCloseHook([=]() mutable {
-                                    ctrl->finishCloseAfterHook(std::move(callback), allowDestroy, allowCancel);
-                                });
+                                ctrl->beforeCloseHook(
+                                        [=]() mutable {
+                                            ctrl->finishCloseAfterHook(std::move(callback), allowDestroy, allowCancel);
+                                        },
+                                        allowDestroy);
                                 return;
                             }
                             if (saved && allowDestroy) {
@@ -2324,10 +2430,14 @@ void Control::close(std::function<void(bool)> callback, const bool allowDestroy,
                     bool safeToClose = response == DISCARD;
                     execAfter(safeToClose);
                 });
-    } else if (beforeCloseHook && !forceClose && !this->readOnly) {  // a read-only PDF has nothing to export
-        beforeCloseHook([ctrl = this, allowDestroy, allowCancel, callback = std::move(callback)]() mutable {
-            ctrl->finishCloseAfterHook(std::move(callback), allowDestroy, allowCancel);
-        });
+    } else if (beforeCloseHook && !forceClose && (!this->readOnly || allowDestroy)) {
+        // A read-only PDF has nothing to export, but quitting still waits for exports running in the background.
+        // Only closing for good (quitting, a new document) waits for the export; opening another document does not.
+        beforeCloseHook(
+                [ctrl = this, allowDestroy, allowCancel, callback = std::move(callback)]() mutable {
+                    ctrl->finishCloseAfterHook(std::move(callback), allowDestroy, allowCancel);
+                },
+                allowDestroy);
     } else {
         if (allowDestroy) {
             this->closeDocument();

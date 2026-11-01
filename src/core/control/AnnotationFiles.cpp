@@ -37,6 +37,16 @@
 
 namespace fs = std::filesystem;
 
+/// A copy of the document that the PDF export can read on another thread while the original is edited or closed
+struct ExportSnapshot {
+    DocumentHandler handler;  // declared first: the document refers to it until it is destroyed
+    std::unique_ptr<Document> doc = std::make_unique<Document>(&handler);
+    fs::path target;
+    /// When the exported .xopp file was saved, to recognize a repeated request for the same version
+    fs::file_time_type saved;
+    std::string error;
+};
+
 namespace {
 
 auto isXopp(const fs::path& path) -> bool {
@@ -47,14 +57,6 @@ auto samePath(const fs::path& a, const fs::path& b) -> bool {
     std::error_code error;
     return fs::equivalent(a, b, error) || a.lexically_normal() == b.lexically_normal();
 }
-
-/// A copy of the document that the PDF export can read on another thread while the original is edited
-struct ExportSnapshot {
-    DocumentHandler handler;  // declared first: the document refers to it until it is destroyed
-    std::unique_ptr<Document> doc = std::make_unique<Document>(&handler);
-    fs::path target;
-    std::string error;
-};
 
 /// Copies pages and elements of doc (which the caller has locked) so that nothing is shared with the original
 auto createSnapshot(Document& doc, fs::path target) -> std::unique_ptr<ExportSnapshot> {
@@ -561,7 +563,15 @@ void AnnotationFiles::createDocumentFileForPdf(Control* control) {
 }
 
 AnnotationExporter::AnnotationExporter(Control* control): control(control) {
-    control->setBeforeCloseHook([this](std::function<void()> proceed) { exportIfOutdated(std::move(proceed)); });
+    control->setBeforeCloseHook([this](std::function<void()> proceed, bool waitForExport) {
+        if (waitForExport) {
+            exportIfOutdated(std::move(proceed));
+        } else {
+            // Switching documents: the export works on a copy and finishes in the background
+            exportIfOutdated({});
+            proceed();
+        }
+    });
     control->setUserSavedHook([this](bool changed) {
         // Saving rewrites the document even without changes; a full export would then only cost time
         if (!changed && hasExport()) {
@@ -586,15 +596,18 @@ AnnotationExporter::~AnnotationExporter() {
 }
 
 void AnnotationExporter::exportIfOutdated(std::function<void()> done) {
-    if (running) {
-        waiting.emplace_back([this, done = std::move(done)]() mutable { exportIfOutdated(std::move(done)); });
-        return;
+    queueIfOutdated();
+    if (done) {
+        waiting.push_back(std::move(done));
     }
+    startNext();
+}
+
+void AnnotationExporter::queueIfOutdated() {
     Document* doc = control->getDocument();
     auto* undoRedo = control->getUndoRedoHandler();
     if (!doc || !undoRedo || undoRedo->isChanged()) {
         // Unsaved changes: the file on disk is not what would be exported
-        done();
         return;
     }
     doc->lock_shared();
@@ -602,38 +615,58 @@ void AnnotationExporter::exportIfOutdated(std::function<void()> done) {
     const auto target = AnnotationFiles::exportPath(*doc, *control->getSettings());
     doc->unlock_shared();
     if (target.empty()) {
-        done();
         return;
     }
     std::error_code error;
     if (!AnnotationFiles::hasAnnotations(*doc) && !fs::exists(target, error)) {
         // Nothing to export yet, e.g. right after editing was enabled; an existing export is still updated
-        done();
         return;
     }
     const auto saved = fs::last_write_time(xopp, error);
     if (error) {
-        done();
         return;
     }
     if (const auto exported = fs::last_write_time(target, error); !error && exported >= saved) {
-        done();
         return;
     }
-    // Fork: export a copy of the document on its own thread, so the UI is not blocked and editing can continue.
-    // A second request waits for the running export and then checks again whether the PDF is outdated.
-    running = true;
+    // This version is already being exported (the PDF is only written once that is done)
+    if (running && runningTarget == target && runningSaved == saved) {
+        return;
+    }
+    // An older version waiting for its turn is replaced: only the newest one needs to be exported
+    std::erase_if(queued, [&](const auto& s) { return s->target == target; });
+
     doc->lock_shared();
     auto snapshot = createSnapshot(*doc, target);
     doc->unlock_shared();
+    snapshot->saved = saved;
+    queued.push_back(std::move(snapshot));
+}
+
+void AnnotationExporter::startNext() {
+    if (running) {
+        return;
+    }
+    if (queued.empty()) {
+        for (auto& done: std::exchange(waiting, {})) {
+            done();
+        }
+        return;
+    }
+    // Fork: export a copy of the document on its own thread, so the UI is not blocked and the document can be edited
+    // or closed meanwhile. Exports run one after another, so two of them never write the same PDF.
+    auto snapshot = std::move(queued.front());
+    queued.pop_front();
+    running = true;
+    runningTarget = snapshot->target;
+    runningSaved = snapshot->saved;
 
     struct Finished {
         std::weak_ptr<void> alive;
         AnnotationExporter* self;
         std::unique_ptr<ExportSnapshot> snapshot;
-        std::function<void()> done;
     };
-    auto* finished = new Finished{lifetime, this, std::move(snapshot), std::move(done)};
+    auto* finished = new Finished{lifetime, this, std::move(snapshot)};
     std::thread([finished] {
         DummyProgressListener listener;
         auto exporter = XojPdfExportFactory::createExport(finished->snapshot->doc.get(), &listener);
@@ -644,7 +677,7 @@ void AnnotationExporter::exportIfOutdated(std::function<void()> done) {
                 +[](gpointer data) -> gboolean {
                     std::unique_ptr<Finished> f(static_cast<Finished*>(data));
                     if (!f->alive.expired()) {
-                        f->self->exportFinished(f->snapshot->error, std::move(f->done));
+                        f->self->exportFinished(f->snapshot->error);
                     }
                     return G_SOURCE_REMOVE;
                 },
@@ -652,13 +685,11 @@ void AnnotationExporter::exportIfOutdated(std::function<void()> done) {
     }).detach();
 }
 
-void AnnotationExporter::exportFinished(const std::string& error, std::function<void()> done) {
+void AnnotationExporter::exportFinished(const std::string& error) {
     running = false;
+    runningTarget.clear();
     if (!error.empty()) {
         XojMsgBox::showErrorToUser(control->getGtkWindow(), FS(_F("Error exporting PDF: {1}") % error));
     }
-    done();
-    for (auto& next: std::exchange(waiting, {})) {
-        next();
-    }
+    startNext();
 }

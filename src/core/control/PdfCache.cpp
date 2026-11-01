@@ -63,6 +63,10 @@ void PdfCache::updateSettings(Settings* settings) {
     }
 }
 
+auto PdfCache::isFor(const XojPdfDocument& doc) const -> bool {
+    return const_cast<XojPdfDocument&>(pdfDocument) == const_cast<XojPdfDocument&>(doc);
+}
+
 void PdfCache::evictAllExcept(const std::unordered_set<size_t>& retainedPdfPages) {
     std::lock_guard<std::mutex> lock(this->renderMutex);
 

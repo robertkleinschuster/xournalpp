@@ -26,8 +26,10 @@
 #include "gui/inputdevices/InputEvents.h"  // for KeyEvent
 #include "model/DocumentChangeType.h"      // for DocumentChangeType
 #include "model/DocumentListener.h"        // for DocumentListener
+#include "model/PageRef.h"                 // for PageRef
 #include "pdf/base/XojPdfPage.h"           // for XojPdfRectangle
 #include "util/Util.h"                     // for npos
+#include "view/Mask.h"                     // for Mask
 
 class Control;
 class XournalppCursor;
@@ -36,6 +38,14 @@ class EditSelection;
 class XojPageView;
 class XojPdfRectangle;
 class PdfCache;
+
+/// Fork: what was rendered for a document, kept with it in the document cache to show it again without rendering
+struct KeptRendering {
+    std::unique_ptr<PdfCache> pdfCache;
+    /// The visible pages as they were last drawn
+    std::vector<std::pair<PageRef, xoj::view::Mask>> pages;
+    ~KeptRendering();
+};
 class RepaintHandler;
 class ScrollHandling;
 class TextEditor;
@@ -56,6 +66,15 @@ public:
     void layoutPages();
 
     void scrollTo(size_t pageNo, XojPdfRectangle rect = {0, 0, -1, -1});
+
+    /// Fork: the top left corner of the visible area relative to the page, in page coordinates (negative if the page
+    /// starts inside the visible area)
+    std::pair<double, double> getViewOffsetInPage(size_t pageNo) const;
+    /// Fork: scrolls so that the top left corner of the visible area is at (x, y) relative to the page
+    void scrollToPageOffset(size_t pageNo, double x, double y);
+    /// Fork: queues the pages still to be rendered so that the current page comes first, then the other visible
+    /// ones, then those around it (after jumping to a position, the order would follow the pages passed on the way)
+    void renderCurrentPagesFirst();
 
     // Relative navigation in current layout:
     void pageRelativeXY(int offCol, int offRow);
@@ -125,6 +144,11 @@ public:
      * Recreate the PDF cache, for example after the underlying PDF file has changed
      */
     void recreatePdfCache();
+
+    /// Fork: hands out what was rendered for the current document (to keep it with the document when another one is
+    /// opened), or adopts what was kept for the document that was just opened again
+    std::unique_ptr<KeptRendering> takeRendering();
+    void adoptRendering(std::unique_ptr<KeptRendering> rendering);
 
     /**
      * A pen action was detected now, therefore ignore touch events

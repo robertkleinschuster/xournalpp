@@ -168,6 +168,19 @@ auto MetadataManager::loadMetadataFile(fs::path const& path) -> std::optional<Me
         entry.zoom = zoom;
     }
 
+    // Fork: optional exact view position (older files end here)
+    if (getline(infile, line) && line.rfind("offset=", 0) == 0) {
+        char* end = nullptr;
+        const auto x = g_ascii_strtod(line.c_str() + 7, &end);
+        const auto y = g_ascii_strtod(end, nullptr);
+        if (std::isfinite(x) && std::isfinite(y) && getline(infile, line) && line.rfind("fit=", 0) == 0) {
+            entry.hasViewPosition = true;
+            entry.offsetX = x;
+            entry.offsetY = y;
+            entry.zoomFit = line.substr(4) == "1";
+        }
+    }
+
     return entry;
 }
 
@@ -218,6 +231,10 @@ void MetadataManager::writeMetadataToFile(const MetadataEntry& m, const fs::path
     out << std::quoted(char_cast(m.path.u8string())) << "\n";
     out << "page=" << m.page << "\n";
     out << "zoom=" << m.zoom << "\n";
+    if (m.hasViewPosition) {
+        out << "offset=" << m.offsetX << " " << m.offsetY << "\n";
+        out << "fit=" << (m.zoomFit ? 1 : 0) << "\n";
+    }
     out.close();
 }
 
@@ -238,5 +255,19 @@ void MetadataManager::storeMetadata(fs::path const& file, int page, double zoom)
     metadata->zoom = zoom;
     metadata->page = page;
     metadata->time = g_get_real_time();
+    metadata->hasViewPosition = false;  // e.g. the page changed: a stored position within the page no longer applies
     this->mutex.unlock();
+}
+
+void MetadataManager::storeViewPosition(fs::path const& file, int page, double zoom, double offsetX, double offsetY,
+                                        bool zoomFit) {
+    storeMetadata(file, page, zoom);
+    if (file.empty()) {
+        return;
+    }
+    std::lock_guard lock(this->mutex);
+    metadata->hasViewPosition = true;
+    metadata->offsetX = offsetX;
+    metadata->offsetY = offsetY;
+    metadata->zoomFit = zoomFit;
 }

@@ -9,6 +9,7 @@
 #pragma once
 
 #include <cstdint>
+#include <deque>
 #include <filesystem>
 #include <functional>
 #include <memory>
@@ -19,6 +20,7 @@
 class Control;
 class Document;
 class Settings;
+struct ExportSnapshot;
 
 /**
  * Naming rules shared by the automatic PDF export, opening PDFs and the project explorer.
@@ -147,19 +149,32 @@ public:
     AnnotationExporter(const AnnotationExporter&) = delete;
     AnnotationExporter& operator=(const AnnotationExporter&) = delete;
 
-    /// Exports the current document if its PDF is missing or outdated, then calls done
+    /// Exports the current document if its PDF is missing or outdated. The export runs on its own thread with a copy
+    /// of the document, so the document can be edited or closed meanwhile. done is called once all exports
+    /// (including those started before) are finished.
     void exportIfOutdated(std::function<void()> done);
 
 private:
     /// Whether the current document's exported PDF exists
     bool hasExport() const;
 
+    /// Queues an export of the current document if its PDF is missing or outdated
+    void queueIfOutdated();
+
+    /// Starts the next queued export, or calls the waiting callbacks once nothing is left
+    void startNext();
+
     /// Continues on the UI thread once the export thread is done
-    void exportFinished(const std::string& error, std::function<void()> done);
+    void exportFinished(const std::string& error);
 
     Control* control;
+    /// Whether an export runs on its own thread (which owns its snapshot), and which file version it exports
     bool running = false;
-    /// Requests made while an export was running
+    std::filesystem::path runningTarget;
+    std::filesystem::file_time_type runningSaved;
+    /// Exports waiting for the running one, oldest first
+    std::deque<std::unique_ptr<ExportSnapshot>> queued;
+    /// Called once no export is running or queued
     std::vector<std::function<void()>> waiting;
     /// Expires with this object, so that a finishing export thread does not call into it afterwards
     std::shared_ptr<void> lifetime = std::make_shared<int>(0);

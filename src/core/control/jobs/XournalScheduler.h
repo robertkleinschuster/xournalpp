@@ -38,6 +38,9 @@ public:
      */
     void removeAllJobs();
 
+    /// Fork: removes the page renderings waiting to be run (not a running one), e.g. to queue them in another order
+    void removeQueuedPageRenders();
+
     void addRepaintSidebar(SidebarPreviewBaseEntry* preview);
     void addRerenderPage(XojPageView* view);
 

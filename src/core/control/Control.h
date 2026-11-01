@@ -72,6 +72,8 @@ class XojPdfRectangle;
 class Callback;
 class ActionDatabase;
 class NavigationHistory;
+class DocumentCache;
+struct KeptRendering;
 
 class Control:
         public ToolListener,
@@ -153,9 +155,10 @@ public:
 
     /**
      * Fork: called by close() before a document that is saved is closed (opening another file, quitting).
-     * The hook must call proceed() when it is done, e.g. after exporting the annotated PDF.
+     * The hook must call proceed() when it is done, e.g. after exporting the annotated PDF. waitForExport is false
+     * when another document is opened: background work may then continue after proceed().
      */
-    void setBeforeCloseHook(std::function<void(std::function<void()> proceed)> hook);
+    void setBeforeCloseHook(std::function<void(std::function<void()> proceed, bool waitForExport)> hook);
 
     /// Fork: called after the user saved explicitly (Save / Save As), not after automatic saves.
     /// The hook receives whether the document had changes before saving.
@@ -437,6 +440,9 @@ protected:
 
     static bool loadMetadataCallback(MetadataCallbackData* data);
 
+    /// Fork: applies the stored zoom and view position of the document that was just opened
+    void applyViewPosition(const MetadataEntry& md);
+
     void saveImpl(bool saveAs, std::function<void(bool)> callback);
 
 private:
@@ -481,6 +487,12 @@ private:
      * WARNING: Be sure the active document has been saved (or discarded) before calling replaceDocument()
      */
     void replaceDocument(std::unique_ptr<Document> doc, int scrollToPage);
+    /// Fork: like replaceDocument(), reusing what was rendered for a document kept in the document cache
+    void replaceDocument(std::unique_ptr<Document> doc, int scrollToPage, std::unique_ptr<KeptRendering> rendering);
+
+    /// Fork: keeps the open document in the document cache if it matches its files on disk, before it is replaced by
+    /// next (a different document, not a reload of the same one)
+    void keepOpenDocument(const Document& next);
 
     /**
      * Asynchronously opens the provided path and parse it as a .xopp or .xoj file. Then forcibly replaces the currently
@@ -537,7 +549,7 @@ private:
     Sidebar* sidebar = nullptr;
     SearchBar* searchBar = nullptr;
 
-    std::function<void(std::function<void()>)> beforeCloseHook;
+    std::function<void(std::function<void()>, bool)> beforeCloseHook;
     /// Fork: completes close() once beforeCloseHook is done
     void finishCloseAfterHook(std::function<void(bool)> callback, bool allowDestroy, bool allowCancel);
     std::function<void(bool)> userSavedHook;
@@ -596,6 +608,9 @@ private:
 
     MetadataManager* metadata;
 
+    /// Fork: the documents opened last, to switch back to them instantly
+    std::unique_ptr<DocumentCache> documentCache;
+
     PageTypeHandler* pageTypes;
 
     std::unique_ptr<PageBackgroundChangeController> pageBackgroundChangeController;
@@ -621,5 +636,7 @@ private:
     bool audioEnabled = false;
     bool readOnly = false;
     bool autoSaveAllowed = true;
+    /// Fork: the view of the document just opened is applied once the window is shown (at startup)
+    bool viewRestorePending = false;
     guint audioInitSource = 0;
 };

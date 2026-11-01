@@ -56,5 +56,31 @@ TEST(Metadata, testWriteReadCycle) {
     EXPECT_EQ(entry->time, entry2->time);
     EXPECT_EQ(entry->page, entry2->page);
     EXPECT_EQ(entry->zoom, entry2->zoom);
+    EXPECT_FALSE(entry2->hasViewPosition);  // older entries have only page and zoom
     fs::remove(tmp);
+}
+
+TEST(Metadata, testViewPositionCycle) {
+    MetadataEntry entry;
+    entry.path = fs::path(u8"/test/ue4.xopp");
+    entry.page = 2;
+    entry.zoom = 1.6;
+    entry.hasViewPosition = true;
+    entry.offsetX = 24.5;
+    entry.offsetY = -12.25;
+    entry.zoomFit = true;
+
+    auto tmp = Util::getTmpDirSubfolder() / "7654321.metadata";
+    MetadataManager::writeMetadataToFile(entry, tmp);
+    auto read = MetadataManager::loadMetadataFile(tmp);
+    fs::remove(tmp);
+
+    ASSERT_TRUE(read);
+    EXPECT_EQ(read->path, entry.path);
+    EXPECT_EQ(read->page, 2);
+    EXPECT_EQ(read->zoom, 1.6);
+    EXPECT_TRUE(read->hasViewPosition);
+    EXPECT_EQ(read->offsetX, 24.5);
+    EXPECT_EQ(read->offsetY, -12.25);
+    EXPECT_TRUE(read->zoomFit);
 }

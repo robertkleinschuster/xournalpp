@@ -61,6 +61,9 @@ public:
 
     void updateSettings(Settings* settings);
 
+    /// Fork: whether this cache renders pages of doc (the same loaded PDF, not just the same file)
+    bool isFor(const XojPdfDocument& doc) const;
+
     /**
      * @brief Remove cached renderings for PDF pages that are not retained.
      */

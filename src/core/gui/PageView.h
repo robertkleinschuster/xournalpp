@@ -129,6 +129,9 @@ public:
 
     GdkRGBA getSelectionColor() override;
     bool hasBuffer() const;
+    /// Fork: hands out the rendered page (leaving none), or takes one over, e.g. kept in the document cache
+    xoj::view::Mask takeBuffer();
+    void adoptBuffer(xoj::view::Mask buffer);
 
     TextEditor* getTextEditor();
 

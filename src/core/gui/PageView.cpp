@@ -1185,6 +1185,16 @@ auto XojPageView::isSelected() const -> bool { return selected; }
 
 auto XojPageView::hasBuffer() const -> bool { return this->buffer.isInitialized(); }
 
+auto XojPageView::takeBuffer() -> xoj::view::Mask {
+    std::lock_guard lock(this->drawingMutex);
+    return std::exchange(this->buffer, xoj::view::Mask());
+}
+
+void XojPageView::adoptBuffer(xoj::view::Mask buffer) {
+    std::lock_guard lock(this->drawingMutex);
+    this->buffer = std::move(buffer);
+}
+
 auto XojPageView::getSelectionColor() -> GdkRGBA { return Util::rgb_to_GdkRGBA(settings->getSelectionColor()); }
 
 auto XojPageView::getTextEditor() -> TextEditor* { return textEditor.get(); }
