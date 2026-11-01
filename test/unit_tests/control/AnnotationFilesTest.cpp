@@ -21,6 +21,7 @@
 #include "model/Point.h"
 #include "model/Stroke.h"
 #include "model/XojPage.h"
+#include "pdf/base/PdfCombiner.h"
 
 namespace fs = std::filesystem;
 
@@ -339,4 +340,31 @@ TEST_F(AnnotationFilesTest, reorderedPagesCountAsAnnotations) {
     doc.deletePage(0);
     doc.insertPage(first, 1);
     EXPECT_TRUE(AnnotationFiles::hasAnnotations(doc));
+}
+
+TEST_F(AnnotationFilesTest, theCombinedPdfBelongsToTheGroup) {
+    // A course PDF named like the document, and the combined PDF made by "Insert Pages from PDF"
+    fs::copy_file(GET_TESTFILE(u8"packaged_xopp/pdfBackground/old.xopp.bg.pdf"), dir / "VO8.pdf");
+    const auto combined = dir / "VO8 (combined).pdf";
+    std::ofstream(combined, std::ios::binary) << PdfCombiner::append(dir / "VO8.pdf", dir / "VO8.pdf", {0});
+    saveAnnotation(dir / "VO8.xopp", combined, "VO8_annotated.pdf");
+    std::ofstream(dir / "VO8_annotated.pdf") << "x";
+
+    EXPECT_TRUE(AnnotationFiles::ownsSourcePdf(dir / "VO8.xopp", combined));
+    EXPECT_TRUE(AnnotationFiles::ownsSourcePdf(dir / "VO8.xopp", dir / "VO8.pdf"));
+    EXPECT_FALSE(AnnotationFiles::ownsSourcePdf(dir / "VO8.xopp", dir / "VO8 Skript.pdf"));  // not combined
+    EXPECT_EQ(AnnotationFiles::groupFiles(dir / "VO8.xopp", *settings),
+              (std::vector<fs::path>{dir / "VO8.xopp", combined, dir / "VO8_annotated.pdf"}));
+
+    const auto group = AnnotationFiles::groupForRename(dir / "VO8.xopp", dir / "VO9.xopp", *settings);
+    EXPECT_FALSE(AnnotationFiles::groupConflict(group));
+    applyGroup(group, *settings);
+    EXPECT_TRUE(fs::exists(dir / "VO9 (combined).pdf"));
+    EXPECT_TRUE(fs::exists(dir / "VO8.pdf"));  // the course PDF is no longer the document's background
+    expectLoadsWithPdf(dir / "VO9.xopp");
+
+    fs::create_directory(dir / "Archiv");
+    applyGroup(AnnotationFiles::groupForMove(dir / "VO9.xopp", dir / "Archiv", *settings), *settings);
+    EXPECT_TRUE(fs::exists(dir / "Archiv" / "VO9 (combined).pdf"));
+    expectLoadsWithPdf(dir / "Archiv" / "VO9.xopp");
 }

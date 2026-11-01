@@ -22,6 +22,7 @@
 #include "model/Image.h"
 #include "model/Layer.h"
 #include "model/XojPage.h"
+#include "pdf/base/PdfCombiner.h"
 #include "pdf/base/XojPdfExport.h"
 #include "pdf/base/XojPdfExportFactory.h"
 #include "undo/UndoRedoHandler.h"
@@ -417,10 +418,11 @@ auto AnnotationFiles::groupForRename(const fs::path& oldXopp, const fs::path& ne
     const auto oldStem = Util::toUtf8(oldXopp.stem());
     const auto newStem = Util::toUtf8(newXopp.stem());
     std::error_code error;
-    if (const auto source = recordedSourcePdf(oldXopp); !source.empty() && fs::exists(source, error) &&
-                                                        samePath(source.parent_path(), dir) &&
-                                                        Util::toUtf8(source.stem()) == oldStem) {
-        group.newSource = dir / Util::fromUtf8(newStem + Util::toUtf8(source.extension()));
+    if (const auto source = recordedSourcePdf(oldXopp);
+        !source.empty() && fs::exists(source, error) && ownsSourcePdf(oldXopp, source)) {
+        // "VO8.pdf" becomes "VO9.pdf", "VO8 (combined).pdf" becomes "VO9 (combined).pdf"
+        const auto sourceName = Util::toUtf8(source.filename());
+        group.newSource = dir / Util::fromUtf8(newStem + sourceName.substr(oldStem.size()));
         group.moves.emplace_back(source, *group.newSource);
     }
     const auto exported = exportPathForFile(oldXopp, settings);
@@ -441,7 +443,7 @@ auto AnnotationFiles::groupForMove(const fs::path& xopp, const fs::path& dir, co
     group.moves.emplace_back(xopp, group.newXopp);
     std::error_code error;
     if (const auto source = recordedSourcePdf(xopp); !source.empty() && fs::exists(source, error)) {
-        if (samePath(source.parent_path(), xopp.parent_path()) && source.stem() == xopp.stem()) {
+        if (ownsSourcePdf(xopp, source)) {
             group.newSource = dir / source.filename();
             group.moves.emplace_back(source, *group.newSource);
         } else {
@@ -452,6 +454,28 @@ auto AnnotationFiles::groupForMove(const fs::path& xopp, const fs::path& dir, co
         group.moves.emplace_back(exported, dir / exported.filename());
     }
     return group;
+}
+
+auto AnnotationFiles::ownsSourcePdf(const fs::path& xopp, const fs::path& pdf) -> bool {
+    if (!samePath(pdf.parent_path(), xopp.parent_path())) {
+        return false;
+    }
+    const auto stem = Util::toUtf8(xopp.stem());
+    const auto pdfStem = Util::toUtf8(pdf.stem());
+    return pdfStem == stem || (pdfStem.rfind(stem, 0) == 0 && PdfCombiner::isCombined(pdf));
+}
+
+auto AnnotationFiles::groupFiles(const fs::path& xopp, const Settings& settings) -> std::vector<fs::path> {
+    std::vector<fs::path> files{xopp};
+    std::error_code error;
+    if (const auto source = recordedSourcePdf(xopp);
+        !source.empty() && fs::exists(source, error) && ownsSourcePdf(xopp, source)) {
+        files.push_back(source);
+    }
+    if (const auto exported = exportPathForFile(xopp, settings); !exported.empty() && fs::exists(exported, error)) {
+        files.push_back(exported);
+    }
+    return files;
 }
 
 auto AnnotationFiles::groupConflict(const DocumentGroup& group) -> std::optional<std::string> {

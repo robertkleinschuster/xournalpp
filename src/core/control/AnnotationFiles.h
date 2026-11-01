@@ -102,6 +102,15 @@ DocumentGroup groupForRename(const std::filesystem::path& oldXopp, const std::fi
 DocumentGroup groupForMove(const std::filesystem::path& xopp, const std::filesystem::path& dir,
                            const Settings& settings);
 
+/**
+ * Whether the document owns its background PDF, i.e. it is renamed, moved and deleted with it: the PDF is next to it
+ * and named like it, or it is the document's combined PDF (see InsertPdfPages), e.g. "VO8 (combined).pdf".
+ */
+bool ownsSourcePdf(const std::filesystem::path& xopp, const std::filesystem::path& pdf);
+
+/// The existing files of a document's group: the document, the background PDF it owns and its exported PDF
+std::vector<std::filesystem::path> groupFiles(const std::filesystem::path& xopp, const Settings& settings);
+
 /// The name of a target of the group that exists already or is the target of two moves, if any
 std::optional<std::string> groupConflict(const DocumentGroup& group);
 
