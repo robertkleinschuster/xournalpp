@@ -152,8 +152,47 @@ treeview {
 }
 )css";
 
+/**
+ * The window's layout changes (tablet mode, orientation): close open menus and popovers (context menus, menu bar,
+ * toolbar dropdowns) instead of leaving them at a position and size that no longer fit, as Windows does on display
+ * changes. Dialogs stay open.
+ */
+void closeTransientPopups() {
+    for (int i = 0; i < 8; i++) {  // nested menus each hold a grab, e.g. a submenu and the menu bar
+        GtkWidget* grab = gtk_grab_get_current();
+        if (GTK_IS_POPOVER(grab)) {
+            gtk_popover_popdown(GTK_POPOVER(grab));
+        } else if (GTK_IS_MENU_SHELL(grab)) {
+            gtk_menu_shell_cancel(GTK_MENU_SHELL(grab));
+        } else {
+            return;
+        }
+        if (gtk_grab_get_current() == grab) {
+            return;  // e.g. a popover fading out, which keeps its grab until it is hidden
+        }
+    }
+}
+
+/// The keyboard was opened by us for tablet mode: close it when leaving tablet mode
+void releaseTouchKeyboard() {
+    if (state->keyboardHideSource) {
+        g_source_remove(state->keyboardHideSource);
+        state->keyboardHideSource = 0;
+    }
+    if (state->keyboardShown && touchKeyboardVisible()) {
+        toggleTouchKeyboard();
+    }
+    state->keyboardShown = false;
+}
+
 void updateTabletMode() {
     const bool tablet = isTabletMode();
+    if (tablet != state->tablet) {
+        closeTransientPopups();
+        if (!tablet) {
+            releaseTouchKeyboard();
+        }
+    }
     static GtkCssProvider* provider = [] {
         GtkCssProvider* css = gtk_css_provider_new();
         gtk_css_provider_load_from_data(css, TABLET_CSS, -1, nullptr);
@@ -178,6 +217,7 @@ void updateOrientation(int width, int height) {
         return;
     }
     state->portrait = portrait;
+    closeTransientPopups();
     if (portrait && state->win->isSidebarVisible()) {
         state->win->setSidebarVisible(false);
         state->sidebarHidden = true;
