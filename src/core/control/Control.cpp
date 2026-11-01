@@ -785,6 +785,25 @@ void Control::deletePage() {
     this->win->getXournal()->forceUpdatePagenumbers();
 }
 
+void Control::askDeletePage() {
+    if (this->doc->getPageCount() < 2) {
+        return;  // deletePage() keeps the last page anyway
+    }
+    const size_t pNr = getCurrentPageNo();
+    if (pNr == npos) {
+        return;
+    }
+    enum { RESP_DELETE = 1, RESP_CANCEL };
+    XojMsgBox::askQuestion(getGtkWindow(), FC(_F("Delete page {1}?") % static_cast<int64_t>(pNr + 1)),
+                           _("The page can be restored with Undo."),
+                           {{_("Delete"), RESP_DELETE}, {_("Cancel"), RESP_CANCEL}}, [ctrl = this, pNr](int response) {
+                               // The current page may have changed while the dialog was open
+                               if (response == RESP_DELETE && ctrl->getCurrentPageNo() == pNr) {
+                                   ctrl->deletePage();
+                               }
+                           });
+}
+
 void Control::duplicatePage() {
     auto page = getCurrentPage();
     if (!page) {

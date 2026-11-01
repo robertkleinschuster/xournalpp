@@ -612,7 +612,7 @@ struct ActionProperties<Action::CONFIGURE_PAGE_TEMPLATE> {
 };
 template <>
 struct ActionProperties<Action::DELETE_PAGE> {
-    static void callback(GSimpleAction*, GVariant*, Control* ctrl) { ctrl->deletePage(); }
+    static void callback(GSimpleAction*, GVariant*, Control* ctrl) { ctrl->askDeletePage(); }
 };
 
 template <>

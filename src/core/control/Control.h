@@ -251,6 +251,8 @@ public:
     void insertNewPage(size_t position, bool automatedInsertion = false);
     void insertPage(const PageRef& page, size_t position, bool shouldScrollToPage = true);
     void deletePage();
+    /// Fork: asks for confirmation, then deletes the current page
+    void askDeletePage();
     void movePageTowardsBeginning();
     void movePageTowardsEnd();
     /// Fork: moves the page at from to position to (to counted after removing it), undoable
