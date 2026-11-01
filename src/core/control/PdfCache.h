@@ -66,6 +66,7 @@ public:
 
     /**
      * @brief Remove cached renderings for PDF pages that are not retained.
+     * Fork: does nothing while a page is being rendered, so the UI thread never waits for it.
      */
     void evictAllExcept(const std::unordered_set<size_t>& retainedPdfPages);
 

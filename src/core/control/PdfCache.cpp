@@ -69,7 +69,12 @@ auto PdfCache::isFor(const XojPdfDocument& doc) const -> bool {
 }
 
 void PdfCache::evictAllExcept(const std::unordered_set<size_t>& retainedPdfPages) {
-    std::lock_guard<std::mutex> lock(this->renderMutex);
+    // Fork: called on the UI thread (page changes, cleanup timer). Never wait for a PDF page being rendered meanwhile,
+    // which takes up to a second at high zoom and froze scrolling; the next page change or cleanup evicts instead.
+    std::unique_lock<std::mutex> lock(this->renderMutex, std::try_to_lock);
+    if (!lock.owns_lock()) {
+        return;
+    }
 
     for (auto& entry: this->data) {
         xoj_assert(entry);
