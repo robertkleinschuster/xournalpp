@@ -5465,3 +5465,27 @@ msgstr "Seite {1} löschen?"
 #: ../src/core/control/Control.cpp
 msgid "The page can be restored with Undo."
 msgstr "Die Seite lässt sich mit Rückgängig wiederherstellen."
+
+#: ../ui/sidebar.ui
+msgid "Insert Page Before"
+msgstr "Seite davor einfügen"
+
+#: ../ui/sidebar.ui
+msgid "Insert Page After"
+msgstr "Seite danach einfügen"
+
+#: ../ui/sidebar.ui
+msgid "Duplicate"
+msgstr "Duplizieren"
+
+#: ../ui/sidebar.ui
+msgid "Move Up"
+msgstr "Nach oben"
+
+#: ../ui/sidebar.ui
+msgid "Move Down"
+msgstr "Nach unten"
+
+#: ../ui/sidebar.ui
+msgid "Merge Down"
+msgstr "Mit der Ebene darunter zusammenführen"
