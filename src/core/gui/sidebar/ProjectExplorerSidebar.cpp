@@ -149,10 +149,19 @@ auto loadPixmapIcon(Control* control, const char* file, const char* fallback) ->
     if (path.empty()) {
         return g_themed_icon_new(fallback);
     }
-    GFile* gfile = g_file_new_for_path(Util::toUtf8(path).c_str());
-    GIcon* icon = g_file_icon_new(gfile);
-    g_object_unref(gfile);
-    return icon;
+    // Fork: rendered once at the size of the tree's icons. A GFileIcon was read and rendered from the SVG again for
+    // every visible row in every frame, which made scrolling the tree slow (19 ms per frame).
+    constexpr int ICON_SIZE = 16;  // GTK_ICON_SIZE_MENU
+    GtkWindow* window = control->getGtkWindow();
+    const int size = ICON_SIZE * (window ? gtk_widget_get_scale_factor(GTK_WIDGET(window)) : 1);
+    GError* error = nullptr;
+    GdkPixbuf* pixbuf = gdk_pixbuf_new_from_file_at_size(Util::toUtf8(path).c_str(), size, size, &error);
+    if (!pixbuf) {
+        g_warning("Could not load %s: %s", file, error ? error->message : "");
+        g_clear_error(&error);
+        return g_themed_icon_new(fallback);
+    }
+    return G_ICON(pixbuf);  // a GdkPixbuf is a GIcon
 }
 
 /// Key file group for a project, independent of characters in its path
