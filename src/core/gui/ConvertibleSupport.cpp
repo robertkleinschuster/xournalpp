@@ -130,30 +130,42 @@ State* state = nullptr;  // one main window
 
 auto isTabletMode() -> bool { return GetSystemMetrics(SM_CONVERTIBLESLATEMODE) == 0; }
 
-/// In tablet mode, toolbar buttons get a larger area to hit with a finger (the icons keep their size)
+/// In tablet mode, the controls used most get a larger area to hit with a finger (icons and text keep their size):
+/// toolbar buttons, sidebar tabs, menu and popover entries (also the explorer's context menu) and tree rows
 constexpr const char* TABLET_CSS = R"css(
-window.xopp-tablet toolbar button {
+toolbar button {
     min-width: 32px;
     min-height: 44px;
+}
+#bxSidebarTopActions button,
+#buttonCloseSidebar {
+    min-width: 40px;
+    min-height: 40px;
+}
+menu menuitem,
+popover modelbutton {
+    min-height: 40px;
+}
+treeview {
+    -GtkTreeView-vertical-separator: 12;
 }
 )css";
 
 void updateTabletMode() {
-    state->tablet = isTabletMode();
+    const bool tablet = isTabletMode();
     static GtkCssProvider* provider = [] {
         GtkCssProvider* css = gtk_css_provider_new();
         gtk_css_provider_load_from_data(css, TABLET_CSS, -1, nullptr);
-        gtk_style_context_add_provider_for_screen(gdk_screen_get_default(), GTK_STYLE_PROVIDER(css),
-                                                  GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
         return css;
     }();
-    (void)provider;
-    GtkStyleContext* style = gtk_widget_get_style_context(state->win->getWindow());
-    if (state->tablet) {
-        gtk_style_context_add_class(style, "xopp-tablet");
-    } else {
-        gtk_style_context_remove_class(style, "xopp-tablet");
+    // Fork: for the whole screen, so that menus and popovers (own windows) are included
+    if (tablet && !state->tablet) {
+        gtk_style_context_add_provider_for_screen(gdk_screen_get_default(), GTK_STYLE_PROVIDER(provider),
+                                                  GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+    } else if (!tablet && state->tablet) {
+        gtk_style_context_remove_provider_for_screen(gdk_screen_get_default(), GTK_STYLE_PROVIDER(provider));
     }
+    state->tablet = tablet;
 }
 
 void updateOrientation(int width, int height) {
