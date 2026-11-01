@@ -349,8 +349,9 @@ public:
                          this);
 
         longPress = gtk_gesture_long_press_new(GTK_WIDGET(tree));
-        // Windows delivers taps as emulated mouse events, so the gesture cannot be touch only; onLongPress() ignores
-        // the mouse, which opens the menu with a right click
+        // Windows does not turn a long press into a right click here: GTK receives touch as touch events, and
+        // PenFeedbackFix turns off press-and-hold for the window (it fired while writing). The gesture cannot be touch
+        // only, as Windows delivers taps as emulated mouse events; onLongPress() reacts to the touchscreen only.
         gtk_gesture_single_set_touch_only(GTK_GESTURE_SINGLE(longPress), false);
         g_signal_connect(longPress, "pressed", G_CALLBACK(onLongPress), this);
         g_signal_connect(longPress, "end", G_CALLBACK(onLongPressEnd), this);
@@ -1642,8 +1643,8 @@ private:
                 gesture, gtk_gesture_single_get_current_sequence(GTK_GESTURE_SINGLE(gesture)));
         GdkDevice* device = event ? gdk_event_get_source_device(event) : nullptr;
         const auto source = device ? gdk_device_get_source(device) : GDK_SOURCE_MOUSE;
-        if (source != GDK_SOURCE_TOUCHSCREEN && source != GDK_SOURCE_PEN && source != GDK_SOURCE_ERASER) {
-            return;
+        if (source != GDK_SOURCE_TOUCHSCREEN) {
+            return;  // the mouse and the pen open the menu with a right click (pen: barrel button)
         }
         gint binX = 0;
         gint binY = 0;

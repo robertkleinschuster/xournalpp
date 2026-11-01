@@ -344,8 +344,8 @@ private:
                 gesture, gtk_gesture_single_get_current_sequence(GTK_GESTURE_SINGLE(gesture)));
         GdkDevice* device = event ? gdk_event_get_source_device(event) : nullptr;
         const auto source = device ? gdk_device_get_source(device) : GDK_SOURCE_MOUSE;
-        if (source != GDK_SOURCE_TOUCHSCREEN && source != GDK_SOURCE_PEN && source != GDK_SOURCE_ERASER) {
-            return;  // the mouse opens the menu with a right click
+        if (source != GDK_SOURCE_TOUCHSCREEN) {
+            return;  // the mouse and the pen open the menu with a right click (pen: barrel button)
         }
         gint binX = 0;
         gint binY = 0;
