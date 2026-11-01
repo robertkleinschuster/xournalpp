@@ -48,6 +48,13 @@ Pages of another PDF go into the hidden companion PDF `.<name>.pages.pdf` (a cop
 new pages, marked `/XournalStudioCombined`), referenced like any background PDF; it belongs to the document group
 (renamed, moved, deleted, synced with it), the original PDF stays unchanged. Open:
 
+- **Not final – to be decided by the user:** how copied pages from other PDFs should be stored so that it fits the
+  Xournal++ logic best. A .xopp only references its background PDF (one per document); upstream's "attach" also
+  writes a separate `<name>.xopp.bg.pdf`. Options discussed: the current hidden companion `.<name>.pages.pdf`
+  (vector, synced, recognized as part of the document group), writing the pages into the document's own PDF
+  (original changes, Git keeps the old version), a visible combined PDF (previous version), or images inside the
+  .xopp (single file, but raster and large). Keep the code paths (`InsertPdfPages::combinedPdfPath`,
+  `AnnotationFiles::ownsSourcePdf`/`companionPdf`) easy to switch until then.
 - Removing pages that are no longer used from the combined PDF (it only grows; undo keeps them).
 - Range selection by dragging over thumbnails.
 
