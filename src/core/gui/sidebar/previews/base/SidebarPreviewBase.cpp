@@ -52,8 +52,7 @@ SidebarPreviewBase::SidebarPreviewBase(Control* control, const char* menuId, con
 
     Builder builder(control->getGladeSearchPath(), XML_FILE);
     GMenuModel* menu = G_MENU_MODEL(builder.getObject(menuId));
-    contextMenu.reset(GTK_MENU(gtk_menu_new_from_model(menu)), xoj::util::adopt);
-    gtk_menu_attach_to_widget(contextMenu.get(), mainBox.get(), nullptr);
+    contextMenu.reset(menu, xoj::util::ref);
 
     gtk_box_append(GTK_BOX(mainBox.get()), builder.get(toolbarId));
 
@@ -155,5 +154,5 @@ void SidebarPreviewBase::pageDeleted(size_t page) {}
 void SidebarPreviewBase::pageInserted(size_t page) {}
 
 void SidebarPreviewBase::openPreviewContextMenu(const ContextMenuTrigger::Request& request, GtkWidget* anchor) {
-    ContextMenuTrigger::popup(contextMenu.get(), anchor, request, false);
+    ContextMenuTrigger::popup(contextMenu.get(), nullptr, anchor, request);
 }

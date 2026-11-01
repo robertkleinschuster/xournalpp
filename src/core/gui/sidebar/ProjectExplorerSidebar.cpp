@@ -224,18 +224,6 @@ auto compareRows(GtkTreeModel* model, GtkTreeIter* a, GtkTreeIter* b, gpointer) 
     return result;
 }
 
-void addMenuItem(GtkWidget* menu, const char* label, std::function<void()> action, bool sensitive = true) {
-    auto* item = gtk_menu_item_new_with_label(label);
-    g_signal_connect_data(
-            item, "activate",
-            G_CALLBACK(+[](GtkMenuItem*, gpointer data) { (*static_cast<std::function<void()>*>(data))(); }),
-            new std::function<void()>(std::move(action)),
-            [](gpointer data, GClosure*) { delete static_cast<std::function<void()>*>(data); }, GConnectFlags(0));
-    gtk_widget_set_sensitive(item, sensitive);
-    gtk_menu_shell_append(GTK_MENU_SHELL(menu), item);
-}
-
-void addMenuSeparator(GtkWidget* menu) { gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_separator_menu_item_new()); }
 
 }  // namespace
 
@@ -1641,69 +1629,67 @@ private:
             gtk_tree_path_free(path);
         }
 
-        auto* menu = gtk_menu_new();
+        ContextMenu menu;
         if (isDeletedKind(kind)) {
-            addMenuItem(menu, _("Restore"), [this, target] { restoreEntry(Util::fromUtf8(target.c_str())); });
-            addMenuItem(menu, _("Copy Path"), [target] {
+            menu.add(_("Restore"), [this, target] { restoreEntry(Util::fromUtf8(target.c_str())); });
+            menu.add(_("Copy Path"), [target] {
                 gtk_clipboard_set_text(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD), target.c_str(), -1);
             });
             popupMenu(menu, at);
             return;
         }
         if (kind == KIND_DOCUMENT || kind == KIND_NESTED) {
-            addMenuItem(menu, _("Open"), [this, document] { openDocument(document); });
+            menu.add(_("Open"), [this, document] { openDocument(document); });
             if (Util::hasPdfFileExt(Util::fromUtf8(target.c_str()))) {
                 // Read-only viewing, e.g. of the exported PDF, without creating annotations
-                addMenuItem(menu, _("Open Read-Only"),
-                            [this, target] { openReadOnly(Util::fromUtf8(target.c_str())); });
-                addMenuItem(menu, _("Open in PDF Viewer"), [this, target] { openWithDefaultApp(target); });
+                menu.add(_("Open Read-Only"), [this, target] { openReadOnly(Util::fromUtf8(target.c_str())); });
+                menu.add(_("Open in PDF Viewer"), [this, target] { openWithDefaultApp(target); });
             }
-            addMenuSeparator(menu);
+            menu.addSeparator();
         }
         if (!projectRoot.empty()) {
             const auto dir = targetDirectory(target, kind);
-            addMenuItem(menu, _("New Document"), [this, dir] { createDocument(dir); });
-            addMenuItem(menu, _("New Folder"), [this, dir] { createFolder(dir); });
-            addMenuSeparator(menu);
+            menu.add(_("New Document"), [this, dir] { createDocument(dir); });
+            menu.add(_("New Folder"), [this, dir] { createFolder(dir); });
+            menu.addSeparator();
         }
         const bool isRoot = !target.empty() && Util::fromUtf8(target.c_str()) == projectRoot;
         if (kind != KIND_PLACEHOLDER && !isRoot) {
-            addMenuItem(menu, _("Rename…"), [this, target, kind, document] {
-                renameEntry(Util::fromUtf8(target.c_str()), kind, document);
-            });
-            addMenuItem(menu, _("Move to…"), [this, target, kind, document] {
+            menu.add(_("Rename…"),
+                     [this, target, kind, document] { renameEntry(Util::fromUtf8(target.c_str()), kind, document); });
+            menu.add(_("Move to…"), [this, target, kind, document] {
                 moveEntry(Util::fromUtf8(target.c_str()), kind, kind == KIND_NESTED ? document : fs::path());
             });
-            addMenuItem(menu, _("Delete"),
-                        [this, target, kind] { deleteEntry(Util::fromUtf8(target.c_str()), kind == KIND_DIRECTORY); });
+            menu.add(_("Delete"),
+                     [this, target, kind] { deleteEntry(Util::fromUtf8(target.c_str()), kind == KIND_DIRECTORY); });
             if (auto changed = changedFilesOf(Util::fromUtf8(target.c_str()), kind); !changed.empty()) {
-                addMenuItem(menu, _("Discard Changes…"), [this, changed] { discardChanges(changed); });
+                menu.add(_("Discard Changes…"), [this, changed] { discardChanges(changed); });
             }
-            addMenuSeparator(menu);
+            menu.addSeparator();
         }
         if (kind != KIND_PLACEHOLDER) {
-            addMenuItem(menu, _("Show in File Manager"), [this, target, kind] {
+            menu.add(_("Show in File Manager"), [this, target, kind] {
                 const auto path = Util::fromUtf8(target.c_str());
                 showInFileManager(kind == KIND_DIRECTORY ? path : path.parent_path());
             });
-            addMenuItem(menu, _("Copy Path"), [target] {
+            menu.add(_("Copy Path"), [target] {
                 gtk_clipboard_set_text(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD), target.c_str(), -1);
             });
-            addMenuSeparator(menu);
+            menu.addSeparator();
         }
         if (!searching) {
-            addMenuItem(menu, _("Collapse All"), [this] { collapseAll(); });
+            menu.add(_("Collapse All"), [this] { collapseAll(); });
         }
-        addMenuItem(menu, _("Refresh"), [this] { refresh(true); });
-        addMenuSeparator(menu);
-        addMenuItem(menu, _("Open Folder…"), [this] { chooseFolder(); });
-        addMenuItem(menu, _("Close Folder"), [this] { closeProject(); }, !projectRoot.empty());
+        menu.add(_("Refresh"), [this] { refresh(true); });
+        menu.addSeparator();
+        menu.add(_("Open Folder…"), [this] { chooseFolder(); });
+        menu.add(_("Close Folder"), [this] { closeProject(); }, !projectRoot.empty());
 
         popupMenu(menu, at);
     }
 
-    void popupMenu(GtkWidget* menu, const ContextMenuTrigger::Request& at) {
-        ContextMenuTrigger::popup(GTK_MENU(menu), GTK_WIDGET(tree), at, true);
+    void popupMenu(const ContextMenu& menu, const ContextMenuTrigger::Request& at) {
+        ContextMenuTrigger::popup(menu, GTK_WIDGET(tree), at);
     }
 
     void collapseAll() {

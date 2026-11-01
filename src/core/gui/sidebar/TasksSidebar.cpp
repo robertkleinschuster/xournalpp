@@ -734,37 +734,25 @@ private:
             return;
         }
         const Entry entry = *found;
-        auto* menu = gtk_menu_new();
-        addMenuItem(menu, _("Edit…"), [this, entry] { edit(entry); });
+        ContextMenu menu;
+        menu.add(_("Edit…"), [this, entry] { edit(entry); });
         if (!entry.task.done) {
-            addMenuItem(menu, _("Postpone to Tomorrow"), [this, entry] {
+            menu.add(_("Postpone to Tomorrow"), [this, entry] {
                 Entry changed = entry;
                 TodoTxt::setTag(changed.task, "due", TodoTxt::formatDate(sys_days(today()) + days(1)));
                 replace(entry, {TodoTxt::format(changed.task)});
             });
         }
         if (entry.task.tag("doc")) {
-            addMenuItem(menu, _("Open Document"), [this, entry] { openLinkedDocument(entry); });
+            menu.add(_("Open Document"), [this, entry] { openLinkedDocument(entry); });
         }
-        gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_separator_menu_item_new());
-        addMenuItem(menu, _("Delete"), [this, entry] {
+        menu.addSeparator();
+        menu.add(_("Delete"), [this, entry] {
             if (confirm(FS(_F("Delete the task “{1}”?") % entry.task.title()))) {
                 replace(entry, {});
             }
         });
-        ContextMenuTrigger::popup(GTK_MENU(menu), GTK_WIDGET(tree), at, true);
-    }
-
-    template <class Fn>
-    void addMenuItem(GtkWidget* menu, const char* label, Fn action) {
-        auto* item = gtk_menu_item_new_with_label(label);
-        auto* callback = new std::function<void()>(std::move(action));
-        g_signal_connect_data(
-                item, "activate",
-                G_CALLBACK(+[](GtkMenuItem*, gpointer data) { (*static_cast<std::function<void()>*>(data))(); }),
-                callback, +[](gpointer data, GClosure*) { delete static_cast<std::function<void()>*>(data); },
-                GConnectFlags(0));
-        gtk_menu_shell_append(GTK_MENU_SHELL(menu), item);
+        ContextMenuTrigger::popup(menu, GTK_WIDGET(tree), at);
     }
 
     // --- Edit dialog ---

@@ -117,12 +117,8 @@ protected:
     /// The widget within the scrollable area with the page miniatures
     xoj::util::GObjectSPtr<GtkFixed> miniaturesContainer;
 
-    /**
-     * The context menu to display when a miniature is right-clicked.
-     * This must be populated by the derived classes constructors.
-     * It must be a GtkPopover parented (gtk_widget_set_parent()) by this->miniaturesContainer
-     */
-    xoj::util::GObjectSPtr<GtkMenu> contextMenu;
+    /// The context menu of a miniature (Fork: shown as a popover by ContextMenuTrigger)
+    xoj::util::GObjectSPtr<GMenuModel> contextMenu;
 
     /**
      * The currently selected entry in the sidebar, starting from 0

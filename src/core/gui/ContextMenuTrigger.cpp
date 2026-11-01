@@ -1,21 +1,11 @@
 #include "ContextMenuTrigger.h"
 
 #include <algorithm>  // for max
-#include <utility>    // for move
+#include <utility>    // for move, pair
 
 #include "gui/InputModality.h"  // for modalityOf, TOUCH_HOLD_MS
 
 namespace {
-/// The widget's origin in the coordinates of its GdkWindow (no-window widgets are drawn into their parent's)
-auto originInWindow(GtkWidget* widget) -> std::pair<int, int> {
-    if (gtk_widget_get_has_window(widget)) {
-        return {0, 0};
-    }
-    GtkAllocation allocation;
-    gtk_widget_get_allocation(widget, &allocation);
-    return {allocation.x, allocation.y};
-}
-
 /// Converts the event's position to the widget's coordinates (the event may come from a child window, e.g. the bin
 /// window of a tree view or the input window of a button)
 auto eventPositionIn(GtkWidget* widget, const GdkEvent* event) -> std::pair<double, double> {
@@ -25,10 +15,55 @@ auto eventPositionIn(GtkWidget* widget, const GdkEvent* event) -> std::pair<doub
     int originX = 0;
     int originY = 0;
     gdk_window_get_origin(gtk_widget_get_window(widget), &originX, &originY);
-    const auto [offsetX, offsetY] = originInWindow(widget);
-    return {rootX - originX - offsetX, rootY - originY - offsetY};
+    if (!gtk_widget_get_has_window(widget)) {
+        // No-window widgets are drawn into their parent's window
+        GtkAllocation allocation;
+        gtk_widget_get_allocation(widget, &allocation);
+        originX += allocation.x;
+        originY += allocation.y;
+    }
+    return {rootX - originX, rootY - originY};
 }
 }  // namespace
+
+// --- ContextMenu ---
+
+ContextMenu::ContextMenu():
+        menu(g_menu_new(), xoj::util::adopt),
+        section(g_menu_new(), xoj::util::adopt),
+        group(g_simple_action_group_new(), xoj::util::adopt) {
+    g_menu_append_section(menu.get(), nullptr, G_MENU_MODEL(section.get()));
+}
+
+void ContextMenu::add(const std::string& label, std::function<void()> action, bool enabled) {
+    const std::string name = "entry" + std::to_string(count++);
+    GSimpleAction* simpleAction = g_simple_action_new(name.c_str(), nullptr);
+    g_signal_connect_data(
+            simpleAction, "activate", G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
+                (*static_cast<std::function<void()>*>(data))();
+            }),
+            new std::function<void()>(std::move(action)),
+            +[](gpointer data, GClosure*) { delete static_cast<std::function<void()>*>(data); }, GConnectFlags(0));
+    g_simple_action_set_enabled(simpleAction, enabled);
+    g_action_map_add_action(G_ACTION_MAP(group.get()), G_ACTION(simpleAction));
+    g_object_unref(simpleAction);
+    const std::string detailed = std::string(ACTION_PREFIX) + "." + name;
+    g_menu_append(section.get(), label.c_str(), detailed.c_str());
+}
+
+void ContextMenu::addSeparator() {
+    if (g_menu_model_get_n_items(G_MENU_MODEL(section.get())) == 0) {
+        return;
+    }
+    section.reset(g_menu_new(), xoj::util::adopt);
+    g_menu_append_section(menu.get(), nullptr, G_MENU_MODEL(section.get()));
+}
+
+auto ContextMenu::model() const -> GMenuModel* { return G_MENU_MODEL(menu.get()); }
+
+auto ContextMenu::actions() const -> GActionGroup* { return G_ACTION_GROUP(group.get()); }
+
+// --- ContextMenuTrigger ---
 
 ContextMenuTrigger::ContextMenuTrigger(GtkWidget* widget, Callback callback, TouchHold touchHold):
         widget(widget), callback(std::move(callback)) {
@@ -42,7 +77,7 @@ ContextMenuTrigger::ContextMenuTrigger(GtkWidget* widget, Callback callback, Tou
         return;
     }
     longPress.reset(gtk_gesture_long_press_new(widget), xoj::util::adopt);
-    // Windows delivers taps also as emulated mouse events, so the gesture cannot be touch only; pressed() checks
+    // Windows delivers taps also as emulated mouse events, so the gesture cannot be touch only; "pressed" checks
     gtk_gesture_single_set_touch_only(GTK_GESTURE_SINGLE(longPress.get()), false);
     gint longPressTime = 500;
     g_object_get(gtk_widget_get_settings(widget), "gtk-long-press-time", &longPressTime, nullptr);
@@ -50,24 +85,12 @@ ContextMenuTrigger::ContextMenuTrigger(GtkWidget* widget, Callback callback, Tou
                  static_cast<double>(xoj::input::TOUCH_HOLD_MS) / std::max(longPressTime, 1), nullptr);
 
     g_signal_connect(longPress.get(), "pressed", G_CALLBACK(+[](GtkGesture* gesture, double x, double y, gpointer d) {
-                         auto* self = static_cast<ContextMenuTrigger*>(d);
                          if (xoj::input::modalityOf(gesture) != xoj::input::Modality::Touch) {
                              return;  // the mouse and the pen have a right click
                          }
-                         // Claimed, so that lifting the finger does not also activate the item below it
+                         // Claimed, so that the item below the finger is not also activated
                          gtk_gesture_set_state(gesture, GTK_EVENT_SEQUENCE_CLAIMED);
-                         self->pendingLongPress = std::make_pair(x, y);
-                     }),
-                     this);
-    g_signal_connect(longPress.get(), "cancelled", G_CALLBACK(+[](GtkGesture*, gpointer d) {
-                         static_cast<ContextMenuTrigger*>(d)->pendingLongPress.reset();
-                     }),
-                     this);
-    g_signal_connect(longPress.get(), "end", G_CALLBACK(+[](GtkGesture*, GdkEventSequence*, gpointer d) {
-                         auto* self = static_cast<ContextMenuTrigger*>(d);
-                         if (auto at = std::exchange(self->pendingLongPress, std::nullopt)) {
-                             self->request(at->first, at->second);
-                         }
+                         static_cast<ContextMenuTrigger*>(d)->request(x, y);
                      }),
                      this);
 }
@@ -99,29 +122,31 @@ auto ContextMenuTrigger::onPopupMenu(GtkWidget* widget, ContextMenuTrigger* self
     return true;
 }
 
-void ContextMenuTrigger::popup(GtkMenu* menu, GtkWidget* anchor, const Request& request, bool destroyWhenClosed) {
-    gtk_widget_show_all(GTK_WIDGET(menu));
-    if (!gtk_menu_get_attach_widget(menu)) {
-        gtk_menu_attach_to_widget(menu, anchor, nullptr);
-    }
-    if (destroyWhenClosed) {
-        // Entries are activated after "deactivate", so destroy the menu only once the main loop is idle again
-        g_signal_connect(menu, "deactivate", G_CALLBACK(+[](GtkMenuShell* shell, gpointer) {
-                             g_idle_add(
-                                     +[](gpointer widget) -> gboolean {
-                                         gtk_widget_destroy(GTK_WIDGET(widget));
-                                         return G_SOURCE_REMOVE;
-                                     },
-                                     shell);
-                         }),
-                         nullptr);
+void ContextMenuTrigger::popup(GMenuModel* model, GActionGroup* actions, GtkWidget* anchor, const Request& request) {
+    GtkWidget* popover = gtk_popover_new_from_model(anchor, model);
+    if (actions) {
+        gtk_widget_insert_action_group(popover, ContextMenu::ACTION_PREFIX, actions);
     }
     // At the requested position for every kind of input (the pointer's position would be the mouse cursor's, which
-    // is elsewhere after a touch)
-    const auto [offsetX, offsetY] = originInWindow(anchor);
-    const GdkRectangle rect{static_cast<int>(request.x) + offsetX, static_cast<int>(request.y) + offsetY, 1, 1};
-    gtk_menu_popup_at_rect(menu, gtk_widget_get_window(anchor), &rect, GDK_GRAVITY_NORTH_WEST, GDK_GRAVITY_NORTH_WEST,
-                           request.event);
+    // is elsewhere after a touch). Below it, so that the finger does not cover the menu.
+    const GdkRectangle rect{static_cast<int>(request.x), static_cast<int>(request.y), 1, 1};
+    gtk_popover_set_pointing_to(GTK_POPOVER(popover), &rect);
+    gtk_popover_set_position(GTK_POPOVER(popover), GTK_POS_BOTTOM);
+    // Built for this request only. Entries are activated before "closed"; destroy it once the main loop is idle again.
+    g_signal_connect(popover, "closed", G_CALLBACK(+[](GtkPopover* popover, gpointer) {
+                         g_idle_add(
+                                 +[](gpointer widget) -> gboolean {
+                                     gtk_widget_destroy(GTK_WIDGET(widget));
+                                     return G_SOURCE_REMOVE;
+                                 },
+                                 popover);
+                     }),
+                     nullptr);
+    gtk_popover_popup(GTK_POPOVER(popover));
+}
+
+void ContextMenuTrigger::popup(const ContextMenu& menu, GtkWidget* anchor, const Request& request) {
+    popup(menu.model(), menu.actions(), anchor, request);
 }
 
 auto ContextMenuTrigger::rowOf(GtkTreeView* tree, Request& request) -> GtkTreePath* {
