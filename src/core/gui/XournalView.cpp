@@ -680,7 +680,14 @@ KeptRendering::~KeptRendering() = default;
 
 auto XournalView::takeRendering() -> std::unique_ptr<KeptRendering> {
     auto rendering = std::make_unique<KeptRendering>();
-    rendering->pdfCache = std::move(this->cache);
+    {
+        // Render jobs use the cache while they run (with the scheduler locked): wait for a running one, so that none
+        // uses it once it is handed out (it may be destroyed later, e.g. when the cache of documents is full)
+        XournalScheduler* scheduler = control->getScheduler();
+        scheduler->lock();
+        rendering->pdfCache = std::move(this->cache);
+        scheduler->unlock();
+    }
     // Only the visible pages: they are what is shown first when coming back, and other pages would cost memory
     for (auto& view: this->viewPages) {
         if (view->isVisible() && view->hasBuffer()) {
@@ -700,7 +707,11 @@ void XournalView::adoptRendering(std::unique_ptr<KeptRendering> rendering) {
     doc->unlock_shared();
     if (pdfMatches) {
         rendering->pdfCache->updateSettings(control->getSettings());
+        // Replacing the cache destroys the one created for the opened document, which a render job may be using
+        XournalScheduler* scheduler = control->getScheduler();
+        scheduler->lock();
         this->cache = std::move(rendering->pdfCache);
+        scheduler->unlock();
     }
     // The pages are the same objects as when they were drawn and were not changed since (the document was closed)
     for (auto& [page, buffer]: rendering->pages) {

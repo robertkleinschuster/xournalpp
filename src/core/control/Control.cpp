@@ -1590,9 +1590,14 @@ void Control::keepOpenDocument(const Document& next) {
     // Only an unchanged document (saved before switching) that was loaded without problems; not when it is reloaded
     const bool keep = !key.empty() && key != DocumentCache::keyOf(next) && !this->undoRedo->isChanged() &&
                       (this->autoSaveAllowed || this->readOnly) && this->documentCache->canKeep(*this->doc);
-    if (keep) {
-        this->documentCache->keep(*this->doc, this->win->getXournal()->takeRendering());
+    this->doc->unlock_shared();
+    if (!keep) {
+        return;
     }
+    // Not while the document is locked: this waits for a running render job, which locks the document itself
+    auto rendering = this->win->getXournal()->takeRendering();
+    this->doc->lock_shared();
+    this->documentCache->keep(*this->doc, std::move(rendering));
     this->doc->unlock_shared();
 }
 
