@@ -45,6 +45,8 @@ void SidebarPreviewPages::enableSidebar() {
 
 auto SidebarPreviewPages::getName() -> std::string { return _("Page Preview"); }
 
+auto SidebarPreviewPages::getTitle() -> std::string { return C_("Sidebar tab", "Pages"); }
+
 auto SidebarPreviewPages::getIconName() -> std::string { return this->iconNameHelper.iconName("sidebar-page-preview"); }
 
 void SidebarPreviewPages::updatePreviews() {

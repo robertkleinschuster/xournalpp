@@ -44,6 +44,7 @@ public:
      * @overwrite
      */
     std::string getName() override;
+    std::string getTitle() override;
 
     /**
      * @overwrite

@@ -30,6 +30,7 @@
 Sidebar::Sidebar(GladeGui* gui, Control* control): control(control) {
     this->tbSelectTab = GTK_BOX(gui->get("bxSidebarTopActions"));
     this->buttonCloseSidebar = gui->get("buttonCloseSidebar");
+    this->tabTitle = gui->get("sidebarTabTitle");
 
     this->sidebarContents = gui->get("sidebarContents");
 
@@ -112,6 +113,10 @@ void Sidebar::setSelectedTab(size_t tab) {
             gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(t->tabButton), true);
             this->visibleTab = t->getWidget();
             this->currentTabIdx = i;
+            // Fork: the tab's name next to its icon; the icons' tooltips do not show for fingers and the pen
+            if (this->tabTitle) {
+                gtk_label_set_text(GTK_LABEL(this->tabTitle), t->getTitle().c_str());
+            }
             t->enableSidebar();
         } else {
             t->disableSidebar();

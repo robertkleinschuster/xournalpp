@@ -278,6 +278,23 @@ public:
         gtk_box_pack_start(GTK_BOX(searchRow), GTK_WIDGET(searchEntry), true, true, 0);
         createSyncButton();
         gtk_box_pack_start(GTK_BOX(searchRow), syncButton, false, false, 0);
+        // Fork: actions for the whole folder; the context menu of an entry only holds the entry's actions
+        auto* moreButton = gtk_button_new_from_icon_name("view-more-symbolic", GTK_ICON_SIZE_BUTTON);
+        gtk_button_set_relief(GTK_BUTTON(moreButton), GTK_RELIEF_NONE);
+        gtk_widget_set_tooltip_text(moreButton, _("Folder"));
+        g_signal_connect(
+                moreButton, "clicked", G_CALLBACK(+[](GtkButton* button, gpointer data) {
+                    auto* self = static_cast<ProjectExplorerSidebar*>(data);
+                    ContextMenu menu;
+                    self->addFolderEntries(menu);
+                    // Pointing at the bottom center of the button
+                    ContextMenuTrigger::popup(
+                            menu, GTK_WIDGET(button),
+                            {gtk_widget_get_allocated_width(GTK_WIDGET(button)) / 2.0,
+                             static_cast<double>(gtk_widget_get_allocated_height(GTK_WIDGET(button))), nullptr, false});
+                }),
+                this);
+        gtk_box_pack_start(GTK_BOX(searchRow), moreButton, false, false, 0);
         gtk_box_pack_start(GTK_BOX(root), searchRow, false, false, 0);
 
         folderIcon = g_themed_icon_new("folder-symbolic");
@@ -311,7 +328,8 @@ public:
         gtk_tree_view_column_add_attribute(column, iconRenderer, "gicon", COL_ICON);
         gtk_tree_view_column_add_attribute(column, iconRenderer, "sensitive", COL_SENSITIVE);
         auto* textRenderer = gtk_cell_renderer_text_new();
-        g_object_set(textRenderer, "ellipsize", PANGO_ELLIPSIZE_END, "ypad", 5, nullptr);
+        // Fork: shortened in the middle, as names of the same series often differ only at the end
+        g_object_set(textRenderer, "ellipsize", PANGO_ELLIPSIZE_MIDDLE, "ypad", 5, nullptr);
         gtk_tree_view_column_pack_start(column, textRenderer, true);
         gtk_tree_view_column_add_attribute(column, textRenderer, "markup", COL_MARKUP);
         gtk_tree_view_column_add_attribute(column, textRenderer, "sensitive", COL_SENSITIVE);
@@ -458,6 +476,7 @@ public:
     void disableSidebar() override { refreshOnEnable = true; }
     void layout() override {}
     std::string getName() override { return _("Project Explorer"); }
+    std::string getTitle() override { return C_("Sidebar tab", "Files"); }
     std::string getIconName() override { return "folder-open-symbolic"; }
     bool hasData() override { return true; }
     GtkWidget* getWidget() override { return root; }
@@ -1677,6 +1696,16 @@ private:
             });
             menu.addSeparator();
         }
+        if (kind == KIND_PLACEHOLDER) {
+            // Not on an entry: the folder's actions, as in the button next to the search
+            addFolderEntries(menu);
+        }
+
+        popupMenu(menu, at);
+    }
+
+    /// Actions for the whole folder (the button next to the search, and the context menu outside of the entries)
+    void addFolderEntries(ContextMenu& menu) {
         if (!searching) {
             menu.add(_("Collapse All"), [this] { collapseAll(); });
         }
@@ -1684,8 +1713,6 @@ private:
         menu.addSeparator();
         menu.add(_("Open Folder…"), [this] { chooseFolder(); });
         menu.add(_("Close Folder"), [this] { closeProject(); }, !projectRoot.empty());
-
-        popupMenu(menu, at);
     }
 
     void popupMenu(const ContextMenu& menu, const ContextMenuTrigger::Request& at) {

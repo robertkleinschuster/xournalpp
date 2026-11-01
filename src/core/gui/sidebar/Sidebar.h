@@ -123,6 +123,9 @@ private:
      */
     GtkWidget* buttonCloseSidebar = nullptr;
 
+    /// Fork: the name of the visible tab, next to the tab buttons
+    GtkWidget* tabTitle = nullptr;
+
     /**
      * The current visible page in the sidebar
      */

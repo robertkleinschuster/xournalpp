@@ -5489,3 +5489,27 @@ msgstr "Nach unten"
 #: ../ui/sidebar.ui
 msgid "Merge Down"
 msgstr "Mit der Ebene darunter zusammenführen"
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "Folder"
+msgstr "Ordner"
+
+#: ../src/core/gui/sidebar/Sidebar.cpp
+msgctxt "Sidebar tab"
+msgid "Files"
+msgstr "Dateien"
+
+#: ../src/core/gui/sidebar/Sidebar.cpp
+msgctxt "Sidebar tab"
+msgid "Pages"
+msgstr "Seiten"
+
+#: ../src/core/gui/sidebar/Sidebar.cpp
+msgctxt "Sidebar tab"
+msgid "Layers"
+msgstr "Ebenen"
+
+#: ../src/core/gui/sidebar/Sidebar.cpp
+msgctxt "Sidebar tab"
+msgid "Layer Stack"
+msgstr "Ebenenstapel"

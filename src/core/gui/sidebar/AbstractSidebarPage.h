@@ -37,6 +37,11 @@ public:
     virtual std::string getName() = 0;
 
     /**
+     * Fork: a short name, shown next to the tab buttons (the name is the buttons' tooltip)
+     */
+    virtual std::string getTitle() { return getName(); }
+
+    /**
      * The name of this sidebar page
      */
     virtual std::string getIconName() = 0;
