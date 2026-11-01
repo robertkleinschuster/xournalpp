@@ -5457,3 +5457,11 @@ msgstr "Am Ende"
 #: ../src/core/gui/dialog/InsertPagesDialog.cpp
 msgid "After the current page"
 msgstr "Nach der aktuellen Seite"
+
+#: ../src/core/control/Control.cpp
+msgid "Delete page {1}?"
+msgstr "Seite {1} löschen?"
+
+#: ../src/core/control/Control.cpp
+msgid "The page can be restored with Undo."
+msgstr "Die Seite lässt sich mit Rückgängig wiederherstellen."
