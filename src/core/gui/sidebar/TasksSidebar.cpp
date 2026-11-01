@@ -697,8 +697,10 @@ private:
             }
             return;
         }
-        if (!openLinkedDocument(*entry)) {
-            edit(*entry);
+        // A copy: the dialog runs a main loop, in which a changed file reloads the entries
+        const Entry copy = *entry;
+        if (!openLinkedDocument(copy)) {
+            edit(copy);
         }
     }
 
@@ -817,7 +819,8 @@ private:
 
     // --- Edit dialog ---
 
-    void edit(const Entry& entry) {
+    /// Takes a copy, as the entries may be reloaded while the dialog is open
+    void edit(const Entry entry) {
         const auto& task = entry.task;
         auto* dialog =
                 gtk_dialog_new_with_buttons(_("Edit Task"), control->getGtkWindow(), GTK_DIALOG_MODAL, _("Cancel"),
