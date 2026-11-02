@@ -45,8 +45,9 @@ public:
     void setOpen(bool open);
     bool isOpen() const { return open; }
 
-    /// Writes unsaved strokes now (before a git sync, standby, quitting)
-    void saveNow();
+    /// Finishes the stroke being written and writes unsaved strokes now (before a git sync, standby, quitting).
+    /// During a git sync nothing is written unless evenWhileSyncing (quitting: better than losing the strokes).
+    void saveNow(bool evenWhileSyncing = false);
     /// While a git sync runs nothing is written; afterwards the sheet is reloaded if the sync changed it
     void setSyncing(bool syncing);
 

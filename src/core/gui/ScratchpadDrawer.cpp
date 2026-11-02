@@ -1,7 +1,8 @@
 #include "ScratchpadDrawer.h"
 
 #include <algorithm>  // for clamp, max, min
-#include <cmath>      // for ceil, hypot
+#include <cmath>      // for ceil, floor, hypot
+#include <string>     // for string, to_string
 #include <utility>    // for move
 
 #include "control/Control.h"
@@ -102,8 +103,10 @@ ScratchpadDrawer::~ScratchpadDrawer() {
         g_source_remove(saveTimer);
         saveTimer = 0;
     }
-    stroke.reset();
-    saveNow();
+    saveNow(true);  // finishes a stroke still being written
+    if (saveTimer) {
+        g_source_remove(saveTimer);
+    }
     if (animation && overlay) {
         gtk_widget_remove_tick_callback(overlay, animation);
     }
@@ -327,6 +330,10 @@ auto ScratchpadDrawer::childPosition(GtkWidget* child, GdkRectangle* allocation)
 
 void ScratchpadDrawer::setShown(double value) {
     shown = std::max(0.0, value);
+    if (shown <= 0.5 && scrollSequence) {
+        scrollSequence = nullptr;  // its end is not delivered to a hidden sheet
+        momentum->forgetMovement();
+    }
     if (panel) {
         gtk_widget_set_child_visible(panel, shown > 0.5);
     }
@@ -380,9 +387,10 @@ void ScratchpadDrawer::setOpen(bool value) {
         endStroke();
         saveNow();
     }
-    if (open != value || (value && shown != openHeight())) {
+    // Also when the state stays: a drag released below the minimum height slides back
+    if (const double target = value ? openHeight() : 0; open != value || shown != target) {
         open = value;
-        animateTo(open ? openHeight() : 0);
+        animateTo(target);
     }
     updateAction();
 }
@@ -480,15 +488,32 @@ void ScratchpadDrawer::load(const fs::path& path) {
     doc = std::make_unique<Document>(&handler);
     std::error_code error;
     if (fs::exists(path, error)) {
+        bool loadedOk = false;
         try {
             LoadHandler loader;
             if (auto loaded = loader.loadDocument(path); loaded && loaded->getPageCount() > 0) {
                 doc->lock();  // the assignment expects it
                 *doc = *loaded;
                 doc->unlock();
+                loadedOk = true;
             }
         } catch (const std::exception& e) {
             g_warning("Scratchpad: could not load %s: %s", Util::toUtf8(path).c_str(), e.what());
+        }
+        if (!loadedOk) {
+            // Kept next to it instead of being overwritten by the next stroke, e.g. after an interrupted sync
+            fs::path aside;
+            for (int i = 1; aside.empty() || fs::exists(aside, error); i++) {
+                aside = path.parent_path() / (Util::toUtf8(path.stem()) + " (unreadable" +
+                                              (i > 1 ? " " + std::to_string(i) : std::string()) + ").xopp");
+            }
+            fs::rename(path, aside, error);
+            g_warning("Scratchpad: moved the unreadable sheet to %s%s", Util::toUtf8(aside).c_str(),
+                      error ? " (failed, it will not be saved over)" : "");
+            if (error) {
+                file.clear();  // saveNow() skips an empty path
+            }
+            stamp.reset();
         }
     }
     if (doc->getPageCount() == 0 || doc->getPage(0)->getLayers().empty()) {
@@ -541,9 +566,10 @@ void ScratchpadDrawer::markChanged() {
             this);
 }
 
-void ScratchpadDrawer::saveNow() {
-    if (!changed || !doc || syncing || file.empty()) {
-        return;
+void ScratchpadDrawer::saveNow(bool evenWhileSyncing) {
+    endStroke();
+    if (!changed || !doc || (syncing && !evenWhileSyncing) || file.empty()) {
+        return;  // during a sync the strokes are written when it ends
     }
     if (saveTimer) {
         g_source_remove(saveTimer);
@@ -567,8 +593,11 @@ void ScratchpadDrawer::setSyncing(bool value) {
         saveNow();  // so the sync commits the latest strokes
     }
     syncing = value;
-    if (!value && doc && open) {
+    if (!value && doc) {
         reloadIfChanged();
+        if (changed) {
+            markChanged();  // written during the sync
+        }
     }
 }
 
@@ -714,7 +743,7 @@ void ScratchpadDrawer::draw(cairo_t* cr) {
 }
 
 void ScratchpadDrawer::updateButtons() {
-    if (undoButton) {
+    if (panel && undoButton) {  // the buttons are gone with the panel
         gtk_widget_set_sensitive(undoButton, !undoSteps.empty());
         gtk_widget_set_sensitive(redoButton, !redoSteps.empty());
         gtk_widget_set_sensitive(clearButton, layer() && !layer()->getElements().empty());
@@ -798,6 +827,7 @@ auto ScratchpadDrawer::handleEvent(GdkEvent* event) -> gboolean {
             return TRUE;
         case GDK_GRAB_BROKEN:
             endStroke();
+            scrollSequence = nullptr;
             return FALSE;
         case GDK_SCROLL: {
             double dx = 0, dy = 0;
@@ -856,14 +886,25 @@ void ScratchpadDrawer::addPoint(const GdkEvent* event) {
         Settings* settings = control->getSettings();
         z = std::max(settings->getMinimumPressure(), pressure * settings->getPressureMultiplier()) * stroke->getWidth();
     }
+    xoj::util::Point<double> previous = point;
     if (const auto count = stroke->getPointCount(); count > 0) {
         const Point& last = stroke->getPoint(count - 1);
         if (std::hypot(point.x - last.x, point.y - last.y) < MIN_POINT_DISTANCE) {
             return;
         }
+        previous = {last.x, last.y};
     }
     stroke->addPoint(pressureSensitive ? Point(point.x, point.y, z) : Point(point.x, point.y));
-    gtk_widget_queue_draw(area);
+    // Only around the new segment: the rest of the stroke is unchanged on screen
+    const double scale = zoom();
+    const double margin = stroke->getWidth() * scale + 4;
+    const double left = std::min(previous.x, point.x) * scale - margin;
+    const double top = std::min(previous.y, point.y) * scale - scrollY - margin;
+    const double right = std::max(previous.x, point.x) * scale + margin;
+    const double bottom = std::max(previous.y, point.y) * scale - scrollY + margin;
+    gtk_widget_queue_draw_area(area, static_cast<int>(std::floor(left)), static_cast<int>(std::floor(top)),
+                               static_cast<int>(std::ceil(right - left)) + 1,
+                               static_cast<int>(std::ceil(bottom - top)) + 1);
 }
 
 void ScratchpadDrawer::continueStroke(const GdkEvent* event) {
