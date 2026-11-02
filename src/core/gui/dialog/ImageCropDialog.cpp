@@ -33,7 +33,14 @@ public:
         auto* insertButton = gtk_dialog_add_button(GTK_DIALOG(dialog), _("Insert"), GTK_RESPONSE_ACCEPT);
         gtk_style_context_add_class(gtk_widget_get_style_context(insertButton), "suggested-action");
         gtk_dialog_set_default_response(GTK_DIALOG(dialog), GTK_RESPONSE_ACCEPT);
-        gtk_window_set_default_size(GTK_WINDOW(dialog), 900, 700);
+        // Large, so that details can be cropped precisely: most of the main window
+        int parentWidth = 0;
+        int parentHeight = 0;
+        if (parent) {
+            gtk_window_get_size(parent, &parentWidth, &parentHeight);
+        }
+        gtk_window_set_default_size(GTK_WINDOW(dialog), std::max(900, parentWidth * 85 / 100),
+                                    std::max(700, parentHeight * 85 / 100));
 
         auto* box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
         gtk_container_set_border_width(GTK_CONTAINER(box), 12);
