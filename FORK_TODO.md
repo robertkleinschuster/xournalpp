@@ -11,6 +11,10 @@ Things that cannot be verified on the hidden test desktop (no real touch, no not
 - Page previews: dragging a miniature with the finger after holding it for 0.4 s; swiping still scrolls.
 - "Insert Pages": tapping thumbnails selects/deselects them smoothly by finger and pen.
 - Menus and tooltips by pen/touch: nothing stays open or blocks the window (see the input log below).
+- Closing the lid right after writing saves the document (stderr/log: "Power: lid closed" or "screen off"); after
+  waking up, touch scrolling works at once. Only `PBT_APMSUSPEND` could be simulated; lid and screen events were not.
+- Repeated flicks on long PDFs speed up (`ScrollMomentum::combinedSpeed`, 12000 px/s limit): does it feel right?
+- After a tap at the very left screen edge, touch keeps working (input log: "releasing a stale pointer grab").
 
 ## Planned
 
