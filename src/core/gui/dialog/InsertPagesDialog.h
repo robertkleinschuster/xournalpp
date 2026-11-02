@@ -26,11 +26,13 @@ struct Request {
     std::set<size_t> pagesInDocument;
 };
 
+enum class Position { AtStart, AfterCurrent, AtEnd };
+
 struct Choice {
     /// The PDF to insert pages from; empty for the document's own PDF
     fs::path otherPdf;
     std::vector<size_t> pages;  ///< 0-based, in order
-    bool atEnd = false;         ///< otherwise after the current page
+    Position position = Position::AfterCurrent;
 };
 
 /// Shows the dialog (modal); nullopt if cancelled

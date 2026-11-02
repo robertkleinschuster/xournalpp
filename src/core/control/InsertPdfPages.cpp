@@ -220,7 +220,10 @@ void InsertPdfPages::run(Control* control) {
         return;
     }
     const size_t current = control->getCurrentPageNo();
-    const size_t position = choice->atEnd || current == npos ? doc->getPageCount() : current + 1;
+    using Position = InsertPagesDialog::Position;
+    const size_t position = choice->position == Position::AtStart                  ? 0 :
+                            choice->position == Position::AtEnd || current == npos ? doc->getPageCount() :
+                                                                                     current + 1;
     if (choice->otherPdf.empty()) {
         insertOwn(control, choice->pages, position);
         return;

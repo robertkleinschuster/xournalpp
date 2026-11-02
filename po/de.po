@@ -5458,6 +5458,10 @@ msgstr "Am Ende"
 msgid "After the current page"
 msgstr "Nach der aktuellen Seite"
 
+#: ../src/core/gui/dialog/InsertPagesDialog.cpp
+msgid "At the beginning"
+msgstr "Am Anfang"
+
 #: ../src/core/control/Control.cpp
 msgid "Delete page {1}?"
 msgstr "Seite {1} löschen?"

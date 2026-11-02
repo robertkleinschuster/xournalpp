@@ -74,8 +74,10 @@ public:
         atEnd = gtk_radio_button_new_with_label(nullptr, _("At the end"));
         afterCurrent =
                 gtk_radio_button_new_with_label_from_widget(GTK_RADIO_BUTTON(atEnd), _("After the current page"));
+        atStart = gtk_radio_button_new_with_label_from_widget(GTK_RADIO_BUTTON(atEnd), _("At the beginning"));
         gtk_box_pack_end(GTK_BOX(bottom), atEnd, false, false, 0);
         gtk_box_pack_end(GTK_BOX(bottom), afterCurrent, false, false, 0);
+        gtk_box_pack_end(GTK_BOX(bottom), atStart, false, false, 0);
         gtk_box_pack_start(GTK_BOX(box), bottom, false, false, 0);
 
         gtk_box_pack_start(GTK_BOX(gtk_dialog_get_content_area(GTK_DIALOG(dialog))), box, true, true, 0);
@@ -132,7 +134,10 @@ public:
                 choice.pages.push_back(i);
             }
         }
-        choice.atEnd = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(atEnd));
+        using Position = InsertPagesDialog::Position;
+        choice.position = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(atEnd))   ? Position::AtEnd :
+                          gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(atStart)) ? Position::AtStart :
+                                                                                     Position::AfterCurrent;
         return choice;
     }
 
@@ -309,6 +314,7 @@ private:
     GtkWidget* countLabel{};
     GtkWidget* atEnd{};
     GtkWidget* afterCurrent{};
+    GtkWidget* atStart{};
 };
 
 }  // namespace
