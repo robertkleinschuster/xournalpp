@@ -624,7 +624,8 @@ private:
             }
             // The PDF the document annotates (still right after renaming the document), or by name for older ones
             auto source = AnnotationFiles::recordedSourcePdf(path);
-            if (source.empty() || source.parent_path() != dir) {
+            // The hidden companion with inserted pages stays hidden; the original PDF named like it is shown instead
+            if (source.empty() || source.parent_path() != dir || AnnotationFiles::isCompanionPdf(source)) {
                 source = path;
                 source.replace_extension(".pdf");
             }
