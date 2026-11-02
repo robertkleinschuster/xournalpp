@@ -11,6 +11,8 @@
 #include "control/settings/Settings.h"
 #include "gui/InputModality.h"  // for modalityOf
 #include "gui/MainWindow.h"
+#include "gui/PowerEvents.h"  // for PowerEvents
+#include "gui/XournalView.h"  // for resetTouchInputSequence
 
 #ifdef _WIN32  // separate block, so it stays last: its macros clash with names in the headers above
 #include <windows.h>
@@ -125,6 +127,7 @@ struct State {
     gulong focusInHook = 0;
     gulong focusOutHook = 0;
     gulong pressHook = 0;
+    guint powerListener = 0;
 };
 
 State* state = nullptr;  // one main window
@@ -350,6 +353,17 @@ void ConvertibleSupport::install(MainWindow* win, Control* control) {
             },
             nullptr, nullptr);
     gdk_window_add_filter(nullptr, messageFilter, nullptr);
+    // After sleeping: touches and menus of before are stale, and the device may have been folded in between
+    state->powerListener = PowerEvents::addListener([](PowerEvents::Event event) {
+        if (!state || event != PowerEvents::Event::Wake) {
+            return;
+        }
+        closeTransientPopups();
+        if (auto* xournal = state->win->getXournal()) {
+            xournal->resetTouchInputSequence();
+        }
+        updateTabletMode();
+    });
 
     g_signal_connect(window, "configure-event", G_CALLBACK(+[](GtkWidget*, GdkEventConfigure* event, gpointer) {
                          if (state) {
@@ -369,6 +383,7 @@ void ConvertibleSupport::install(MainWindow* win, Control* control) {
     g_signal_connect(
             window, "destroy", G_CALLBACK(+[](GtkWidget*, gpointer) {
                 gdk_window_remove_filter(nullptr, messageFilter, nullptr);
+                PowerEvents::removeListener(state->powerListener);
                 g_signal_remove_emission_hook(g_signal_lookup("focus-in-event", GTK_TYPE_WIDGET), state->focusInHook);
                 g_signal_remove_emission_hook(g_signal_lookup("focus-out-event", GTK_TYPE_WIDGET), state->focusOutHook);
                 g_signal_remove_emission_hook(g_signal_lookup("button-press-event", GTK_TYPE_WIDGET), state->pressHook);

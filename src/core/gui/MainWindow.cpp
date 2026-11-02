@@ -22,7 +22,8 @@
 #include "gui/GladeGui.h"            // for GladeGui
 #include "gui/PdfFloatingToolbox.h"  // for PdfFloatingToolbox
 #include "gui/PenFeedbackFix.h"
-#include "gui/SearchBar.h"  // for SearchBar
+#include "gui/PowerEvents.h"  // for PowerEvents
+#include "gui/SearchBar.h"    // for SearchBar
 #include "gui/TouchPanedHandle.h"
 #include "gui/inputdevices/InputEvents.h"               // for INPUT_DEVICE_TOUC...
 #include "gui/menus/menubar/Menubar.h"                  // for Menubar
@@ -94,6 +95,7 @@ MainWindow::MainWindow(GladeSearchpath* gladeSearchPath, Control* control, GtkAp
     g_signal_connect(this->window, "delete-event", xoj::util::wrap_for_g_callback_v<deleteEventCallback>,
                      this->control);
     PenFeedbackFix::apply(this->window);         // Fork: no Windows pen flicks or press-and-hold while writing
+    PowerEvents::install(this->window);          // Fork: lid, screen and suspend (before its listeners)
     ConvertibleSupport::install(this, control);  // Fork: tablet mode, portrait and touch keyboard
     g_signal_connect(this->window, "notify::is-active", G_CALLBACK(+[](GObject* object, GParamSpec*, gpointer self) {
                          auto* win = static_cast<MainWindow*>(self);

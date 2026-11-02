@@ -22,7 +22,8 @@ class Control;
  * would disturb drawing. Only documents that already have a .xopp file are saved; untitled documents keep asking for
  * a location as before. The built-in autosave (a hidden recovery copy) stays responsible for crash protection.
  * On Windows it also saves after a pause without any input (pen, touch, keyboard, mouse), so changes are on disk in
- * tablet mode as well, where there is no keyboard for Ctrl+S.
+ * tablet mode as well, where there is no keyboard for Ctrl+S, and right away when the lid is closed, the screen turns
+ * off or the system suspends (PowerEvents), also while text or a selection is being edited.
  */
 class DocumentAutoSaver final {
 public:
@@ -45,6 +46,8 @@ private:
     /// Saving ends text editing and clears the selection, so leave the document alone while they are in use
     bool isUserBusy() const;
     void saveInBackground();
+    /// Saves before the device sleeps: the process may be frozen or the battery run out before the idle save
+    void saveBeforeStandby();
     void startSave();
 
     Control* control;
@@ -53,6 +56,7 @@ private:
     guint focusCheck = 0;
     guint idleCheck = 0;
     gulong focusHandler = 0;
+    guint powerListener = 0;
     bool saving = false;
     bool paused = false;
     /// Callbacks of saveNow() waiting for the running save

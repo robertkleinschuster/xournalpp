@@ -4,6 +4,7 @@
 
 #include "control/Control.h"
 #include "gui/MainWindow.h"
+#include "gui/PowerEvents.h"
 #include "gui/XournalView.h"
 #include "model/Document.h"
 #include "undo/UndoRedoHandler.h"
@@ -50,6 +51,11 @@ DocumentAutoSaver::DocumentAutoSaver(Control* control): control(control) {
                                         }
                                     }),
                                     this);
+    powerListener = PowerEvents::addListener([this](PowerEvents::Event event) {
+        if (event == PowerEvents::Event::Standby) {
+            saveBeforeStandby();
+        }
+    });
 #ifdef _WIN32
     // Save after a pause without input. The time of the last input covers the whole system, so the check is cheap and
     // also waits while the user writes in another application.
@@ -68,6 +74,7 @@ DocumentAutoSaver::DocumentAutoSaver(Control* control): control(control) {
 }
 
 DocumentAutoSaver::~DocumentAutoSaver() {
+    PowerEvents::removeListener(powerListener);
     if (focusCheck) {
         g_source_remove(focusCheck);
     }
@@ -105,6 +112,17 @@ void DocumentAutoSaver::saveInBackground() {
     if (!saving && !paused && hasChangesToSave() && !isUserBusy()) {
         startSave();
     }
+}
+
+void DocumentAutoSaver::saveBeforeStandby() {
+    if (saving || paused || !hasChangesToSave()) {
+        return;
+    }
+    // Ends text editing and the selection: better than losing the strokes since the last save
+    if (isUserBusy()) {
+        control->clearSelectionEndText();
+    }
+    startSave();
 }
 
 void DocumentAutoSaver::startSave() {
