@@ -360,7 +360,13 @@ void MainWindow::initXournalWidget() {
     gtk_widget_set_hexpand(winXournal, true);
     gtk_widget_set_vexpand(winXournal, true);
     createReadOnlyBar();
-    gtk_box_append(GTK_BOX(get("boxContents")), winXournal);
+    // Fork: the scratchpad slides up over the canvas
+    canvasOverlay = gtk_overlay_new();
+    gtk_widget_set_hexpand(canvasOverlay, true);
+    gtk_widget_set_vexpand(canvasOverlay, true);
+    gtk_container_add(GTK_CONTAINER(canvasOverlay), winXournal);
+    gtk_widget_show(canvasOverlay);
+    gtk_box_append(GTK_BOX(get("boxContents")), canvasOverlay);
 
     scrollHandling = std::make_unique<ScrollHandling>(GTK_SCROLLED_WINDOW(winXournal));
 

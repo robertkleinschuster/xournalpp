@@ -215,6 +215,11 @@
      <attribute name="action">win.show-sidebar</attribute>
      <attribute name="accel">F12</attribute>
     </item>
+    <item>
+     <attribute name="label" translatable="yes">Scratchpad</attribute>
+     <attribute name="action">win.show-scratchpad</attribute>
+     <attribute name="accel">&lt;Ctrl&gt;&lt;Shift&gt;n</attribute>
+    </item>
    </section>
    <section>
     <submenu>

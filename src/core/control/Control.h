@@ -43,6 +43,7 @@ class GeometryToolController;
 class AudioController;
 class FullscreenHandler;
 class Sidebar;
+class ScratchpadDrawer;
 class GladeSearchpath;
 class MetadataManager;
 class XournalppCursor;
@@ -343,6 +344,8 @@ public:
     size_t getCurrentPageNo() const;
     XournalppCursor* getCursor() const;
     Sidebar* getSidebar() const;
+    /// Fork: the scratchpad sliding up over the canvas, nullptr before the window exists
+    ScratchpadDrawer* getScratchpad() const { return scratchpad.get(); }
     SearchBar* getSearchBar() const;
     AudioController* getAudioController() const;
     /// Fork: whether audio is used; the AudioController itself is only created after the window is drawn
@@ -614,6 +617,8 @@ private:
 
     /// Fork: the documents opened last, to switch back to them instantly
     std::unique_ptr<DocumentCache> documentCache;
+
+    std::unique_ptr<ScratchpadDrawer> scratchpad;
 
     PageTypeHandler* pageTypes;
 

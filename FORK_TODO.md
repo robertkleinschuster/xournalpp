@@ -15,6 +15,9 @@ Things that cannot be verified on the hidden test desktop (no real touch, no not
   waking up, touch scrolling works at once. Only `PBT_APMSUSPEND` could be simulated; lid and screen events were not.
 - Repeated flicks on long PDFs speed up (`ScrollMomentum::combinedSpeed`, 12000 px/s limit): does it feel right?
 - After a tap at the very left screen edge, touch keeps working (input log: "releasing a stale pointer grab").
+- Scratchpad: the pull tab opens/closes by finger tap, drag and flick (gestures cannot be posted on the hidden test
+  desktop; opening, writing, erasing, saving, reloading and hiding were tested there). Writing with the pen
+  (pressure), eraser end, palm resting on the sheet, finger scrolling.
 
 ## Planned
 

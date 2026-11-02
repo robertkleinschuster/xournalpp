@@ -5549,3 +5549,15 @@ msgstr "„{1}“ konnte nicht als Bild gelesen werden."
 #: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
 msgid "Open in Default App"
 msgstr "In Standard-App öffnen"
+
+#: ../src/core/gui/ScratchpadDrawer.cpp ../ui/mainmenubar.xml
+msgid "Scratchpad"
+msgstr "Schmierzettel"
+
+#: ../src/core/gui/ScratchpadDrawer.cpp
+msgid "Clear Scratchpad"
+msgstr "Schmierzettel leeren"
+
+#: ../src/core/gui/ScratchpadDrawer.cpp
+msgid "Open as Document"
+msgstr "Als Dokument öffnen"

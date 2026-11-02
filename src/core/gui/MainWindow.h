@@ -87,6 +87,8 @@ public:
     bool isDarkTheme() const;
 
     XournalView* getXournal() const;
+    /// Fork: holds the canvas; the scratchpad slides up in it
+    GtkOverlay* getCanvasOverlay() const { return GTK_OVERLAY(canvasOverlay); }
 
     void setMenubarVisible(bool visible);
     void setSidebarVisible(bool visible);
@@ -178,6 +180,7 @@ private:
 
     std::unique_ptr<XournalView> xournal;
     GtkWidget* winXournal = nullptr;
+    GtkWidget* canvasOverlay = nullptr;
     std::unique_ptr<ScrollHandling> scrollHandling;
 
     std::atomic_bool gtkTouchscreenScrollingEnabled{true};

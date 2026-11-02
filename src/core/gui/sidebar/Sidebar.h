@@ -88,6 +88,10 @@ public:
     void openProjectFolder();
     /// The document last opened from the project explorer's folder, or empty
     std::filesystem::path getProjectExplorerLastDocument() const;
+    /// The project explorer's folder, or empty
+    std::filesystem::path currentProject() const;
+    /// Opens a document like a click in the project explorer (saving the current one first), at a page (0-based)
+    void openDocumentAt(const std::filesystem::path& document, int page);
 
 public:
     // DocumentListener interface

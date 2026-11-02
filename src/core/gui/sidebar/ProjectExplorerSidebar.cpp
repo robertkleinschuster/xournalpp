@@ -27,6 +27,7 @@
 #include "gui/ContextMenuTrigger.h"
 #include "gui/GladeSearchpath.h"
 #include "gui/MainWindow.h"
+#include "gui/ScratchpadDrawer.h"
 #include "gui/sidebar/AbstractSidebarPage.h"
 #include "gui/sidebar/ProjectGit.h"
 #include "gui/sidebar/Sidebar.h"  // for Sidebar
@@ -1205,6 +1206,9 @@ private:
         }
         syncing = true;
         autoSaver->setPaused(true);  // the pull may rewrite the open document
+        if (auto* scratchpad = control->getScratchpad()) {
+            scratchpad->setSyncing(true);  // saves its last strokes, so they are committed
+        }
         updateSyncButton();
         // A running fetch holds ref locks the pull needs; continue when it is done
         if (fetchRunning) {
@@ -1364,6 +1368,9 @@ private:
     void finishSync(const char* message, const std::string& details) {
         syncing = false;
         autoSaver->setPaused(false);
+        if (auto* scratchpad = control->getScratchpad()) {
+            scratchpad->setSyncing(false);  // reloads it if the pull changed it
+        }
         refreshGit();
         updateSyncButton();
         if (message) {

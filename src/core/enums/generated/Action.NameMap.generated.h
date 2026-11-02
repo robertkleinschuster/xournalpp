@@ -36,6 +36,7 @@ constexpr const char* ACTION_NAMES[] = {  // Action to string conversion map
         "fullscreen",
         "show-sidebar",
         "show-toolbar",
+        "show-scratchpad",
         "set-layout-vertical",
         "set-layout-right-to-left",
         "set-layout-bottom-to-top",

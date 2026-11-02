@@ -47,6 +47,7 @@
 #include "gui/MainWindow.h"                                      // for Main...
 #include "gui/PageView.h"                                        // for XojP...
 #include "gui/PdfFloatingToolbox.h"                              // for PdfF...
+#include "gui/ScratchpadDrawer.h"                                // for ScratchpadDrawer
 #include "gui/SearchBar.h"                                       // for Sear...
 #include "gui/XournalView.h"                                     // for Xour...
 #include "gui/XournalppCursor.h"                                 // for Xour...
@@ -191,6 +192,7 @@ Control::~Control() {
 
     deleteLastAutosaveFile();
     this->scheduler->stop();
+    this->scratchpad.reset();  // saves unsaved strokes; uses the sidebar and the tool handler
     this->documentCache.reset();
     this->changedPages.clear();  // can be removed, will be done by implicit destructor
 
@@ -332,6 +334,7 @@ void Control::initWindow(MainWindow* win, bool disableAudio) {
 
     selectTool(toolHandler->getToolType());
     this->sidebar = new Sidebar(win, this);
+    this->scratchpad = std::make_unique<ScratchpadDrawer>(this, win->getCanvasOverlay());
 
     XojMsgBox::setDefaultWindow(getGtkWindow());
 
@@ -2359,6 +2362,9 @@ void Control::quit(bool allowCancel) {
             this->scheduler->unlock();
             this->scheduler->stop();  // Finish current task. Must be called to finish pending saves.
             this->closeDocument();    // Must be done after all jobs has finished (Segfault on save/export)
+            if (scratchpad) {
+                scratchpad->saveNow();
+            }
             settings->save();
             g_application_quit(G_APPLICATION(gtkApp));
         }

@@ -171,6 +171,16 @@ auto Sidebar::getProjectExplorerLastDocument() const -> std::filesystem::path {
     return projectExplorerActions ? projectExplorerActions->lastDocument() : std::filesystem::path();
 }
 
+auto Sidebar::currentProject() const -> std::filesystem::path {
+    return projectExplorerActions ? projectExplorerActions->currentProject() : std::filesystem::path();
+}
+
+void Sidebar::openDocumentAt(const std::filesystem::path& document, int page) {
+    if (projectExplorerActions) {
+        projectExplorerActions->openDocumentAt(document, page);
+    }
+}
+
 void Sidebar::updateVisibleTabs() {
     size_t i = 0;
     size_t selected = npos;

@@ -21,6 +21,7 @@
 #include "control/zoom/ZoomControl.h"
 #include "enums/Action.enum.h"
 #include "gui/MainWindow.h"
+#include "gui/ScratchpadDrawer.h"
 #include "gui/SearchBar.h"
 #include "gui/XournalView.h"
 #include "gui/dialog/RenameLayerDialog.h"
@@ -361,6 +362,17 @@ struct ActionProperties<Action::SHOW_TOOLBAR> {
     using state_type = bool;
     static state_type initialState(Control* ctrl) { return ctrl->getSettings()->isToolbarVisible(); }
     static void callback(GSimpleAction*, GVariant* p, Control* ctrl) { ctrl->setShowToolbar(g_variant_get_boolean(p)); }
+};
+
+template <>
+struct ActionProperties<Action::SHOW_SCRATCHPAD> {
+    using state_type = bool;
+    static state_type initialState(Control*) { return false; }
+    static void callback(GSimpleAction*, GVariant* p, Control* ctrl) {
+        if (auto* scratchpad = ctrl->getScratchpad()) {
+            scratchpad->setOpen(g_variant_get_boolean(p));
+        }
+    }
 };
 
 template <>
