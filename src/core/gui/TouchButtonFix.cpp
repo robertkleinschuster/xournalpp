@@ -294,7 +294,9 @@ void TouchButtonFix::install() {
 #ifdef _WIN32
     gdk_event_handler_set(
             +[](GdkEvent* event, gpointer) {
-                InputSafety::handleEvent(event);
+                if (InputSafety::handleEvent(event)) {
+                    return;
+                }
                 if (!handleTouch(event)) {
                     gtk_main_do_event(event);
                 }

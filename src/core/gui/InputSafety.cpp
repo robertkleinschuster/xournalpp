@@ -145,6 +145,45 @@ void hideTooltips() {
 
 auto isPenOrTouch(GdkEvent* event) -> bool { return xoj::input::modalityOf(event) != xoj::input::Modality::Mouse; }
 
+/// The device of the last pointer input, and whether the pen hovers over the screen
+xoj::input::Modality lastModality = xoj::input::Modality::Mouse;
+bool penInRange = false;
+
+void trackModality(GdkEvent* event) {
+    switch (event->type) {
+        case GDK_MOTION_NOTIFY:
+        case GDK_BUTTON_PRESS:
+        case GDK_TOUCH_BEGIN:
+        case GDK_TOUCH_UPDATE:
+            lastModality = xoj::input::modalityOf(event);
+            break;
+        case GDK_PROXIMITY_IN:
+            penInRange = true;
+            lastModality = xoj::input::Modality::Pen;
+            break;
+        case GDK_PROXIMITY_OUT:
+            penInRange = false;
+            break;
+        default:
+            break;
+    }
+}
+
+/**
+ * GTK shows a tooltip half a second after the pen hovered over a button, also when the pen has left the screen in
+ * between, and after touches (whose emulated pointer "hovers" where the finger was). Only the pen hovering, or the
+ * mouse, ask for one.
+ */
+auto isUnwantedTooltip(GdkEvent* event) -> bool {
+    if (event->type != GDK_MAP || lastModality == xoj::input::Modality::Mouse ||
+        (lastModality == xoj::input::Modality::Pen && penInRange)) {
+        return false;
+    }
+    gpointer widget = nullptr;
+    gdk_window_get_user_data(event->any.window, &widget);
+    return GTK_IS_WINDOW(widget) && gtk_window_get_type_hint(GTK_WINDOW(widget)) == GDK_WINDOW_TYPE_HINT_TOOLTIP;
+}
+
 // --- Menu grabs ---
 
 /// A menu that holds the grab although it is not shown any more blocks all input to the window: close it
@@ -169,6 +208,41 @@ void releaseStaleMenuGrab() {
     }
 }
 
+// --- Stale pointer grabs ---
+
+/**
+ * A touch or pen press that GDK delivers to a window it does not lie in: GDK still holds the implicit grab of an
+ * earlier press whose release never came. Seen after a tap at the very left screen edge, where Windows starts its edge
+ * gesture: the tap arrived as a press on the toolbar without a release, and every tap afterwards went to the toolbar,
+ * so the window ignored touch until a later grab-broken. A real new press always lies in its window; menus and
+ * popovers that legitimately receive presses outside hold a GTK grab.
+ */
+auto isMisdirectedPress(GdkEvent* event) -> bool {
+    if (event->type != GDK_BUTTON_PRESS || !isPenOrTouch(event) || gtk_grab_get_current()) {
+        return false;
+    }
+    GdkWindow* window = event->button.window;
+    if (!window || gdk_window_get_window_type(gdk_window_get_toplevel(window)) != GDK_WINDOW_TOPLEVEL) {
+        return false;
+    }
+    const double x = event->button.x;
+    const double y = event->button.y;
+    return x < 0 || y < 0 || x >= gdk_window_get_width(window) || y >= gdk_window_get_height(window);
+}
+
+void releaseStalePointerGrab(GdkEvent* event) {
+    if (FILE* log = openLog()) {
+        std::fprintf(log, "%10.3f   releasing a stale pointer grab of %s\n",
+                     static_cast<double>(g_get_monotonic_time()) / 1e6, typeName(gtk_get_event_widget(event)));
+        std::fflush(log);
+    }
+    GdkSeat* seat = gdk_display_get_default_seat(gdk_window_get_display(event->button.window));
+    G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+    // Ends the implicit grab too (and releases the Windows mouse capture); gdk_seat_ungrab only ends seat grabs
+    gdk_device_ungrab(gdk_seat_get_pointer(seat), GDK_CURRENT_TIME);
+    G_GNUC_END_IGNORE_DEPRECATIONS
+}
+
 }  // namespace
 
 void InputSafety::note(const char* text) {
@@ -178,8 +252,20 @@ void InputSafety::note(const char* text) {
     }
 }
 
-void InputSafety::handleEvent(GdkEvent* event) {
+auto InputSafety::handleEvent(GdkEvent* event) -> bool {
     logEvent(event);
+    trackModality(event);
+    if (isUnwantedTooltip(event)) {
+        gtk_main_do_event(event);  // GTK first marks the window as mapped, then it can be hidden
+        hideTooltips();
+        return true;
+    }
+    if (isMisdirectedPress(event)) {
+        // The press would only reach the widget holding the grab; the next tap goes where it lands
+        hideTooltips();
+        releaseStalePointerGrab(event);
+        return true;
+    }
     switch (event->type) {
         case GDK_BUTTON_PRESS:
         case GDK_TOUCH_BEGIN:
@@ -199,11 +285,12 @@ void InputSafety::handleEvent(GdkEvent* event) {
         default:
             break;
     }
+    return false;
 }
 
 #else
 
-void InputSafety::handleEvent(GdkEvent*) {}
+auto InputSafety::handleEvent(GdkEvent*) -> bool { return false; }
 void InputSafety::note(const char*) {}
 
 #endif
