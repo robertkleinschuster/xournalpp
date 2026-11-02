@@ -2570,11 +2570,15 @@ void Control::clipboardPasteImage(GdkPixbuf* img) {
     xoj::util::GObjectSPtr<GdkPixbuf> pixbuf(gdk_pixbuf_apply_embedded_orientation(img), xoj::util::adopt);
 
     image->setImage(pixbuf.get());
+    pasteImage(std::move(image));
+}
 
+void Control::pasteImage(std::unique_ptr<Image> image) {
     auto zoom100 = this->getZoomControl()->getZoom100Value();
 
-    auto width = static_cast<double>(gdk_pixbuf_get_width(pixbuf.get())) / zoom100;
-    auto height = static_cast<double>(gdk_pixbuf_get_height(pixbuf.get())) / zoom100;
+    const auto naturalSize = image->getNaturalSize();
+    auto width = naturalSize.width / zoom100;
+    auto height = naturalSize.height / zoom100;
 
     auto pageNr = getCurrentPageNo();
     if (pageNr == npos) {

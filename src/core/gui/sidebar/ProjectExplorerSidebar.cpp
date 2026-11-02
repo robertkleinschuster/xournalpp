@@ -21,6 +21,7 @@
 #include "control/settings/PageTemplateSettings.h"
 #include "control/settings/Settings.h"
 #include "control/tasks/TaskFiles.h"  // for isTaskFile
+#include "control/tools/ImageHandler.h"
 #include "control/xojfile/SaveHandler.h"
 #include "gui/ContextMenuTrigger.h"
 #include "gui/GladeSearchpath.h"
@@ -568,7 +569,8 @@ private:
         gtk_tree_store_insert_with_values(
                 store, &iter, parentIter, -1, COL_ICON, iconFor(path, kind), COL_NAME, name.c_str(), COL_MARKUP,
                 markup.c_str(), COL_PATH, Util::toUtf8(path).c_str(), COL_KIND, kind, COL_SENSITIVE,
-                kind != KIND_FILE || TaskFiles::isTaskFile(path), COL_FOREGROUND, gitColorFor(path, kind), -1);
+                kind != KIND_FILE || TaskFiles::isTaskFile(path) || ImageHandler::isImageFile(path), COL_FOREGROUND,
+                gitColorFor(path, kind), -1);
         if (kind == KIND_DIRECTORY && lazy && (hasVisibleEntries(path) || !deletedEntriesIn(path).empty())) {
             GtkTreeIter placeholder;
             gtk_tree_store_insert_with_values(store, &placeholder, &iter, -1, COL_NAME, "", COL_KIND, KIND_PLACEHOLDER,
@@ -1612,8 +1614,11 @@ private:
                 break;
             case KIND_FILE:
                 // Fork: a todo.txt shows its tasks in the task tab
-                if (TaskFiles::isTaskFile(Util::fromUtf8(self->pathAt(&iter).c_str()))) {
+                if (const auto file = Util::fromUtf8(self->pathAt(&iter).c_str()); TaskFiles::isTaskFile(file)) {
                     self->control->getSidebar()->selectTasks();
+                } else if (ImageHandler::isImageFile(file)) {
+                    // An image is inserted into the open document, after choosing the part to insert
+                    ImageHandler::insertCroppedFromFile(self->control, file);
                 }
                 break;
             default:
@@ -1665,6 +1670,12 @@ private:
                 menu.add(_("Open Read-Only"), [this, target] { openReadOnly(Util::fromUtf8(target.c_str())); });
                 menu.add(_("Open in PDF Viewer"), [this, target] { openWithDefaultApp(target); });
             }
+            menu.addSeparator();
+        }
+        if (kind == KIND_FILE && ImageHandler::isImageFile(Util::fromUtf8(target.c_str()))) {
+            // Onto the current page of the open document, after choosing the part to insert
+            menu.add(_("Insert Image…"),
+                     [this, target] { ImageHandler::insertCroppedFromFile(control, Util::fromUtf8(target.c_str())); });
             menu.addSeparator();
         }
         if (!projectRoot.empty()) {

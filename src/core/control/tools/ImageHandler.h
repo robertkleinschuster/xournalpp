@@ -43,6 +43,11 @@ public:
     /// Position the image, gives it the provided size and insures it fits in the page (scaling down if needed)
     static void automaticScaling(Image& img, const xoj::util::Rectangle<double>& frame, PageRef page);
 
+    /// Fork: whether GdkPixbuf can read the file (by its extension)
+    static bool isImageFile(const fs::path& path);
+    /// Fork: shows the image file in the crop dialog and inserts the chosen part on the current page as a selection
+    static void insertCroppedFromFile(Control* control, const fs::path& path);
+
     /// lets the user choose an image file, creates the image and calls the callback
     void chooseAndCreateImage(std::function<void(std::unique_ptr<Image>)> callback);
 

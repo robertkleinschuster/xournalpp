@@ -5517,3 +5517,31 @@ msgstr "Ebenen"
 msgctxt "Sidebar tab"
 msgid "Layer Stack"
 msgstr "Ebenenstapel"
+
+#: ../src/core/gui/dialog/ImageCropDialog.cpp
+msgid "Insert Image"
+msgstr "Bild einfügen"
+
+#: ../src/core/gui/dialog/ImageCropDialog.cpp
+msgid "Whole Image"
+msgstr "Ganzes Bild"
+
+#: ../src/core/gui/dialog/ImageCropDialog.cpp
+msgid "Drag the corners or edges to crop, or draw a new frame."
+msgstr "Ecken oder Kanten ziehen, um zuzuschneiden, oder einen neuen Rahmen aufziehen."
+
+#: ../src/core/gui/dialog/ImageCropDialog.cpp
+msgid "{1} × {2} pixels"
+msgstr "{1} × {2} Pixel"
+
+#: ../src/core/gui/dialog/ImageCropDialog.cpp
+msgid "of {1} × {2}"
+msgstr "von {1} × {2}"
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "Insert Image…"
+msgstr "Bild einfügen…"
+
+#: ../src/core/control/tools/ImageHandler.cpp
+msgid "“{1}” could not be read as an image."
+msgstr "„{1}“ konnte nicht als Bild gelesen werden."

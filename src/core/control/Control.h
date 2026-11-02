@@ -72,6 +72,7 @@ class Callback;
 class ActionDatabase;
 class NavigationHistory;
 class DocumentCache;
+class Image;
 struct KeptRendering;
 
 class Control:
@@ -410,6 +411,8 @@ public:
     void clipboardPasteEnabled(bool enabled) override;
     void clipboardPasteText(std::string text) override;
     void clipboardPasteImage(GdkPixbuf* img) override;
+    /// Fork: pastes the image like one from the clipboard (scaled to fit 3/4 of the page, as a selection)
+    void pasteImage(std::unique_ptr<Image> image);
     void clipboardPasteXournal(ObjectInputStream& in) override;
     void deleteSelection() override;
 
