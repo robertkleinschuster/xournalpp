@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cctype>  // for tolower
 #include <cstring>
 #include <filesystem>
 #include <functional>
@@ -121,6 +122,23 @@ const std::vector<std::string> GIT_PATHSPEC = {"--", ".", ":(exclude,glob)**/.*.
 auto withPathspec(std::vector<std::string> args) -> std::vector<std::string> {
     args.insert(args.end(), GIT_PATHSPEC.begin(), GIT_PATHSPEC.end());
     return args;
+}
+
+/// Files that a tap must not start: programs, scripts and shortcuts to them (the project folder is synced via git)
+auto isExecutable(const fs::path& path) -> bool {
+    static const std::set<std::string> extensions = {
+            ".exe", ".com", ".bat",  ".cmd",  ".ps1",         ".psm1",      ".vbs",   ".vbe", ".js",  ".jse",
+            ".wsf", ".wsh", ".msi",  ".msp",  ".scr",         ".pif",       ".cpl",   ".hta", ".lnk", ".url",
+            ".reg", ".jar", ".appx", ".msix", ".application", ".appref-ms", ".sh",    ".py",  ".pyw", ".dll",
+            ".sys", ".inf", ".scf",  ".chm",  ".ws",          ".msc",       ".gadget"};
+    std::string ext = Util::toUtf8(path.extension());
+    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return std::tolower(c); });
+    return ext.empty() || extensions.count(ext);
+}
+
+/// Other files open in their default application (Windows: the app registered for the type)
+auto opensInDefaultApp(const fs::path& path) -> bool {
+    return !Util::hasXournalFileExt(path) && !Util::hasPdfFileExt(path) && !isExecutable(path);
 }
 
 auto hasVisibleEntries(const fs::path& dir) -> bool {
@@ -566,11 +584,11 @@ private:
     auto appendNode(GtkTreeIter* parentIter, const fs::path& path, const std::string& name, Kind kind,
                     const std::string& markup, bool lazy) -> GtkTreeIter {
         GtkTreeIter iter;
-        gtk_tree_store_insert_with_values(
-                store, &iter, parentIter, -1, COL_ICON, iconFor(path, kind), COL_NAME, name.c_str(), COL_MARKUP,
-                markup.c_str(), COL_PATH, Util::toUtf8(path).c_str(), COL_KIND, kind, COL_SENSITIVE,
-                kind != KIND_FILE || TaskFiles::isTaskFile(path) || ImageHandler::isImageFile(path), COL_FOREGROUND,
-                gitColorFor(path, kind), -1);
+        gtk_tree_store_insert_with_values(store, &iter, parentIter, -1, COL_ICON, iconFor(path, kind), COL_NAME,
+                                          name.c_str(), COL_MARKUP, markup.c_str(), COL_PATH,
+                                          Util::toUtf8(path).c_str(), COL_KIND, kind, COL_SENSITIVE,
+                                          kind != KIND_FILE || TaskFiles::isTaskFile(path) || opensInDefaultApp(path),
+                                          COL_FOREGROUND, gitColorFor(path, kind), -1);
         if (kind == KIND_DIRECTORY && lazy && (hasVisibleEntries(path) || !deletedEntriesIn(path).empty())) {
             GtkTreeIter placeholder;
             gtk_tree_store_insert_with_values(store, &placeholder, &iter, -1, COL_NAME, "", COL_KIND, KIND_PLACEHOLDER,
@@ -1619,6 +1637,8 @@ private:
                 } else if (ImageHandler::isImageFile(file)) {
                     // An image is inserted into the open document, after choosing the part to insert
                     ImageHandler::insertCroppedFromFile(self->control, file);
+                } else if (opensInDefaultApp(file)) {
+                    self->openWithDefaultApp(Util::toUtf8(file));
                 }
                 break;
             default:
@@ -1676,6 +1696,10 @@ private:
             // Onto the current page of the open document, after choosing the part to insert
             menu.add(_("Insert Image…"),
                      [this, target] { ImageHandler::insertCroppedFromFile(control, Util::fromUtf8(target.c_str())); });
+            menu.addSeparator();
+        }
+        if (kind == KIND_FILE && opensInDefaultApp(Util::fromUtf8(target.c_str()))) {
+            menu.add(_("Open in Default App"), [this, target] { openWithDefaultApp(target); });
             menu.addSeparator();
         }
         if (!projectRoot.empty()) {

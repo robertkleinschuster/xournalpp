@@ -5545,3 +5545,7 @@ msgstr "Bild einfügen…"
 #: ../src/core/control/tools/ImageHandler.cpp
 msgid "“{1}” could not be read as an image."
 msgstr "„{1}“ konnte nicht als Bild gelesen werden."
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "Open in Default App"
+msgstr "In Standard-App öffnen"
