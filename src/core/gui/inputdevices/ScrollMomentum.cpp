@@ -1,6 +1,6 @@
 #include "ScrollMomentum.h"
 
-#include <algorithm>  // for min
+#include <algorithm>  // for min, max
 #include <cmath>      // for exp, hypot
 #include <utility>    // for move
 
@@ -16,6 +16,9 @@ constexpr double MIN_SPEED = 150.0;  ///< pixels per second
 constexpr double STOP_SPEED = 20.0;
 /// Longest frame step, so the content does not jump after the window was hidden
 constexpr double MAX_STEP_S = 0.05;
+/// Repeated flicks: only short swipes add to the gliding speed, up to this speed (about 4 A4 pages in one glide)
+constexpr gint64 MAX_FLICK_US = 300'000;
+constexpr double MAX_SPEED = 12'000.0;
 }  // namespace
 
 ScrollMomentum::ScrollMomentum(std::function<void(Point<double>)> scroll): scroll(std::move(scroll)) {}
@@ -23,8 +26,27 @@ ScrollMomentum::ScrollMomentum(std::function<void(Point<double>)> scroll): scrol
 ScrollMomentum::~ScrollMomentum() { stop(); }
 
 void ScrollMomentum::begin() {
+    carried = isGliding() ? speed : Point<double>{0, 0};
+    beginTime = g_get_monotonic_time();
     stop();
     forgetMovement();
+}
+
+auto ScrollMomentum::combinedSpeed(Point<double> carried, Point<double> swipe, gint64 swipeUs) -> Point<double> {
+    const double carriedSpeed = std::hypot(carried.x, carried.y);
+    const double swipeSpeed = std::hypot(swipe.x, swipe.y);
+    if (swipeUs > MAX_FLICK_US || carriedSpeed <= 0 || swipeSpeed <= MIN_SPEED) {
+        return swipe;
+    }
+    // Same direction: within about 30 degrees
+    const double cosine = (carried.x * swipe.x + carried.y * swipe.y) / (carriedSpeed * swipeSpeed);
+    if (cosine < 0.87) {
+        return swipe;
+    }
+    Point<double> sum = swipe + carried;
+    const double sumSpeed = std::hypot(sum.x, sum.y);
+    const double limit = std::max(MAX_SPEED, swipeSpeed);  // never slower than the swipe itself
+    return sumSpeed > limit ? sum * (limit / sumSpeed) : sum;
 }
 
 void ScrollMomentum::forgetMovement() {
@@ -59,7 +81,8 @@ auto ScrollMomentum::velocity() const -> Point<double> {
 void ScrollMomentum::release(GtkWidget* w) {
     stop();
     const bool recentlyMoved = lastMoveTime && g_get_monotonic_time() - lastMoveTime < MAX_REST_US;
-    speed = velocity();
+    speed = combinedSpeed(carried, velocity(), g_get_monotonic_time() - beginTime);
+    carried = {};
     forgetMovement();
     if (!w || !recentlyMoved || std::hypot(speed.x, speed.y) <= MIN_SPEED) {
         return;

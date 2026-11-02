@@ -42,6 +42,15 @@ public:
 
     bool isGliding() const { return tickId != 0; }
 
+    /**
+     * The gliding speed after a swipe that started while the content still glided with carried (pixels per second):
+     * a quick swipe in the same direction adds to it, so repeated flicks get faster, like on phones. Anything else
+     * (a slow drag, another direction, a tap that stopped the gliding) starts from the swipe's own speed.
+     * @param swipeUs how long the fingers touched
+     */
+    static auto combinedSpeed(xoj::util::Point<double> carried, xoj::util::Point<double> swipe, gint64 swipeUs)
+            -> xoj::util::Point<double>;
+
 private:
     auto velocity() const -> xoj::util::Point<double>;
     auto step(gint64 frameTime) -> gboolean;
@@ -51,6 +60,8 @@ private:
     xoj::util::Point<double> travelled{};                             ///< content movement in this gesture
     std::deque<std::pair<gint64, xoj::util::Point<double>>> samples;  ///< recent (time, travelled)
     gint64 lastMoveTime = 0;
+    gint64 beginTime = 0;
+    xoj::util::Point<double> carried{};  ///< gliding speed when this gesture began
 
     xoj::util::Point<double> speed{};  ///< pixels per second while gliding
     gint64 lastFrame = 0;
