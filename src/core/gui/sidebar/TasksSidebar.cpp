@@ -220,14 +220,12 @@ public:
 
         toggleColumn = gtk_tree_view_column_new();
         auto* toggle = gtk_cell_renderer_toggle_new();
-        g_object_set(toggle, "xpad", 8, "ypad", 8, "indicator-size", 20, nullptr);
+        // Not activatable: GTK 3 only activates cells on mouse presses, so a touch could not tick the box. A tap or
+        // click on the check box column activates the row instead, which works for every input (see activated()).
+        g_object_set(toggle, "xpad", 8, "ypad", 8, "indicator-size", 20, "activatable", false, nullptr);
         gtk_tree_view_column_pack_start(toggleColumn, toggle, false);
         gtk_tree_view_column_add_attribute(toggleColumn, toggle, "active", COL_DONE);
         gtk_tree_view_column_add_attribute(toggleColumn, toggle, "visible", COL_IS_TASK);
-        g_signal_connect(toggle, "toggled", G_CALLBACK(+[](GtkCellRendererToggle*, gchar* path, gpointer self) {
-                             static_cast<TasksSidebar*>(self)->toggled(path);
-                         }),
-                         this);
         gtk_tree_view_append_column(tree, toggleColumn);
 
         auto* textColumn = gtk_tree_view_column_new();
@@ -629,14 +627,8 @@ private:
                                                                            nullptr;
     }
 
-    void toggled(const gchar* pathString) {
-        GtkTreePath* path = gtk_tree_path_new_from_string(pathString);
-        const Entry* found = entryAt(path);
-        gtk_tree_path_free(path);
-        if (!found) {
-            return;
-        }
-        Entry entry = *found;
+    void toggled(const Entry& found) {
+        Entry entry = found;
         std::vector<std::string> lines;
         if (entry.task.done) {
             TodoTxt::reopen(entry.task);
@@ -652,10 +644,11 @@ private:
     }
 
     void activated(GtkTreePath* path, GtkTreeViewColumn* column) {
-        if (column == toggleColumn) {
-            return;  // the check box handles it
-        }
         const Entry* entry = entryAt(path);
+        if (entry && column == toggleColumn) {
+            toggled(*entry);
+            return;
+        }
         if (!entry) {
             // A group header: show or hide its tasks
             if (gtk_tree_view_row_expanded(tree, path)) {
