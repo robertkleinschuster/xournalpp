@@ -29,7 +29,7 @@ the next menu or beside them, and tooltips shown while the pen hovers can stay o
 longer shown; `TouchButtonFix` handles taps on buttons and the menu bar.
 
 - Diagnose with the input log: create an empty file `input-debug` in the config folder, reproduce, then read
-  `input-debug.log` there (pen, touch, menu and grab events).
+  `input-debug.log` there (pen, touch, menu and grab events; touch events with their sequence, and the touch handler's decisions: first/second finger, third contact invalidating all touches, ignored touches, blocking, touches forgotten after a lost end).
 - Goal: no state in which a menu, tooltip or grab can block the window; menus switch and close reliably by touch
   and pen.
 

@@ -9,6 +9,7 @@
 #include <glib.h>  // for gdouble
 
 #include "control/settings/Settings.h"           // for Settings
+#include "gui/InputSafety.h"                     // for note
 #include "gui/Layout.h"                          // for Layout
 #include "gui/PageView.h"                        // for XojPageView
 #include "gui/XournalView.h"                     // for XournalView
@@ -46,6 +47,9 @@ auto AbstractInputHandler::handle(InputEvent const& event) -> bool {
             v->getCursor()->setInputDeviceClass(event.deviceClass);
         }
         return this->handleImpl(event);
+    }
+    if (event.type == BUTTON_PRESS_EVENT && event.deviceClass == INPUT_DEVICE_TOUCHSCREEN) {
+        InputSafety::note("touch: begin ignored, the touch handler is blocked");  // Fork: diagnostics
     }
     return true;
 }

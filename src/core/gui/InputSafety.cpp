@@ -122,10 +122,15 @@ void logEvent(GdkEvent* event) {
     guint button = 0;
     gdk_event_get_button(event, &button);
     GtkWidget* grab = gtk_grab_get_current();
-    std::fprintf(log, "%10.3f %-13s src=%-8s btn=%u at=%7.1f,%7.1f widget=%s grab=%s(%s) tooltips=%d\n",
+    // The touch sequence, to match the touch handler's notes (TouchInputHandler)
+    char sequence[32] = "";
+    if (GdkEventSequence* s = gdk_event_get_event_sequence(event)) {
+        std::snprintf(sequence, sizeof(sequence), " seq=%p", static_cast<void*>(s));
+    }
+    std::fprintf(log, "%10.3f %-13s src=%-8s btn=%u at=%7.1f,%7.1f widget=%s grab=%s(%s) tooltips=%d%s\n",
                  static_cast<double>(g_get_monotonic_time()) / 1e6, name, sourceName(event), button, x, y,
                  typeName(gtk_get_event_widget(event)), typeName(grab),
-                 grab ? (gtk_widget_get_mapped(grab) ? "mapped" : "unmapped") : "", visibleTooltips());
+                 grab ? (gtk_widget_get_mapped(grab) ? "mapped" : "unmapped") : "", visibleTooltips(), sequence);
     std::fflush(log);
 }
 

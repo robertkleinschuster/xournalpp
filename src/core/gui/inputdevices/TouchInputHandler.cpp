@@ -5,12 +5,14 @@
 #include "TouchInputHandler.h"
 
 #include <cmath>    // for abs
+#include <cstdarg>  // for va_list
 #include <utility>  // for exchange
 
 #include "control/Control.h"                        // for Control
 #include "control/settings/Settings.h"              // for Settings
 #include "control/zoom/ZoomControl.h"               // for ZoomControl
 #include "gui/InputModality.h"                      // for TOUCH_SLOP, TOUCH_HOLD_MS
+#include "gui/InputSafety.h"                        // for note
 #include "gui/Layout.h"                             // for Layout
 #include "gui/MainWindow.h"                         // for MainWindow
 #include "gui/PageView.h"                           // for XojPageView
@@ -98,6 +100,18 @@ void TouchInputHandler::applyPendingMotion() {
     }
 }
 
+/// Fork: a line in the input diagnostics log ("input-debug" in the config folder), to find out why a swipe or pinch
+/// did nothing
+static void noteTouch(const char* format, ...) G_GNUC_PRINTF(1, 2);
+static void noteTouch(const char* format, ...) {
+    va_list args;
+    va_start(args, format);
+    gchar* text = g_strdup_vprintf(format, args);
+    va_end(args);
+    InputSafety::note(text);
+    g_free(text);
+}
+
 void TouchInputHandler::forgetEndedTouches(GdkEventSequence* current) {
 #ifdef _WIN32
     // Fork: Windows sometimes loses the end of a touch, e.g. when palm rejection cancels it. The vanished finger would
@@ -112,6 +126,7 @@ void TouchInputHandler::forgetEndedTouches(GdkEventSequence* current) {
     // A lifted earlier touch whose end event is still queued is forgotten a moment early, which is harmless.
     if (ended) {
         g_message("Touch input: forgetting touches that ended without an end event");
+        noteTouch("touch: forgetting touches that ended without an end event");
         resetTouchSequence();
     }
 #endif
@@ -140,6 +155,7 @@ auto TouchInputHandler::handleImpl(InputEvent const& event) -> bool {
         }
         if (invalidActive.find(event.sequence) != invalidActive.end()) {
             g_warning("Missed touch end/cancel event. Resetting touch input handler.");
+            noteTouch("touch: missed end of %p, resetting the invalid touches", static_cast<void*>(event.sequence));
             invalidActive.clear();
         }
         if (invalidActive.empty() && event.sequence != primarySequence && event.sequence != secondarySequence) {
@@ -147,6 +163,8 @@ auto TouchInputHandler::handleImpl(InputEvent const& event) -> bool {
             if (primarySequence && secondarySequence) {
                 // All touches become invalid
                 g_debug("All touches become invalid");
+                noteTouch("touch: third contact %p, all touches ignored until lifted",
+                          static_cast<void*>(event.sequence));
                 invalidActive.insert({primarySequence, secondarySequence, event.sequence});
                 primarySequence = secondarySequence = nullptr;
             } else {
@@ -159,10 +177,14 @@ auto TouchInputHandler::handleImpl(InputEvent const& event) -> bool {
                 if (secondarySequence) {
                     startZoomReady = true;
                 }
+                noteTouch("touch: %p is the %s finger", static_cast<void*>(event.sequence),
+                          secondarySequence ? "second (pinch)" : "first (scroll)");
             }
         } else {
             invalidActive.insert(event.sequence);
             g_debug("Add touch as invalid. %zu touches are invalid now.", invalidActive.size());
+            noteTouch("touch: %p ignored, %zu touches are invalid", static_cast<void*>(event.sequence),
+                      invalidActive.size());
         }
         return true;
     }
@@ -350,11 +372,17 @@ void TouchInputHandler::zoomEnd() {
     }
 }
 
-void TouchInputHandler::onBlock() { resetTouchSequence(); }
+void TouchInputHandler::onBlock() {
+    noteTouch("touch: blocked");
+    resetTouchSequence();
+}
 
 void TouchInputHandler::stopGliding() { momentum.stop(); }
 
-void TouchInputHandler::onUnblock() { resetTouchSequence(); }
+void TouchInputHandler::onUnblock() {
+    noteTouch("touch: unblocked");
+    resetTouchSequence();
+}
 
 void TouchInputHandler::resetTouchSequence() {
     cancelFrame();
