@@ -101,9 +101,16 @@ auto PopplerGlibPage::findText(const std::string& text) -> std::vector<XojPdfRec
     std::vector<XojPdfRectangle> findings;
 
     double height = getHeight();
-    GList* matches = poppler_page_find_text(page, text.c_str());
+    // Fork: like PDF readers, "Ubung" finds "Übung", and a phrase is also found across a line break (its continuation
+    // on the next line belongs to the same match: only its first part counts and is shown)
+    GList* matches = poppler_page_find_text_with_options(
+            page, text.c_str(), static_cast<PopplerFindFlags>(POPPLER_FIND_IGNORE_DIACRITICS | POPPLER_FIND_MULTILINE));
+    bool continuation = false;
     for (auto& rect: GListView<PopplerRectangle>(matches)) {
-        findings.emplace_back(rect.x1, height - rect.y2, rect.x2, height - rect.y1);
+        if (!continuation) {
+            findings.emplace_back(rect.x1, height - rect.y2, rect.x2, height - rect.y1);
+        }
+        continuation = poppler_rectangle_find_get_match_continued(&rect);
         poppler_rectangle_free(&rect);
     }
     g_list_free(matches);

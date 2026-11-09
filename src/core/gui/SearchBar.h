@@ -47,6 +47,8 @@ private:
     /**
      * @brief Named specialization of search(), where next(page) = (page + 1) % pageCount
      */
+    /// Fork: Next/Previous continue from the page shown
+    void continueFromCurrentPage(bool forward);
     void searchNext();
     /**
      * @brief Named specialization of search(), where next(page) = (page + pageCount - 1) % pageCount
@@ -63,4 +65,5 @@ private:
     size_t indexInPage = 0;
     size_t occurrences = 0;
     bool searchActive = false;
+    bool lastFound = false;  ///< Fork: whether the last Next/Previous found the text
 };

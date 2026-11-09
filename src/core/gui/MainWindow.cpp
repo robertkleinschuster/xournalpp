@@ -408,7 +408,27 @@ void MainWindow::dragDataRecived(GtkWidget* widget, GdkDragContext* dragContext,
         gtk_drag_finish(dragContext, false, false, time);
         return;
     }
-    // Fork: every drop inserts content into the document
+    // Fork: a single PDF or document dropped from the file manager opens, like in PDF readers (Windows also offers
+    // it as text, its URI, which would be pasted)
+    if (gchar** dropped = gtk_selection_data_get_uris(data)) {
+        std::optional<fs::path> open;
+        if (dropped[0] && !dropped[1]) {
+            if (auto path = Util::fromUri(dropped[0])) {
+                const auto ext = Util::toUtf8(path->extension());
+                if (g_ascii_strcasecmp(ext.c_str(), ".pdf") == 0 || g_ascii_strcasecmp(ext.c_str(), ".xopp") == 0 ||
+                    g_ascii_strcasecmp(ext.c_str(), ".xoj") == 0) {
+                    open = std::move(path);
+                }
+            }
+        }
+        g_strfreev(dropped);
+        if (open) {
+            gtk_drag_finish(dragContext, true, false, time);
+            win->control->openFile(*open);
+            return;
+        }
+    }
+    // Fork: every other drop inserts content into the document
     if (win->control->isReadOnly()) {
         win->control->notifyReadOnly();
         gtk_drag_finish(dragContext, false, false, time);
