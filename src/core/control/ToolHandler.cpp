@@ -216,6 +216,8 @@ auto ToolHandler::getToolType() const -> ToolType {
     return tool->type;
 }
 
+auto ToolHandler::getToolbarToolType() const -> ToolType { return this->toolbarSelectedTool->type; }
+
 auto ToolHandler::hasCapability(ToolCapabilities cap, SelectedTool selectedTool) const -> bool {
     Tool* tool = getSelectedTool(selectedTool);
     return (tool->capabilities & cap) != 0;

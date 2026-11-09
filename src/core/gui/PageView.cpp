@@ -811,10 +811,18 @@ auto XojPageView::onButtonReleaseEvent(const PositionInputData& pos) -> bool {
             }()
                                           .release());
         } else if (const double zoom = xournal->getZoom(); selector->userTapped(zoom)) {
+            bool selected = false;
             if (aggregate) {
-                SelectObject(this).atAggregate(pos.x / zoom, pos.y / zoom);
+                selected = SelectObject(this).atAggregate(pos.x / zoom, pos.y / zoom);
             } else {
-                SelectObject(this).at(pos.x / zoom, pos.y / zoom, this->selector->isMultiLayerSelection());
+                selected = SelectObject(this).at(pos.x / zoom, pos.y / zoom, this->selector->isMultiLayerSelection());
+            }
+            // Fork: a click that selects nothing follows a PDF link there (the mouse selects instead of drawing, so
+            // it is not using a PDF tool, which shows links otherwise)
+            if (!selected && this->page->getPdfPageNr() != npos) {
+                if (auto pdfPage = xournal->getDocument()->getPdfDocument().getPage(this->page->getPdfPageNr())) {
+                    displayLinkPopover(pdfPage, pos.x / zoom, pos.y / zoom);
+                }
             }
         }
         this->selector.reset();

@@ -164,7 +164,7 @@ void Settings::loadDefault() {
     // Eraser
     this->buttonConfig[BUTTON_ERASER] = std::make_unique<ButtonConfig>(TOOL_ERASER, Colors::black, TOOL_SIZE_NONE,
                                                                        DRAWING_TYPE_DEFAULT, ERASER_TYPE_NONE);
-    // Left button - Fork: the mouse (and touchpad) never draws, it selects (see loadButtonConfig)
+    // Left button - Fork: the mouse (and touchpad) never draws, it selects (see MouseInputHandler::changeTool)
     this->buttonConfig[BUTTON_MOUSE_LEFT] = std::make_unique<ButtonConfig>(
             TOOL_SELECT_RECT, Colors::black, TOOL_SIZE_NONE, DRAWING_TYPE_DEFAULT, ERASER_TYPE_NONE);
     // Middle button
@@ -850,7 +850,8 @@ void Settings::loadButtonConfig() {
         }
     }
 
-    // Fork: the left mouse button always selects, also with settings saved before (which kept the toolbar tool)
+    // Fork: the left mouse button selects instead of drawing tools (MouseInputHandler::changeTool), also with settings
+    // saved before (which kept the toolbar tool)
     if (buttonConfig[BUTTON_MOUSE_LEFT]->action == TOOL_NONE) {
         buttonConfig[BUTTON_MOUSE_LEFT]->action = TOOL_SELECT_RECT;
     }

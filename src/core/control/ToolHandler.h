@@ -242,6 +242,9 @@ public:
      */
     ToolType getToolType() const;
 
+    /// Fork: the tool type selected in the toolbar (the active tool may be a button's tool)
+    ToolType getToolbarToolType() const;
+
     /**
      * @brief Update the Toolbar and the cursor based on the active Tool
      *

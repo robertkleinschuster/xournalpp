@@ -5,6 +5,8 @@
 #include "MouseInputHandler.h"
 
 #include "control/ToolHandler.h"               // for ToolHandler
+#include "control/settings/ButtonConfig.h"     // for ButtonConfig
+#include "control/settings/Settings.h"         // for Settings
 #include "control/settings/SettingsEnums.h"    // for Button, BUTTON_MOUSE_M...
 #include "gui/XournalView.h"                   // for XournalView
 #include "gui/XournalppCursor.h"               // for XournalppCursor
@@ -160,6 +162,23 @@ void MouseInputHandler::setPressedState(InputEvent const& event) {
     }
 }
 
+/// Fork: tools that put ink on the page, which the mouse and touchpad never use (they select instead)
+static auto inksPage(ToolType type) -> bool {
+    switch (type) {
+        case TOOL_PEN:
+        case TOOL_HIGHLIGHTER:
+        case TOOL_DRAW_RECT:
+        case TOOL_DRAW_ELLIPSE:
+        case TOOL_DRAW_ARROW:
+        case TOOL_DRAW_DOUBLE_ARROW:
+        case TOOL_DRAW_COORDINATE_SYSTEM:
+        case TOOL_DRAW_SPLINE:
+            return true;
+        default:
+            return false;
+    }
+}
+
 auto MouseInputHandler::changeTool(InputEvent const& event) -> bool {
     Settings* settings = this->inputContext->getSettings();
     ToolHandler* toolHandler = this->inputContext->getToolHandler();
@@ -167,16 +186,21 @@ auto MouseInputHandler::changeTool(InputEvent const& event) -> bool {
     bool toolChanged = false;
 
     if (!isClickOnSelection) {
-        if (modifier2) {
-            toolChanged = InputUtils::applyButton(toolHandler, settings, Button::BUTTON_MOUSE_MIDDLE);
-        } else if (modifier3) {
-            toolChanged = InputUtils::applyButton(toolHandler, settings, Button::BUTTON_MOUSE_RIGHT);
-        } else if (modifier4) {
-            toolChanged = InputUtils::applyButton(toolHandler, settings, Button::BUTTON_MOUSE_4);
-        } else if (modifier5) {
-            toolChanged = InputUtils::applyButton(toolHandler, settings, Button::BUTTON_MOUSE_5);
+        Button button = modifier2 ? Button::BUTTON_MOUSE_MIDDLE :
+                        modifier3 ? Button::BUTTON_MOUSE_RIGHT :
+                        modifier4 ? Button::BUTTON_MOUSE_4 :
+                        modifier5 ? Button::BUTTON_MOUSE_5 :
+                                    Button::BUTTON_MOUSE_LEFT;
+        // Fork: the mouse never draws. The left button (and any button keeping the toolbar tool) selects instead of
+        // a drawing tool, but keeps every other toolbar tool (text, PDF text, eraser, ...).
+        const bool keepsToolbarTool =
+                button == Button::BUTTON_MOUSE_LEFT || settings->getButtonConfig(button)->getAction() == TOOL_NONE;
+        if (keepsToolbarTool) {
+            toolChanged = inksPage(toolHandler->getToolbarToolType()) ?
+                                  InputUtils::applyButton(toolHandler, settings, Button::BUTTON_MOUSE_LEFT) :
+                                  toolHandler->pointActiveToolToToolbarTool();
         } else {
-            toolChanged = InputUtils::applyButton(toolHandler, settings, Button::BUTTON_MOUSE_LEFT);
+            toolChanged = InputUtils::applyButton(toolHandler, settings, button);
         }
     } else {
         toolChanged = toolHandler->pointActiveToolToToolbarTool();
