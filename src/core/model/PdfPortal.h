@@ -11,6 +11,7 @@
 #include <memory>  // for shared_ptr
 #include <mutex>   // for mutex
 #include <string>  // for string
+#include <vector>  // for vector
 
 #include <cairo.h>    // for cairo_t
 #include <poppler.h>  // for PopplerDocument
@@ -18,6 +19,7 @@
 #include "util/Rectangle.h"         // for Rectangle
 #include "util/raii/GObjectSPtr.h"  // for GObjectSPtr
 
+class Element;
 class ObjectInputStream;
 class ObjectOutputStream;
 
@@ -69,7 +71,12 @@ struct PdfPortal {
      */
     bool draw(cairo_t* cr, double width, double height) const;
 
-    /// Serializes an optional portal (for the clipboard), with its page data
-    static void serialize(ObjectOutputStream& out, const std::shared_ptr<const PdfPortal>& portal);
-    static auto readSerialized(ObjectInputStream& in) -> std::shared_ptr<const PdfPortal>;
+    /**
+     * For the clipboard: the portals (with their pages) of the serialized elements that have one, written after them.
+     * The elements themselves are serialized as upstream does it, and upstream stops reading after them, so it pastes
+     * their snapshots. Nothing is written if no element has a portal.
+     */
+    static void serializeAppendix(ObjectOutputStream& out, const std::vector<const Element*>& elements);
+    /// Gives the elements just read their portals, if the appendix follows (not after copying in upstream)
+    static void readAppendix(ObjectInputStream& in, const std::vector<Element*>& elements);
 };

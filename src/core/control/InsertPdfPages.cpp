@@ -29,9 +29,6 @@ void showError(Control* control, const std::string& message, const std::string& 
     XojMsgBox::showErrorToUser(control->getGtkWindow(), detail.empty() ? message : message + "\n\n" + detail);
 }
 
-/// The companion PDF is also hidden in the Windows Explorer (Git does not keep the attribute, the name still hides
-/// it in the project explorer)
-void setHidden(const fs::path& path, bool hidden) { Util::setHiddenFile(path, hidden); }
 
 auto writeFile(const fs::path& path, const std::string& data) -> bool {
     std::ofstream out(path, std::ios::binary | std::ios::trunc);
@@ -128,7 +125,7 @@ auto InsertPdfPages::insert(Control* control, const fs::path& pdf, const std::ve
         fs::remove(part, fsError);
         return false;
     }
-    setHidden(target, false);  // Windows does not replace hidden files
+    Util::setHiddenFile(target, false);  // hidden by earlier versions; Windows does not replace hidden files
     fs::rename(part, target, fsError);
     if (fsError) {
         // Still in use (e.g. by a running export): keep it under another name
@@ -145,7 +142,6 @@ auto InsertPdfPages::insert(Control* control, const fs::path& pdf, const std::ve
         doc->unlock();
     }
 
-    setHidden(target, true);
     control->getUndoRedoHandler()->addUndoAction(
             std::make_unique<InsertPdfPagesUndoAction>(newPages, position, base, target));
     control->firePageSelected(position);

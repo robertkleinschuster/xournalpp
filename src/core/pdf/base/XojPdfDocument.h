@@ -48,6 +48,7 @@ public:
     XojPdfPageSPtr getPage(size_t page) const override;
     size_t getPageCount() const override;
     XojPdfBookmarkIterator* getContentsIter() const override;
+    std::shared_ptr<const std::string> getData() const override;
 
 private:
     XojPdfDocumentInterface* doc;

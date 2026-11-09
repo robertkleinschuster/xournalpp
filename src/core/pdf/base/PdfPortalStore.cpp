@@ -136,10 +136,18 @@ bool PdfPortalStore::isAvailable() { return true; }
 
 auto PdfPortalStore::extractPage(const fs::path& pdf, size_t pageIndex) -> std::shared_ptr<PdfPortalPage> {
     try {
-        const std::string data = readFile(pdf);
+        return extractPage(readFile(pdf), pageIndex);
+    } catch (const std::runtime_error& e) {
+        g_warning("Cannot copy page %zu of %s: %s", pageIndex + 1, Util::toUtf8(pdf).c_str(), e.what());
+        return nullptr;
+    }
+}
+
+auto PdfPortalStore::extractPage(const std::string& data, size_t pageIndex) -> std::shared_ptr<PdfPortalPage> {
+    try {
         auto page = convertErrors([&] {
             QPDF source;
-            source.processMemoryFile(Util::toUtf8(pdf).c_str(), data.data(), data.size());
+            source.processMemoryFile("PDF", data.data(), data.size());
             auto pages = QPDFPageDocumentHelper(source).getAllPages();
             if (pageIndex >= pages.size()) {
                 throw std::runtime_error("no such page");
@@ -148,7 +156,7 @@ auto PdfPortalStore::extractPage(const fs::path& pdf, size_t pageIndex) -> std::
         });
         return PdfPortalPage::fromData(std::move(page));
     } catch (const std::runtime_error& e) {
-        g_warning("Cannot copy page %zu of %s: %s", pageIndex + 1, Util::toUtf8(pdf).c_str(), e.what());
+        g_warning("Cannot copy page %zu of a PDF: %s", pageIndex + 1, e.what());
         return nullptr;
     }
 }
@@ -226,16 +234,13 @@ void PdfPortalStore::write(const fs::path& file,
             throw std::runtime_error("cannot write " + Util::toUtf8(part));
         }
     }
-    Util::setHiddenFile(file, false);  // Windows does not replace hidden files
+    Util::setHiddenFile(file, false);  // Windows does not replace hidden files (e.g. hidden by the user)
     fs::rename(part, file, error);
     if (error) {
         const std::string message = error.message();
-        Util::setHiddenFile(file, true);
         fs::remove(part, error);
         throw std::runtime_error("cannot replace " + Util::toUtf8(file) + ": " + message);
     }
-    // Also hidden in the Windows Explorer (git does not keep the attribute, the name hides it in the project explorer)
-    Util::setHiddenFile(file, true);
     remember(file, std::move(keys));
 }
 
@@ -243,6 +248,7 @@ void PdfPortalStore::write(const fs::path& file,
 
 bool PdfPortalStore::isAvailable() { return false; }
 auto PdfPortalStore::extractPage(const fs::path&, size_t) -> std::shared_ptr<PdfPortalPage> { return nullptr; }
+auto PdfPortalStore::extractPage(const std::string&, size_t) -> std::shared_ptr<PdfPortalPage> { return nullptr; }
 auto PdfPortalStore::readPages(const fs::path&) -> std::map<std::string, std::string> {
     throw std::runtime_error("built without QPDF");
 }

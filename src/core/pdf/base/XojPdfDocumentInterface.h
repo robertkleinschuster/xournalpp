@@ -12,6 +12,7 @@
 #pragma once
 
 #include <cstddef>  // for size_t
+#include <memory>   // for shared_ptr, unique_ptr
 #include <string>   // for string
 
 #include <glib.h>  // for GError, gpointer, gsize
@@ -40,6 +41,9 @@ public:
     virtual XojPdfPageSPtr getPage(size_t page) const = 0;
     virtual size_t getPageCount() const = 0;
     virtual XojPdfBookmarkIterator* getContentsIter() const = 0;
+
+    /// Fork: the PDF data the document was loaded from, or nullptr if it was loaded from a file
+    virtual std::shared_ptr<const std::string> getData() const { return nullptr; }
 
 private:
 };

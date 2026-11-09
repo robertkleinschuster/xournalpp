@@ -346,11 +346,14 @@ TEST_F(AnnotationFilesTest, theCombinedPdfBelongsToTheGroup) {
     // A course PDF named like the document, and the companion PDF made by "Insert Pages"
     fs::copy_file(GET_TESTFILE(u8"packaged_xopp/pdfBackground/old.xopp.bg.pdf"), dir / "VO8.pdf");
     const auto combined = AnnotationFiles::companionPdf(dir / "VO8.xopp");
-    EXPECT_EQ(combined, dir / ".VO8.pages.pdf");
-    EXPECT_TRUE(AnnotationFiles::isCompanionPdf(combined));
-    EXPECT_FALSE(AnnotationFiles::isCompanionPdf(dir / "VO8.pdf"));
+    EXPECT_EQ(combined, dir / "VO8.pages.pdf");               // next to the document, not hidden
+    EXPECT_FALSE(AnnotationFiles::isCompanionPdf(combined));  // without its document: a PDF of the user
     std::ofstream(combined, std::ios::binary) << PdfCombiner::append(dir / "VO8.pdf", dir / "VO8.pdf", {0});
     saveAnnotation(dir / "VO8.xopp", combined, "VO8_annotated.pdf");
+    EXPECT_TRUE(AnnotationFiles::isCompanionPdf(combined));
+    EXPECT_TRUE(AnnotationFiles::isCompanionPdf(dir / "VO8.pages 2.pdf"));
+    EXPECT_TRUE(AnnotationFiles::isCompanionPdf(dir / ".Other.pages.pdf"));  // of an earlier version
+    EXPECT_FALSE(AnnotationFiles::isCompanionPdf(dir / "VO8.pdf"));
     std::ofstream(dir / "VO8_annotated.pdf") << "x";
 
     EXPECT_TRUE(AnnotationFiles::ownsSourcePdf(dir / "VO8.xopp", combined));
@@ -366,12 +369,12 @@ TEST_F(AnnotationFilesTest, theCombinedPdfBelongsToTheGroup) {
     const auto group = AnnotationFiles::groupForRename(dir / "VO8.xopp", dir / "VO9.xopp", *settings);
     EXPECT_FALSE(AnnotationFiles::groupConflict(group));
     applyGroup(group, *settings);
-    EXPECT_TRUE(fs::exists(dir / ".VO9.pages.pdf"));
+    EXPECT_TRUE(fs::exists(dir / "VO9.pages.pdf"));
     EXPECT_TRUE(fs::exists(dir / "VO8.pdf"));  // the course PDF is no longer the document's background
     expectLoadsWithPdf(dir / "VO9.xopp");
 
     fs::create_directory(dir / "Archiv");
     applyGroup(AnnotationFiles::groupForMove(dir / "VO9.xopp", dir / "Archiv", *settings), *settings);
-    EXPECT_TRUE(fs::exists(dir / "Archiv" / ".VO9.pages.pdf"));
+    EXPECT_TRUE(fs::exists(dir / "Archiv" / "VO9.pages.pdf"));
     expectLoadsWithPdf(dir / "Archiv" / "VO9.xopp");
 }

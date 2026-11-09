@@ -41,6 +41,7 @@ void AutosaveJob::run() {
     filepath += ".autosave.xopp";
 
     handler.prepareSave(doc, filepath);
+    handler.setWritesPortalFile(false);  // Fork: next to the document, it would not be removed with the copy
     doc->unlock_shared();
 
     g_message("%s", FS(_F("Autosaving to {1}") % filepath.string()).c_str());

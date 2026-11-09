@@ -258,6 +258,10 @@ void LoadHandler::loadBgPdf(bool attach, const fs::path& filename) {
 
         // pdfFilepath should point to the background PDF file
         if (fs::is_regular_file(pdfFilepath)) {
+            if (AnnotationFiles::isCompanionPdf(pdfFilepath)) {
+                // Fork: earlier versions hid it; in the Windows Explorer it shows that the document needs it
+                Util::setHiddenFile(pdfFilepath, false);
+            }
             this->doc->readPdf(pdfFilepath, false, attach);
 
             if (!this->doc->getLastErrorMsg().empty()) {

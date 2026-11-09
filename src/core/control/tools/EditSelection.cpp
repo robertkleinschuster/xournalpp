@@ -25,6 +25,7 @@
 #include "model/ElementInsertionPosition.h"
 #include "model/Layer.h"                          // for Layer
 #include "model/LineStyle.h"                      // for LineStyle
+#include "model/PdfPortal.h"                      // for PdfPortal
 #include "model/Point.h"                          // for Point
 #include "model/XojPage.h"                        // for XojPage
 #include "undo/ArrangeUndoAction.h"               // for ArrangeUndoAction
@@ -1188,9 +1189,12 @@ void EditSelection::serialize(ObjectOutputStream& out) const {
     out.endObject();
 
     out.writeInt(static_cast<int>(this->getInsertionOrder().size()));
+    std::vector<const Element*> elements;
     for (const Element* e: this->getElementsView()) {
         e->serialize(out);
+        elements.push_back(e);
     }
+    PdfPortal::serializeAppendix(out, elements);  // Fork: after the elements, so upstream can paste them
 }
 
 void EditSelection::serializeElement(ObjectOutputStream& out, const Element& element) {
@@ -1205,6 +1209,7 @@ void EditSelection::serializeElement(ObjectOutputStream& out, const Element& ele
 
     out.writeInt(1);
     element.serialize(out);
+    PdfPortal::serializeAppendix(out, {&element});  // Fork: after the element, so upstream can paste it
 }
 
 void EditSelection::readSerialized(ObjectInputStream& in) {

@@ -105,20 +105,24 @@ DocumentGroup groupForMove(const std::filesystem::path& xopp, const std::filesys
                            const Settings& settings);
 
 /**
- * The hidden companion PDF of a document, ".VO8.pages.pdf" for "VO8.xopp": the background PDF with pages copied from
- * other PDFs (see InsertPdfPages). The project explorer does not show it.
+ * The companion PDF of a document, "VO8.pages.pdf" for "VO8.xopp": the background PDF with pages copied from other
+ * PDFs (see InsertPdfPages). Next to the document and not hidden (in the Windows Explorer it is visible that the
+ * document needs it); the project explorer does not show it. Earlier versions named it ".VO8.pages.pdf" (hidden).
  */
 std::filesystem::path companionPdf(const std::filesystem::path& xopp);
-/// Whether the file is a companion PDF (".<name>.pages.pdf", also with a number before ".pdf")
+/**
+ * Whether the file is a companion PDF: "<name>.pages.pdf" (also with a number before ".pdf") next to "<name>.xopp",
+ * or ".<name>.pages.pdf" of an earlier version. A PDF of the user with such a name but without its document is not.
+ */
 bool isCompanionPdf(const std::filesystem::path& path);
 
 /**
- * The hidden portal file of a document, ".VO8.portals.pdf" for "VO8.xopp": the PDF pages that its copied PDF areas
- * show (see PdfPortalStore). It is renamed, moved and deleted with the document; the project explorer does not show
- * it.
+ * The portal file of a document, "VO8.portals.pdf" for "VO8.xopp": the PDF pages that its copied PDF areas show (see
+ * PdfPortalStore). It is renamed, moved and deleted with the document and, like the companion PDF, not hidden; the
+ * project explorer does not show it.
  */
 std::filesystem::path portalsPdf(const std::filesystem::path& xopp);
-/// Whether the file is a portal file (".<name>.portals.pdf")
+/// Whether the file is a portal file: "<name>.portals.pdf" next to "<name>.xopp"
 bool isPortalsPdf(const std::filesystem::path& path);
 
 /**

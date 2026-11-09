@@ -42,6 +42,8 @@ auto XojPdfDocument::load(std::unique_ptr<std::string> data, std::string passwor
 
 auto XojPdfDocument::isLoaded() const -> bool { return doc->isLoaded(); }
 
+auto XojPdfDocument::getData() const -> std::shared_ptr<const std::string> { return doc->getData(); }
+
 void XojPdfDocument::reset() { doc->reset(); }
 
 auto XojPdfDocument::getPage(size_t page) const -> XojPdfPageSPtr { return doc->getPage(page); }

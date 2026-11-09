@@ -34,6 +34,7 @@ void emergencySave() {
 
     SaveHandler handler;
     handler.prepareSave(document, filepath);
+    handler.setWritesPortalFile(false);  // Fork: a recovery copy, see SaveHandler
     handler.saveTo(filepath);
 
     if (!handler.getErrorMessage().empty()) {

@@ -463,7 +463,7 @@ void SaveHandler::saveTo(const fs::path& filepath, ProgressListener* listener) {
 
     // Fork: the PDF pages that copied PDF areas show. If this fails, the document shows the areas' snapshots.
     try {
-        if (savesPdfPortals()) {
+        if (savesPdfPortals() && this->writesPortalFile) {
             PdfPortalStore::write(AnnotationFiles::portalsPdf(filepath), this->portalPages, this->missingPortalPages);
         }
     } catch (const std::runtime_error& e) {

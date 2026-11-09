@@ -17,7 +17,8 @@ using std::string;
 
 PopplerGlibDocument::PopplerGlibDocument(): mutex(std::make_shared<std::mutex>()) {}
 
-PopplerGlibDocument::PopplerGlibDocument(const PopplerGlibDocument& doc): document(doc.document), mutex(doc.mutex) {
+PopplerGlibDocument::PopplerGlibDocument(const PopplerGlibDocument& doc):
+        document(doc.document), data(doc.data), mutex(doc.mutex) {
     if (document) {
         g_object_ref(document);
     }
@@ -42,6 +43,7 @@ void PopplerGlibDocument::assign(XojPdfDocumentInterface* doc) {
     }
 
     mutex = popplerdoc->mutex;
+    data = popplerdoc->data;
 }
 
 auto PopplerGlibDocument::equals(XojPdfDocumentInterface* doc) const -> bool {
@@ -71,6 +73,7 @@ auto PopplerGlibDocument::load(fs::path const& file, string password, GError** e
     }
 
     this->document = poppler_document_new_from_file(uri->c_str(), password.c_str(), error);
+    this->data.reset();
 
     return this->document != nullptr;
 }
@@ -80,10 +83,14 @@ auto PopplerGlibDocument::load(std::unique_ptr<std::string> data, string passwor
         g_object_unref(document);
     }
 
+    // Shared by the bytes object and this->data (Fork: getData())
+    std::shared_ptr<const std::string> shared(std::move(data));
+    auto* holder = new std::shared_ptr<const std::string>(shared);
     GBytes* bytes = g_bytes_new_with_free_func(
-            data->data(), data->size(), [](gpointer d) { delete reinterpret_cast<std::string*>(d); }, data.get());
-    data.release();  // the string will be deleted with the bytes object
+            shared->data(), shared->size(),
+            [](gpointer d) { delete reinterpret_cast<std::shared_ptr<const std::string>*>(d); }, holder);
     this->document = poppler_document_new_from_bytes(bytes, password.c_str(), error);
+    this->data = this->document ? std::move(shared) : nullptr;
     g_bytes_unref(bytes);  // a reference is now held by the document
 
     return this->document != nullptr;
@@ -92,6 +99,7 @@ auto PopplerGlibDocument::load(std::unique_ptr<std::string> data, string passwor
 auto PopplerGlibDocument::isLoaded() const -> bool { return this->document != nullptr; }
 
 void PopplerGlibDocument::reset() {
+    data.reset();
     if (document) {
         g_object_unref(document);
         document = nullptr;

@@ -83,6 +83,7 @@
 #include "model/LineStyle.h"                                     // for Line...
 #include "model/Link.h"                                          // for Link
 #include "model/PageType.h"                                      // for Page...
+#include "model/PdfPortal.h"                                     // for PdfPortal
 #include "model/Setsquare.h"                                     // for Sets...
 #include "model/Stroke.h"                                        // for Stroke
 #include "model/StrokeStyle.h"                                   // for Stro...
@@ -2691,6 +2692,7 @@ void Control::clipboardPasteXournal(ObjectInputStream& in) {
         auto pasteAddUndoAction = std::make_unique<AddUndoAction>(page, false);
         // this will undo a group of elements that are inserted
 
+        std::vector<Element*> pasted;  // Fork: for their PDF areas
         for (int i = 0; i < count; i++) {
             std::string name = in.getNextObjectName();
             element.reset();
@@ -2710,12 +2712,14 @@ void Control::clipboardPasteXournal(ObjectInputStream& in) {
             }
 
             element->readSerialized(in);
+            pasted.push_back(element.get());
 
             pasteAddUndoAction->addElement(layer, element.get(), layer->indexOf(element.get()));
             // Todo: unique_ptr
             selection->addElement(std::move(element), std::numeric_limits<Element::Index>::max());
         }
         undoRedo->addUndoAction(std::move(pasteAddUndoAction));
+        PdfPortal::readAppendix(in, pasted);
 
         double x = 0;
         double y = 0;

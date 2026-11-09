@@ -212,10 +212,14 @@ void PdfFloatingToolbox::copyAreaToClipboard() {
         Document* doc = control->getDocument();
         doc->lock_shared();
         const fs::path pdf = doc->getPdfFilepath();
+        // The PDF as shown (the file may have changed since, or be an attachment)
+        const auto data = doc->getPdfDocument().getData();
         doc->unlock_shared();
         auto* rectangular = dynamic_cast<RectangularElement*>(element.get());
-        if (rectangular && !pdf.empty()) {
-            if (auto page = PdfPortalStore::extractPage(pdf, this->pdfElemSelection->getSelectionPageNr())) {
+        if (rectangular && (data || !pdf.empty())) {
+            const size_t pageNr = this->pdfElemSelection->getSelectionPageNr();
+            if (auto page =
+                        data ? PdfPortalStore::extractPage(*data, pageNr) : PdfPortalStore::extractPage(pdf, pageNr)) {
                 auto portal = std::make_shared<PdfPortal>();
                 portal->key = page->getKey();
                 portal->area = area;

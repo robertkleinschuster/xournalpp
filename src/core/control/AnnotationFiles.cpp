@@ -472,23 +472,32 @@ constexpr std::string_view PORTALS_SUFFIX = ".portals.pdf";
 }  // namespace
 
 auto AnnotationFiles::portalsPdf(const fs::path& xopp) -> fs::path {
-    return xopp.parent_path() / Util::fromUtf8("." + Util::toUtf8(xopp.stem()) + std::string(PORTALS_SUFFIX));
+    return xopp.parent_path() / Util::fromUtf8(Util::toUtf8(xopp.stem()) + std::string(PORTALS_SUFFIX));
+}
+
+/// Whether "<name>.xopp" exists next to the file
+static auto hasDocument(const fs::path& file, const std::string& name) -> bool {
+    std::error_code error;
+    return !name.empty() && fs::is_regular_file(file.parent_path() / Util::fromUtf8(name + ".xopp"), error);
 }
 
 auto AnnotationFiles::isPortalsPdf(const fs::path& path) -> bool {
     const auto name = Util::toUtf8(path.filename());
-    return name.size() > PORTALS_SUFFIX.size() + 1 && name.front() == '.' && name.ends_with(PORTALS_SUFFIX);
+    return name.ends_with(PORTALS_SUFFIX) && hasDocument(path, name.substr(0, name.size() - PORTALS_SUFFIX.size()));
 }
 
 auto AnnotationFiles::companionPdf(const fs::path& xopp) -> fs::path {
-    return xopp.parent_path() /
-           Util::fromUtf8("." + Util::toUtf8(xopp.stem()) + std::string(COMPANION_SUFFIX) + ".pdf");
+    return xopp.parent_path() / Util::fromUtf8(Util::toUtf8(xopp.stem()) + std::string(COMPANION_SUFFIX) + ".pdf");
 }
 
 auto AnnotationFiles::isCompanionPdf(const fs::path& path) -> bool {
     const auto name = Util::toUtf8(path.filename());
-    return name.size() > 1 && name.front() == '.' && Util::hasPdfFileExt(path) &&
-           name.find(std::string(COMPANION_SUFFIX)) != std::string::npos;
+    const size_t suffix = name.rfind(std::string(COMPANION_SUFFIX));
+    if (!Util::hasPdfFileExt(path) || suffix == std::string::npos || suffix == 0) {
+        return false;
+    }
+    // ".VO8.pages.pdf" of earlier versions: the dot marks it
+    return name.front() == '.' || hasDocument(path, name.substr(0, suffix));
 }
 
 auto AnnotationFiles::ownsSourcePdf(const fs::path& xopp, const fs::path& pdf) -> bool {
@@ -500,8 +509,10 @@ auto AnnotationFiles::ownsSourcePdf(const fs::path& xopp, const fs::path& pdf) -
     if (pdfStem == stem) {
         return true;
     }
-    // The companion ".VO8.pages.pdf", or "VO8 (combined).pdf" of an earlier version: the document's own copies
-    const bool companion = pdfStem.rfind("." + stem + std::string(COMPANION_SUFFIX), 0) == 0;
+    // The companion "VO8.pages.pdf" (".VO8.pages.pdf" or "VO8 (combined).pdf" of earlier versions): the document's own
+    // copies
+    const bool companion = pdfStem.rfind(stem + std::string(COMPANION_SUFFIX), 0) == 0 ||
+                           pdfStem.rfind("." + stem + std::string(COMPANION_SUFFIX), 0) == 0;
     return (companion || pdfStem.rfind(stem, 0) == 0) && PdfCombiner::isCombined(pdf);
 }
 

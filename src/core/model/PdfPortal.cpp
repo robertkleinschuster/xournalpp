@@ -5,8 +5,15 @@
 
 #include <glib.h>  // for g_warning
 
-#include "util/serializing/ObjectInputStream.h"   // for ObjectInputStream
-#include "util/serializing/ObjectOutputStream.h"  // for ObjectOutputStream
+#include "util/serializing/InputStreamException.h"  // for InputStreamException
+#include "util/serializing/ObjectInputStream.h"     // for ObjectInputStream
+#include "util/serializing/ObjectOutputStream.h"    // for ObjectOutputStream
+
+#include "RectangularElement.h"  // for RectangularElement
+
+namespace {
+constexpr const char* APPENDIX = "PdfPortals";
+}
 
 PdfPortalPage::PdfPortalPage(std::string key, std::string data): key(std::move(key)), data(std::move(data)) {}
 
@@ -92,10 +99,20 @@ auto PdfPortal::draw(cairo_t* cr, double width, double height) const -> bool {
     return drawn;
 }
 
-void PdfPortal::serialize(ObjectOutputStream& out, const std::shared_ptr<const PdfPortal>& portal) {
-    out.writeObject("PdfPortal");
-    out.writeInt(portal ? 1 : 0);
-    if (portal) {
+void PdfPortal::serializeAppendix(ObjectOutputStream& out, const std::vector<const Element*>& elements) {
+    std::vector<std::pair<int, const PdfPortal*>> portals;
+    for (size_t i = 0; i < elements.size(); i++) {
+        if (const auto* e = dynamic_cast<const RectangularElement*>(elements[i]); e && e->getPdfPortal()) {
+            portals.emplace_back(static_cast<int>(i), e->getPdfPortal().get());
+        }
+    }
+    if (portals.empty()) {
+        return;
+    }
+    out.writeObject(APPENDIX);
+    out.writeInt(static_cast<int>(portals.size()));
+    for (const auto& [index, portal]: portals) {
+        out.writeInt(index);
         out.writeString(portal->key);
         out.writeDouble(portal->area.x);
         out.writeDouble(portal->area.y);
@@ -106,11 +123,19 @@ void PdfPortal::serialize(ObjectOutputStream& out, const std::shared_ptr<const P
     out.endObject();
 }
 
-auto PdfPortal::readSerialized(ObjectInputStream& in) -> std::shared_ptr<const PdfPortal> {
-    in.readObject("PdfPortal");
-    std::shared_ptr<PdfPortal> portal;
-    if (in.readInt()) {
-        portal = std::make_shared<PdfPortal>();
+void PdfPortal::readAppendix(ObjectInputStream& in, const std::vector<Element*>& elements) {
+    try {
+        if (in.getNextObjectName() != APPENDIX) {
+            return;
+        }
+    } catch (const InputStreamException&) {
+        return;  // the end: copied without portals, e.g. in upstream
+    }
+    in.readObject(APPENDIX);
+    const int count = in.readInt();
+    for (int n = 0; n < count; n++) {
+        const int index = in.readInt();
+        auto portal = std::make_shared<PdfPortal>();
         portal->key = in.readString();
         const double x = in.readDouble();
         const double y = in.readDouble();
@@ -120,7 +145,11 @@ auto PdfPortal::readSerialized(ObjectInputStream& in) -> std::shared_ptr<const P
         if (std::string data = in.readImage(); !data.empty()) {
             portal->page = PdfPortalPage::get(portal->key, std::move(data));
         }
+        if (index >= 0 && static_cast<size_t>(index) < elements.size()) {
+            if (auto* e = dynamic_cast<RectangularElement*>(elements[static_cast<size_t>(index)])) {
+                e->setPdfPortal(std::move(portal));
+            }
+        }
     }
     in.endObject();
-    return portal;
 }

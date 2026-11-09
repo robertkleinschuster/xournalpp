@@ -58,6 +58,9 @@ public:
 
     const std::string& getErrorMessage();
 
+    /// Fork: recovery copies (autosave, crash) do not write a portal file, their areas reference the document's one
+    void setWritesPortalFile(bool writes) { writesPortalFile = writes; }
+
 protected:
     static std::string getColorStr(Color c, unsigned char alpha = 0xff);
 
@@ -96,4 +99,5 @@ protected:
     /// Fork: the pages of the portals for the portal file, and whether some portals miss their page
     std::map<std::string, std::shared_ptr<const PdfPortalPage>> portalPages;
     bool missingPortalPages = false;
+    bool writesPortalFile = true;
 };

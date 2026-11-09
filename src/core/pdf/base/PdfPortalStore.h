@@ -17,7 +17,7 @@
 class PdfPortalPage;
 
 /**
- * A document's portals show pages kept in its own hidden portal file ".<name>.portals.pdf" next to it (see
+ * A document's portals show pages kept in its own portal file "<name>.portals.pdf" next to it (see
  * AnnotationFiles::portalsPdf), never pages of other PDFs on the computer: the document's files stay complete when
  * PDFs are moved, renamed, deleted or changed. It is a separate file (not inside the .xopp) so that git stores the
  * pages once instead of with every commit of the document. Each page carries its key in its page dictionary. The file
@@ -34,6 +34,8 @@ bool isAvailable();
  * if it cannot.
  */
 std::shared_ptr<PdfPortalPage> extractPage(const fs::path& pdf, size_t page);
+/// The same for PDF data in memory, e.g. the PDF as the document shows it (see XojPdfDocument::getData())
+std::shared_ptr<PdfPortalPage> extractPage(const std::string& pdf, size_t page);
 
 /// The pages of a portal file, as one-page PDFs by key. Throws std::runtime_error if it cannot be read.
 std::map<std::string, std::string> readPages(const fs::path& file);
