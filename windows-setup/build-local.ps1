@@ -24,9 +24,10 @@ if ($LASTEXITCODE -ne 0) { throw 'Xournal++ build failed' }
 
 $repoMsys = '/' + $repo.Substring(0, 1).ToLowerInvariant() + $repo.Substring(2).Replace('\', '/')
 $buildMsys = "$repoMsys/build"
-$packageCommand = "cd '$buildMsys' && ../windows-setup/package.sh"
+$packageCommand = "cd '$buildMsys' && XOURNALPP_FORK_BUILD=1 ../windows-setup/package.sh"
 & $bash --login -c $packageCommand
 if ($LASTEXITCODE -ne 0) { throw 'Portable package build failed' }
+Write-Output "Xournal Studio installer: $(Join-Path $build 'xournal-studio-setup.exe')"
 
 if (-not $SkipInstall) {
     & (Join-Path $PSScriptRoot 'install-fork.ps1') -BuildDirectory $build -InstallDirectory $InstallDirectory

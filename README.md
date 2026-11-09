@@ -1,7 +1,30 @@
-# <img src="ui/pixmaps/com.github.xournalpp.xournalpp.svg" align="left" width="100" height="100">  <br> Xournal++
+# <img src="ui/pixmaps/com.github.xournalpp.xournalpp.svg" align="left" width="100" height="100">  <br> Xournal Studio
 
 
-[![Build Status](https://dev.azure.com/xournalpp/xournalpp/_apis/build/status/CI?branchName=master)](https://dev.azure.com/xournalpp/xournalpp/_build/latest?definitionId=1&branchName=master)
+[![Windows build](https://github.com/robertkleinschuster/xournalpp/actions/workflows/fork-windows-build.yml/badge.svg)](https://github.com/robertkleinschuster/xournalpp/actions/workflows/fork-windows-build.yml)
+
+**Xournal Studio is a Windows-focused fork of [Xournal++](https://github.com/xournalpp/xournalpp).** It keeps the Xournal++ document format and builds on its note-taking features, with additional work focused on a Windows convertible, pen and touch input, fast document switching, and a project-folder workflow.
+
+- [Download Xournal Studio for Windows](https://github.com/robertkleinschuster/xournalpp/releases)
+- [Source code and Windows build workflow](https://github.com/robertkleinschuster/xournalpp)
+- Xournal++ upstream: [github.com/xournalpp/xournalpp](https://github.com/xournalpp/xournalpp)
+
+## What is different in this fork?
+
+- **Side-by-side identity:** the app, installer, Start menu entry, and install folder are named Xournal Studio. Its settings use a separate `xournalpp-fork` configuration directory, so the fork can run alongside upstream Xournal++.
+- **Safer PDF annotation:** PDFs without an `.xopp` open read-only. Editing creates or opens the companion annotation file only after the user chooses **Enable Editing**. Exports are updated when annotations exist, and saving uses a complete temporary file before replacing the previous document.
+- **Presentation and drawing tools:** includes a Copy PDF Area tool, configurable pixel/object eraser buttons, a laser pointer, shape recognition, and toolbar defaults tailored for convertible use.
+- **Pen and touch behavior:** adds shared touch/pen handling, palm rejection safeguards, touch and touchpad scroll momentum, flick acceleration, touch-friendly context menus, page reordering by drag, and stylus-button tool switching. Windows pen flicks and press-and-hold are disabled to avoid interfering with writing.
+- **Convertible layout:** keeps the menu bar reachable in tablet mode, hides the sidebar in portrait, enlarges touch targets, supports the Windows touch keyboard, and keeps interactive controls away from the right edge for a right-handed grip.
+- **Project-folder workflow:** the sidebar includes a Git-aware file explorer and todo.txt task lists, plus a shared scratchpad. It can insert pages from PDFs, crop images before insertion, open ordinary files in their default apps, and discard tracked changes to document groups.
+- **Fast document switching:** recently used documents, rendered pages, and view positions are cached and restored when files have not changed. PDF export runs in the background, and autosaves pause for unsafe documents or during Git sync.
+- **Windows reliability:** handles standby/resume events, recovers from stale touch input, keeps old document data if a save fails, and keeps Git operations bounded by timeouts.
+
+The fork's local Windows build and installation instructions are in [`windows-setup/build-local.ps1`](windows-setup/build-local.ps1). Push a tag named `xournal-studio-v*` to build and publish a GitHub release, or run **Fork Windows build** manually and supply a release tag. The release includes a per-user Xournal Studio installer that installs alongside upstream Xournal++ and leaves its file associations and settings alone. Leaving the tag field empty creates build artifacts without publishing a release.
+
+## About Xournal++
+
+The sections below describe the Xournal++ features inherited by Xournal Studio.
 
 <img src="readme/main.png" width=550px% title="Xournal++ on GNU/Linux"/>
 
@@ -103,9 +126,15 @@ Check out the [website](https://xournalpp.github.io/guide/overview/) for a detai
 
 ## Installing
 
-The official releases of Xournal++ can be found on the
-[Releases](https://github.com/xournalpp/xournalpp/releases) page. We provide
-binaries for Debian, Ubuntu, macOS and Windows.
+### Xournal Studio for Windows
+
+Download the latest **Xournal Studio Windows setup** from the [fork's Releases page](https://github.com/robertkleinschuster/xournalpp/releases). The installer is per-user, uses the `Xournal Studio` program folder and Start menu entry, and does not replace upstream Xournal++ or change its file associations.
+
+### Upstream Xournal++ on other platforms
+
+Official upstream releases of Xournal++ can be found on the
+[Releases](https://github.com/xournalpp/xournalpp/releases) page. Upstream
+provides binaries for Debian, Ubuntu, macOS, and Windows.
 For other GNU/Linux distributions (or older/newer ones), we also provide an
 AppImage that is binary compatible with any distribution released around or
 after Ubuntu 22.04. For installing Xournal++ Mobile on handheld devices, please check out the [Mobile & web app section](#mobile--web-app)

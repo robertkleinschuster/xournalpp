@@ -10,8 +10,11 @@ if [ -z $1 ]; then
 else
     build_dir="$(cd $1; pwd)"
 fi
-setup_dir_name="dist"  # Same as in xournalpp.nsis
-installer_name="xournalpp-setup.exe"  # Same as in xournalpp.nsis
+setup_dir_name="dist"  # Same as in the NSIS scripts
+installer_name="xournalpp-setup.exe"
+if [ "${XOURNALPP_FORK_BUILD:-0}" = "1" ]; then
+    installer_name="xournal-studio-setup.exe"
+fi
 setup_dir="$build_dir/$setup_dir_name"
 script_dir=$(dirname $(readlink -f "$0"))
 echo "Installing to $setup_dir and making installer $build_dir/$installer_name"
@@ -131,12 +134,21 @@ if [ -z "$makensis" ]; then
     exit 1
 fi
 
-"$makensis" -NOCD       \
-    -DXOURNALPP_VERSION="$version"                         \
-    -DSETUP_DIR="$setup_dir"                               \
-    -DOUTPUT_INSTALLER_FILE="$build_dir/$installer_name"   \
-    -DSCRIPT_DIR="$script_dir"                             \
-    "$script_dir/xournalpp.nsi"
+if [ "${XOURNALPP_FORK_BUILD:-0}" = "1" ]; then
+    "$makensis" -NOCD \
+        -DXOURNALPP_VERSION="$version" \
+        -DSETUP_DIR="$setup_dir" \
+        -DOUTPUT_INSTALLER_FILE="$build_dir/$installer_name" \
+        -DSCRIPT_DIR="$script_dir" \
+        "$script_dir/xournal-studio.nsi"
+else
+    "$makensis" -NOCD \
+        -DXOURNALPP_VERSION="$version" \
+        -DSETUP_DIR="$setup_dir" \
+        -DOUTPUT_INSTALLER_FILE="$build_dir/$installer_name" \
+        -DSCRIPT_DIR="$script_dir" \
+        "$script_dir/xournalpp.nsi"
+fi
 
 echo "finished"
 

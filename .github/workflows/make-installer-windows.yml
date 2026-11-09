@@ -31,6 +31,12 @@ on:
       artifact_version_suffix:  # Additional version string appended to 1.2.3+dev (for instance) in artifacts names
         type: string
         default: ''
+      fork_installer:
+        type: boolean
+        default: false
+      installer_prefix:
+        type: string
+        default: xournalpp
     outputs:
       link:
         description: URL of the produced installer
@@ -67,14 +73,22 @@ jobs:
         working-directory: ${{github.workspace}}/build
         shell: msys2 {0}
         run: |
-          bash -lc "../windows-setup/package.sh"
+          if [ "${{ inputs.fork_installer }}" = "true" ]; then
+            XOURNALPP_FORK_BUILD=1 bash -lc "../windows-setup/package.sh"
+          else
+            bash -lc "../windows-setup/package.sh"
+          fi
 
           export VERSION=$(cat VERSION | sed '1q;d')
           export ARCH=$(cat VERSION | sed '4q;d')
           export FULL_VERSION_STRING="$VERSION${{ inputs.artifact_version_suffix }}"
-          export INSTALLER_FILENAME="xournalpp-$FULL_VERSION_STRING-windows-setup-$ARCH.exe"
+          export INSTALLER_FILENAME="${{ inputs.installer_prefix }}-$FULL_VERSION_STRING-windows-setup-$ARCH.exe"
 
-          mv xournalpp-setup.exe "$INSTALLER_FILENAME"
+          if [ "${{ inputs.fork_installer }}" = "true" ]; then
+            mv xournal-studio-setup.exe "$INSTALLER_FILENAME"
+          else
+            mv xournalpp-setup.exe "$INSTALLER_FILENAME"
+          fi
           echo "artifact=$INSTALLER_FILENAME" >> $GITHUB_OUTPUT
 
           if [ ${{ inputs.publish_portable_version }} ]; then
