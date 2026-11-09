@@ -1,8 +1,8 @@
 /*
  * Xournal Studio (fork)
  *
- * The scratchpad: a sheet for quick calculations and notes that slides up over the lower part of the document from a
- * pull tab at the bottom of the canvas, the same for every document. It is stored as "Schmierzettel.xopp" in the
+ * The scratchpad: a sheet for quick calculations and notes that slides down over the upper part of the document from a
+ * pull tab at the top of the canvas, the same for every document. It is stored as "Schmierzettel.xopp" in the
  * project folder (so the git sync keeps it), else in the config folder. Pen and mouse write with the pen tool's color
  * and width (the pen's eraser end and the eraser button remove whole strokes), a finger scrolls, the sheet grows
  * downwards while writing.
@@ -68,7 +68,13 @@ private:
 
     // Sliding
     gboolean childPosition(GtkWidget* child, GdkRectangle* allocation);
-    void animateTo(double target);
+    /// Springs to the height, starting with the velocity (pixels per second, opening is positive)
+    void animateTo(double target, double velocity = 0);
+    void setOpen(bool open, double velocity);
+    /// The heights the sheet snaps to: closed, half, full
+    std::vector<double> detents() const;
+    /// Beyond the full height, dragging moves the sheet less and less (like iOS)
+    double rubberBand(double height) const;
     void setShown(double shown);
     void tabDragBegin();
     void tabDragUpdate(double dy);
@@ -134,9 +140,9 @@ private:
     double dragStartShown = 0;
     std::vector<std::pair<gint64, double>> dragSamples;
     guint animation = 0;
-    double animationFrom = 0;
-    double animationTo = 0;
-    gint64 animationStart = 0;
+    double springTarget = 0;
+    double springVelocity = 0;  ///< pixels per second
+    gint64 springTime = 0;      ///< of the last frame
 
     DocumentHandler handler;  ///< declared before doc: the document refers to it
     std::unique_ptr<Document> doc;

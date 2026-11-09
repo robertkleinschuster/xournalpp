@@ -31,13 +31,19 @@ namespace fs = std::filesystem;
 namespace {
 constexpr int TAB_WIDTH = 120;
 constexpr int TAB_HEIGHT = 30;  ///< easy to hit with a finger
-/// Lower sheets close when released
+/// The smallest open sheet
 constexpr double MIN_SHEET = 120;
-/// The document keeps at least this much of the canvas above the sheet
+/// The document keeps at least this much of the canvas below the sheet
 constexpr double DOCUMENT_STRIP = 72;
-constexpr gint64 ANIMATION_US = 180'000;
-/// A flick of the tab faster than this (pixels per second) opens or closes the sheet
-constexpr double FLICK_SPEED = 700;
+/// The sheet moves like a spring (iOS sheets): this stiffness (1/s^2) and damping ratio settle it in about 0.3 s with a
+/// slight overshoot
+constexpr double SPRING_STIFFNESS = 280;
+constexpr double SPRING_DAMPING_RATIO = 0.8;
+/// Where a released sheet would come to rest: its position plus its velocity times this (seconds); it snaps to the
+/// detent nearest to that, so a flick goes on to the next one
+constexpr double PROJECTION_S = 0.2;
+/// How far the sheet can be pulled beyond its full height (pixels), with increasing resistance
+constexpr double RUBBER_BAND = 120;
 /// Touches this soon after the pen was seen are a resting palm
 constexpr gint64 PALM_US = 700'000;
 constexpr guint SAVE_DELAY_MS = 1500;
@@ -53,7 +59,7 @@ constexpr double MIN_ERASER_RADIUS = 5;  ///< page units; whole strokes are remo
 constexpr const char* CSS = R"css(
 .scratchpad {
     background-color: @theme_bg_color;
-    border-top: 1px solid alpha(@theme_fg_color, 0.25);
+    border-bottom: 1px solid alpha(@theme_fg_color, 0.25);
 }
 .scratchpad-tools button {
     min-width: 40px;
@@ -132,7 +138,8 @@ void ScratchpadDrawer::buildWidgets(GtkOverlay* gtkOverlay) {
     overlay = GTK_WIDGET(gtkOverlay);
     g_object_add_weak_pointer(G_OBJECT(overlay), reinterpret_cast<gpointer*>(&overlay));
 
-    // The pull tab: a handle centered at the bottom of the canvas, on top of the sheet while it is open
+    // The pull tab: a handle centered at the top of the canvas (away from the taskbar), below the sheet while it is
+    // open
     tab = gtk_drawing_area_new();
     gtk_widget_set_size_request(tab, TAB_WIDTH, TAB_HEIGHT);
     gtk_widget_add_events(tab,
@@ -144,13 +151,13 @@ void ScratchpadDrawer::buildWidgets(GtkOverlay* gtkOverlay) {
                          GtkStyleContext* style = gtk_widget_get_style_context(w);
                          GdkRGBA fg;
                          gtk_style_context_get_color(style, gtk_style_context_get_state(style), &fg);
-                         // A tab with rounded upper corners in the window color, with a grip line
+                         // A tab with rounded lower corners in the window color, with a grip line
                          const double r = 8;
                          cairo_new_path(cr);
-                         cairo_arc(cr, r, r, r, M_PI, 1.5 * M_PI);
-                         cairo_arc(cr, width - r, r, r, 1.5 * M_PI, 2 * M_PI);
-                         cairo_line_to(cr, width, height);
-                         cairo_line_to(cr, 0, height);
+                         cairo_move_to(cr, 0, 0);
+                         cairo_line_to(cr, width, 0);
+                         cairo_arc(cr, width - r, height - r, r, 0, 0.5 * M_PI);
+                         cairo_arc(cr, r, height - r, r, 0.5 * M_PI, M_PI);
                          cairo_close_path(cr);
                          cairo_save(cr);
                          cairo_clip_preserve(cr);
@@ -162,8 +169,8 @@ void ScratchpadDrawer::buildWidgets(GtkOverlay* gtkOverlay) {
                          cairo_set_source_rgba(cr, fg.red, fg.green, fg.blue, 0.6);
                          cairo_set_line_width(cr, 3);
                          cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
-                         cairo_move_to(cr, width / 2 - 16, height / 2 + 1);
-                         cairo_line_to(cr, width / 2 + 16, height / 2 + 1);
+                         cairo_move_to(cr, width / 2 - 16, height / 2 - 1);
+                         cairo_line_to(cr, width / 2 + 16, height / 2 - 1);
                          cairo_stroke(cr);
                          return TRUE;
                      }),
@@ -310,20 +317,22 @@ auto ScratchpadDrawer::childPosition(GtkWidget* child, GdkRectangle* allocation)
         return FALSE;
     }
     const int width = gtk_widget_get_allocated_width(overlay);
-    const int height = gtk_widget_get_allocated_height(overlay);
     if (open && !animation && !dragging) {
         shown = openHeight();  // follows window size changes and rotation
     }
-    shown = std::min(shown, maxHeight());
+    // Moving, it may overshoot the full height a little (spring, rubber band)
+    shown = std::min(shown, maxHeight() + (animation || dragging ? RUBBER_BAND : 0));
     const int visible = static_cast<int>(std::round(shown));
     if (child == panel) {
-        // Allocated at its full height, so the paper does not reflow while sliding; the overlay clips it
-        *allocation = {0, height - visible, width, std::max(visible, static_cast<int>(openHeight()))};
+        // Allocated at its full height with its lower edge at the visible height, so the paper does not reflow while
+        // sliding down from the top; the overlay clips it
+        const int full = std::max(visible, static_cast<int>(openHeight()));
+        *allocation = {0, visible - full, width, full};
     } else {
         int tabWidth = 0, tabHeight = 0;
         gtk_widget_get_preferred_width(tab, nullptr, &tabWidth);
         gtk_widget_get_preferred_height(tab, nullptr, &tabHeight);
-        *allocation = {(width - tabWidth) / 2, height - visible - tabHeight, tabWidth, tabHeight};
+        *allocation = {(width - tabWidth) / 2, visible, tabWidth, tabHeight};
     }
     return TRUE;
 }
@@ -342,42 +351,58 @@ void ScratchpadDrawer::setShown(double value) {
     }
 }
 
-void ScratchpadDrawer::animateTo(double target) {
+void ScratchpadDrawer::animateTo(double target, double velocity) {
     if (!overlay) {
         return;
     }
-    if (animation) {
-        gtk_widget_remove_tick_callback(overlay, animation);
-        animation = 0;
-    }
-    animationFrom = shown;
-    animationTo = target;
-    animationStart = 0;
+    springTarget = target;
+    springVelocity = velocity;
     if (!gtk_widget_get_mapped(overlay)) {
+        if (animation) {
+            gtk_widget_remove_tick_callback(overlay, animation);
+            animation = 0;
+        }
         setShown(target);
         return;
     }
+    if (animation) {
+        return;  // the running spring goes on to the new target
+    }
+    springTime = 0;
     animation = gtk_widget_add_tick_callback(
             overlay,
             +[](GtkWidget*, GdkFrameClock* clock, gpointer d) -> gboolean {
                 auto* self = static_cast<ScratchpadDrawer*>(d);
                 const gint64 now = gdk_frame_clock_get_frame_time(clock);
-                if (!self->animationStart) {
-                    self->animationStart = now;
+                double remaining =
+                        self->springTime ? std::min(0.05, static_cast<double>(now - self->springTime) / 1e6) : 1.0 / 60;
+                self->springTime = now;
+                double x = self->shown;
+                double v = self->springVelocity;
+                const double damping = 2 * SPRING_DAMPING_RATIO * std::sqrt(SPRING_STIFFNESS);
+                while (remaining > 0) {  // small steps keep it stable, also after a long frame
+                    const double dt = std::min(remaining, 0.004);
+                    v += (-SPRING_STIFFNESS * (x - self->springTarget) - damping * v) * dt;
+                    x += v * dt;
+                    remaining -= dt;
                 }
-                const double t = std::min(1.0, static_cast<double>(now - self->animationStart) / ANIMATION_US);
-                const double eased = 1 - (1 - t) * (1 - t) * (1 - t);
-                self->setShown(self->animationFrom + (self->animationTo - self->animationFrom) * eased);
-                if (t >= 1) {
+                self->springVelocity = v;
+                // Closing does not swing back out of the top edge
+                const bool closed = self->springTarget <= 0 && x <= 0;
+                if (closed || (std::abs(x - self->springTarget) < 0.5 && std::abs(v) < 20)) {
                     self->animation = 0;
+                    self->setShown(self->springTarget);
                     return G_SOURCE_REMOVE;
                 }
+                self->setShown(x);
                 return G_SOURCE_CONTINUE;
             },
             this, nullptr);
 }
 
-void ScratchpadDrawer::setOpen(bool value) {
+void ScratchpadDrawer::setOpen(bool value) { setOpen(value, 0); }
+
+void ScratchpadDrawer::setOpen(bool value, double velocity) {
     if (value && hidden) {
         value = false;
     }
@@ -387,12 +412,33 @@ void ScratchpadDrawer::setOpen(bool value) {
         endStroke();
         saveNow();
     }
-    // Also when the state stays: a drag released below the minimum height slides back
+    // Also when the state stays: a sheet released between the detents springs to one
     if (const double target = value ? openHeight() : 0; open != value || shown != target) {
         open = value;
-        animateTo(target);
+        animateTo(target, velocity);
     }
     updateAction();
+}
+
+auto ScratchpadDrawer::detents() const -> std::vector<double> {
+    const double height = overlay ? gtk_widget_get_allocated_height(overlay) : 0;
+    const double full = maxHeight();
+    const double half = std::clamp(height / 2, MIN_SHEET, full);
+    std::vector<double> heights{0, half};
+    if (full - half > MIN_SHEET / 2) {
+        heights.push_back(full);
+    }
+    return heights;
+}
+
+auto ScratchpadDrawer::rubberBand(double height) const -> double {
+    const double full = maxHeight();
+    if (height <= full) {
+        return std::max(0.0, height);
+    }
+    // Like iOS: the further it is pulled, the less it follows, approaching RUBBER_BAND
+    const double beyond = height - full;
+    return full + RUBBER_BAND * (1 - 1 / (beyond * 0.55 / RUBBER_BAND + 1));
 }
 
 void ScratchpadDrawer::tabDragBegin() {
@@ -415,7 +461,8 @@ void ScratchpadDrawer::tabDragUpdate(double dy) {
     if (shown == 0 && dragStartShown == 0 && std::abs(dy) >= xoj::input::DRAG_THRESHOLD) {
         ensureLoaded();  // reloads the sheet if git or the document view changed it
     }
-    setShown(std::clamp(dragStartShown - dy, 0.0, maxHeight()));
+    // The sheet comes down from the top: dragging down opens it
+    setShown(rubberBand(dragStartShown + dy));
     const gint64 now = g_get_monotonic_time();
     dragSamples.emplace_back(now, shown);
     while (dragSamples.size() > 2 && now - dragSamples.front().first > 100'000) {
@@ -432,26 +479,39 @@ void ScratchpadDrawer::tabDragEnd(double dy) {
         return;
     }
     if (std::abs(dy) < xoj::input::TOUCH_SLOP) {
-        setOpen(!open);  // a tap
+        setOpen(!open);  // a tap: open to the last detent, or close
         return;
     }
     double speed = 0;  // pixels per second, opening is positive
     if (dragSamples.size() >= 2) {
         const auto& [t0, s0] = dragSamples.front();
         const auto& [t1, s1] = dragSamples.back();
-        if (t1 > t0) {
+        if (t1 > t0 && g_get_monotonic_time() - t1 < 100'000) {  // not after holding still
             speed = (s1 - s0) / (static_cast<double>(t1 - t0) / 1e6);
         }
     }
-    const double height = gtk_widget_get_allocated_height(overlay);
-    if (speed < -FLICK_SPEED || (speed <= FLICK_SPEED && shown < MIN_SHEET)) {
-        setOpen(false);
+    // The detent nearest to where the sheet would come to rest, at most one beyond the nearest one
+    const auto heights = detents();
+    auto nearest = [&heights](double h) {
+        size_t best = 0;
+        for (size_t i = 1; i < heights.size(); i++) {
+            if (std::abs(heights[i] - h) < std::abs(heights[best] - h)) {
+                best = i;
+            }
+        }
+        return best;
+    };
+    const size_t here = nearest(shown);
+    const size_t target = std::clamp(nearest(shown + speed * PROJECTION_S), here > 0 ? here - 1 : 0,
+                                     std::min(here + 1, heights.size() - 1));
+    if (target == 0) {
+        setOpen(false, speed);
         return;
     }
-    if (shown >= MIN_SHEET && height > 0) {
-        fraction = shown / height;  // the sheet keeps the height it was dragged to
+    if (const double height = gtk_widget_get_allocated_height(overlay); height > 0) {
+        fraction = heights[target] / height;  // a tap opens it to this detent again
     }
-    setOpen(true);
+    setOpen(true, speed);
 }
 
 void ScratchpadDrawer::updateAction() {
