@@ -494,6 +494,11 @@ void ToolMenuHandler::initToolItems() {
     emplaceItem<ToolPdfCombocontrol>("PDF_TOOL", this->iconNameHelper, *this->control->getActionDatabase());
 
     auto laserIcon = this->iconNameHelper.iconName("laser-pointer");
+    emplaceCustomItemWithTarget("ERASER_PIXEL", Cat::TOOLS, Action::TOOL_ERASER_TYPE, ERASER_TYPE_DEFAULT,
+                                "eraser-pixel", _("Pixel eraser"));
+    emplaceCustomItemWithTarget("ERASER_OBJECT", Cat::TOOLS, Action::TOOL_ERASER_TYPE, ERASER_TYPE_DELETE_STROKE,
+                                "eraser-object", _("Object eraser"));
+
     emplaceItem<ComboToolButton>(
             "LASER_POINTER", Cat::TOOLS, laserIcon, _("Laser pointer"),
             ComboToolButton::Entries{{_("Pen"), laserIcon, TOOL_LASER_POINTER_PEN},

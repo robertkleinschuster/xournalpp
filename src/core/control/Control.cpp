@@ -2812,11 +2812,9 @@ void Control::setLineStyle(const string& style) {
 }
 
 void Control::setEraserType(EraserType type) {
-    if (type != ERASER_TYPE_NONE) {
-        if (this->toolHandler->getActiveTool()->getToolType() != TOOL_ERASER) {
-            this->selectTool(TOOL_ERASER);
-        }
-    }
+    // Eraser type is a persistent mode setting. In particular, changing it
+    // must not steal the active tool from users who invoke the eraser with
+    // their stylus button.
     this->toolHandler->setEraserType(type);
 }
 
