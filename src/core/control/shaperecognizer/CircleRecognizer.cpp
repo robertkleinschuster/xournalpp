@@ -60,12 +60,21 @@ auto CircleRecognizer::scoreCircle(Stroke* s, Inertia& inertia) -> double {
 }
 
 auto CircleRecognizer::recognize(Stroke* stroke) -> std::unique_ptr<Stroke> {
+    const auto& points = stroke->getPointVector();
+    if (points.size() < 3) {
+        return nullptr;
+    }
+
     Inertia s;
-    s.calc(stroke->getPointVector());
+    s.calc(points);
     RDEBUG("Mass=%.0f, Center=(%.1f,%.1f), I=(%.0f,%.0f, %.0f), Rad=%.2f, Det=%.4f", s.getMass(), s.centerX(),
            s.centerY(), s.xx(), s.yy(), s.xy(), s.rad(), s.det());
 
-    if (s.det() > CIRCLE_MIN_DET) {
+    // A circular arc can have a nearly circular inertia tensor too. Require
+    // the user's stroke to come back close to its start before snapping it to
+    // a complete circle; allow a modest gap for ordinary handwriting.
+    const double closureGap = hypot(points.front().x - points.back().x, points.front().y - points.back().y);
+    if (s.rad() > 0.0 && closureGap <= s.rad() * 0.35 && s.det() > CIRCLE_MIN_DET) {
         double score = CircleRecognizer::scoreCircle(stroke, s);
         RDEBUG("Circle score: %.2f", score);
         if (score < CIRCLE_MAX_SCORE) {
