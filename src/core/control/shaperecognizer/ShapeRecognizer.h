@@ -33,6 +33,7 @@ public:
 private:
     auto tryTriangle() -> std::unique_ptr<Stroke>;
     auto tryRectangle() -> std::unique_ptr<Stroke>;
+    auto tryLine(int n, const int* brk, const Inertia* ss) -> std::unique_ptr<Stroke>;
 
     // function Stroke* tryArrow(); removed after commit a3f7a251282dcfea8b4de695f28ce52bf2035da2
 

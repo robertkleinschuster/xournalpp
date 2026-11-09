@@ -175,6 +175,81 @@ auto ShapeRecognizer::tryRectangle() -> std::unique_ptr<Stroke> {
 }
 
 /**
+ * Fork: test if the stroke is a line. Its ends are exactly where the pen landed and lifted (not the ends of a line
+ * fitted through all points); short hooks at either end, from the pen sliding when it lands or lifts, are cut off.
+ * It snaps to horizontal or vertical only where that moves the end by at most LINE_SNAP_MAX_SHIFT.
+ */
+auto ShapeRecognizer::tryLine(int n, const int* brk, const Inertia* ss) -> std::unique_ptr<Stroke> {
+    const Point* pt = this->stroke->getPoints();
+    auto length = [&](int i) { return std::hypot(pt[brk[i + 1]].x - pt[brk[i]].x, pt[brk[i + 1]].y - pt[brk[i]].y); };
+
+    double total = 0;
+    for (int i = 0; i < n; i++) {
+        total += length(i);
+    }
+    int first = 0;
+    int last = n - 1;
+    while (first < last && length(first) < LINE_HOOK_MAX_SHARE * total) {
+        first++;
+    }
+    while (last > first && length(last) < LINE_HOOK_MAX_SHARE * total) {
+        last--;
+    }
+    if (first != last || ss[first].det() >= LINE_MAX_DET) {
+        return nullptr;
+    }
+
+    // Hooks too small to be segments of their own: points at the ends that lie clearly off the fitted line
+    const RecoSegment& fit = this->queue[as_unsigned(this->queueLength - n + first)];
+    const double sinA = std::sin(fit.angle);
+    const double cosA = std::cos(fit.angle);
+    auto offLine = [&](const Point& p) {
+        return std::abs((p.y - fit.ycenter) * cosA - (p.x - fit.xcenter) * sinA) > LINE_HOOK_MIN_OFFSET;
+    };
+    auto trimHook = [&](int from, int to, int step) {
+        double trimmed = 0;
+        int i = from;
+        while (i != to && offLine(pt[i])) {
+            trimmed += std::hypot(pt[i + step].x - pt[i].x, pt[i + step].y - pt[i].y);
+            if (trimmed > LINE_HOOK_MAX_SHARE * total) {
+                return from;  // too long for a hook: keep the end as drawn
+            }
+            i += step;
+        }
+        return i;
+    };
+    const int startIndex = trimHook(brk[first], brk[first + 1], 1);
+    const int endIndex = trimHook(brk[first + 1], startIndex, -1);
+
+    const Point& a = pt[startIndex];
+    const Point& b = pt[endIndex];
+    Point start(a.x, a.y);
+    Point end(b.x, b.y);
+    const double dx = std::abs(end.x - start.x);
+    const double dy = std::abs(end.y - start.y);
+    const double slant = std::tan(SLANT_TOLERANCE);
+    if (dy <= LINE_SNAP_MAX_SHIFT && dy <= dx * slant) {
+        end.y = start.y;
+    } else if (dx <= LINE_SNAP_MAX_SHIFT && dx <= dy * slant) {
+        end.x = start.x;
+    }
+
+    // Keep only the line in the segment queue, so it can still form a triangle or rectangle with later strokes
+    if (n > 1) {
+        RecoSegment* rs = &this->queue[as_unsigned(this->queueLength - n)];
+        rs[0] = rs[first];
+        rs[0].startpt = 0;
+        this->queueLength -= n - 1;
+    }
+
+    auto s = std::make_unique<Stroke>();
+    s->applyStyleFrom(this->stroke);
+    s->addPoint(start);
+    s->addPoint(end);
+    return s;
+}
+
+/**
  * Check if something is a polygonal line with at most nsides sides.
  * [start, finish] (inclusive) specifies the range to operate on in the pt array.
  */
@@ -390,51 +465,10 @@ auto ShapeRecognizer::recognizePatterns(Stroke* stroke, double strokeMinSize) ->
 
         // Removed complicated recognition in commit 5494bd002050182cde3af70bd1924f4062579be5
 
-        if (n == 1 && ss->det() < LINE_MAX_DET)  // current stroke is a line
-        {
-            bool aligned = true;
-            if (fabs(rs->angle) < SLANT_TOLERANCE)  // nearly horizontal
-            {
-                rs->angle = 0.0;
-                rs->y1 = rs->y2 = rs->ycenter;
-            } else if (fabs(rs->angle) > M_PI / 2 - SLANT_TOLERANCE) {  // nearly vertical
-                rs->angle = (rs->angle > 0) ? (M_PI / 2) : (-M_PI / 2);
-                rs->x1 = rs->x2 = rs->xcenter;
-            } else {
-                aligned = false;
-            }
-
-            auto s = std::make_unique<Stroke>();
-            s->applyStyleFrom(this->stroke);
-
-            if (aligned) {
-                s->addPoint(Point(rs->x1, rs->y1));
-                s->addPoint(Point(rs->x2, rs->y2));
-            } else {
-                const Point P(rs->x1, rs->y1);
-                const Point Q(rs->x2, rs->y2);
-
-                const auto& points = stroke->getPointVector();
-                const Point& last = points.back();
-
-                const double dx = Q.x - P.x;
-                const double dy = Q.y - P.y;
-                const double num = dy * last.x - dx * last.y + Q.x * P.y - Q.y * P.x;
-                const double num2 = num * num;
-                const double den2 = dy * dy + dx * dx;
-                const double dist2 = num2 / den2;
-
-                if (dist2 < LINE_POINT_DIST2_THRESHOLD) {
-                    s->addPoint(P);
-                    s->addPoint(Q);
-                } else {
-                    s->addPoint(Point(points.front().x, points.front().y));
-                    s->addPoint(Point(points.back().x, points.back().y));
-                }
-            }
-
+        // Fork: a line from where the pen landed to where it lifted
+        if (auto result = tryLine(n, brk, ss); result != nullptr) {
             RDEBUG("return line");
-            return s;
+            return result;
         }
     }
 
