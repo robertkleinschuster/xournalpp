@@ -178,6 +178,9 @@ fs::path getCustomPaletteDirectoryPath();
  */
 std::vector<fs::path> listFilesSorted(fs::path directory);
 
+/// Fork: opens a folder in the file manager, or the folder of a file with the file selected. Returns an error message.
+std::optional<std::string> showInFileManager(const fs::path& path, bool directory);
+
 /// Fork: sets or clears the hidden attribute of a file on Windows (no-op elsewhere, where a leading dot hides it).
 /// Windows does not replace hidden files, so clear it before replacing one.
 void setHiddenFile(const fs::path& path, bool hidden);

@@ -11,6 +11,7 @@
 #include <utility>      // for move
 #include <variant>
 
+#include <gio/gio.h>       // for g_app_info_launch_default_for_uri
 #include <glib.h>          // for gchar, g_free, g_filename_to_uri
 
 #include "util/PlaceholderString.h"  // for PlaceholderString
@@ -27,6 +28,9 @@
 
 #ifdef _WIN32
 #include <Windows.h>
+// after Windows.h
+#include <shellapi.h>  // for ShellExecuteW
+#include <shlobj.h>    // for SHOpenFolderAndSelectItems, ILCreateFromPathW
 #else
 #include <unistd.h>  // for readlink, ssize_t
 #ifdef __APPLE__
@@ -591,5 +595,40 @@ void Util::setHiddenFile(const fs::path& path, bool hidden) {
 #else
     (void)path;
     (void)hidden;
+#endif
+}
+
+auto Util::showInFileManager(const fs::path& path, bool directory) -> std::optional<std::string> {
+#ifdef _WIN32
+    // The Windows Explorer itself: GIO has no handler for folder URIs there
+    const fs::path absolute = fs::absolute(path).lexically_normal().make_preferred();
+    if (!directory) {
+        if (PIDLIST_ABSOLUTE item = ILCreateFromPathW(absolute.c_str())) {
+            CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);  // the shell needs COM (GTK has initialized it)
+            const HRESULT result = SHOpenFolderAndSelectItems(item, 0, nullptr, 0);
+            ILFree(item);
+            if (SUCCEEDED(result)) {
+                return std::nullopt;
+            }
+        }
+    }
+    const fs::path folder = directory ? absolute : absolute.parent_path();
+    if (reinterpret_cast<INT_PTR>(
+                ShellExecuteW(nullptr, L"explore", folder.c_str(), nullptr, nullptr, SW_SHOWNORMAL)) <= 32) {
+        return Util::toUtf8(folder);
+    }
+    return std::nullopt;
+#else
+    auto uri = toUri(directory ? path : path.parent_path());
+    if (!uri) {
+        return "invalid path";
+    }
+    GError* error = nullptr;
+    if (!g_app_info_launch_default_for_uri(uri->c_str(), nullptr, &error)) {
+        std::string message = error->message;
+        g_error_free(error);
+        return message;
+    }
+    return std::nullopt;
 #endif
 }

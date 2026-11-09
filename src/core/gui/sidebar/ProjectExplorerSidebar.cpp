@@ -1732,8 +1732,7 @@ private:
         }
         if (kind != KIND_PLACEHOLDER) {
             menu.add(_("Show in File Manager"), [this, target, kind] {
-                const auto path = Util::fromUtf8(target.c_str());
-                showInFileManager(kind == KIND_DIRECTORY ? path : path.parent_path());
+                showInFileManager(Util::fromUtf8(target.c_str()), kind == KIND_DIRECTORY);
             });
             menu.add(_("Copy Path"), [target] {
                 gtk_clipboard_set_text(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD), target.c_str(), -1);
@@ -1783,13 +1782,10 @@ private:
         }
     }
 
-    void showInFileManager(const fs::path& dir) {
-        if (auto uri = Util::toUri(dir)) {
-            GError* error = nullptr;
-            if (!g_app_info_launch_default_for_uri(uri->c_str(), nullptr, &error)) {
-                g_warning("Could not open folder: %s", error->message);
-                g_error_free(error);
-            }
+    /// Opens a folder, or the folder of a file with the file selected
+    void showInFileManager(const fs::path& path, bool directory) {
+        if (auto error = Util::showInFileManager(path, directory)) {
+            showError(_("The folder could not be opened."), *error);
         }
     }
 
@@ -2563,8 +2559,14 @@ private:
     void deleteEntry(const fs::path& path, bool directory) {
         const auto name = Util::toUtf8(path.filename());
         // A document with its PDF and exported PDF: they can go along
-        const auto group = !directory && isXoppFile(path) ? AnnotationFiles::groupFiles(path, *control->getSettings()) :
-                                                            std::vector<fs::path>{path};
+        auto group = !directory && isXoppFile(path) ? AnnotationFiles::groupFiles(path, *control->getSettings()) :
+                                                      std::vector<fs::path>{path};
+        // The portal file is part of the document (its copied PDF areas): it always goes along
+        std::vector<fs::path> document{path};
+        if (const auto portals = AnnotationFiles::portalsPdf(path);
+            group.size() > 1 && std::erase(group, portals) > 0) {
+            document.push_back(portals);
+        }
         enum { DELETE_ONE = 1, DELETE_GROUP };
         auto* dialog = gtk_message_dialog_new(parent, GTK_DIALOG_MODAL, GTK_MESSAGE_QUESTION, GTK_BUTTONS_NONE, "%s",
                                               FC(_F("Delete “{1}”?") % name));
@@ -2590,7 +2592,8 @@ private:
         if (response != DELETE_ONE && response != DELETE_GROUP) {
             return;
         }
-        const auto paths = response == DELETE_GROUP ? group : std::vector<fs::path>{path};
+        auto paths = response == DELETE_GROUP ? group : std::vector<fs::path>{path};
+        paths.insert(paths.end(), document.begin() + 1, document.end());
 
         // The user deletes the open document on purpose: its unsaved changes are discarded instead of saving them
         // (which would write the deleted file again). If only its PDF goes, the annotations are kept.
