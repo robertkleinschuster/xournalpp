@@ -13,23 +13,26 @@
 
 #include "control/ClipboardHandler.h"  // for ClipboardHandler
 #include "control/Control.h"           // for Control
-#include "control/ToolEnums.h"    // for ToolType, TOOL_SELECT_PDF_TEXT_LI...
-#include "control/ToolHandler.h"  // for ToolHandler
+#include "control/ToolEnums.h"         // for ToolType, TOOL_SELECT_PDF_TEXT_LI...
+#include "control/ToolHandler.h"       // for ToolHandler
 #include "control/tools/PdfElemSelection.h"
-#include "gui/PageView.h"           // for XojPageView
-#include "gui/XournalView.h"        // for XournalView
-#include "model/Document.h"         // for Document
-#include "model/Layer.h"            // for Layer
-#include "model/PageRef.h"          // for PageRef
-#include "model/Point.h"            // for Point
-#include "model/Stroke.h"           // for Stroke, BUTT, StrokeTool::HIGHLIG...
-#include "model/XojPage.h"          // for XojPage
-#include "undo/GroupUndoAction.h"   // for GroupUndoAction
-#include "undo/InsertUndoAction.h"  // for InsertUndoAction
-#include "undo/UndoAction.h"        // for UndoAction
-#include "undo/UndoRedoHandler.h"   // for UndoRedoHandler
-#include "util/Assert.h"            // for xoj_assert
-#include "util/gtk4_helper.h"       // for gtk_widget_get_clipboard
+#include "gui/PageView.h"              // for XojPageView
+#include "gui/XournalView.h"           // for XournalView
+#include "model/Document.h"            // for Document
+#include "model/Layer.h"               // for Layer
+#include "model/PageRef.h"             // for PageRef
+#include "model/PdfPortal.h"           // for PdfPortal
+#include "model/Point.h"               // for Point
+#include "model/RectangularElement.h"  // for RectangularElement
+#include "model/Stroke.h"              // for Stroke, BUTT, StrokeTool::HIGHLIG...
+#include "model/XojPage.h"             // for XojPage
+#include "pdf/base/PdfPortalStore.h"   // for PdfPortalStore
+#include "undo/GroupUndoAction.h"      // for GroupUndoAction
+#include "undo/InsertUndoAction.h"     // for InsertUndoAction
+#include "undo/UndoAction.h"           // for UndoAction
+#include "undo/UndoRedoHandler.h"      // for UndoRedoHandler
+#include "util/Assert.h"               // for xoj_assert
+#include "util/gtk4_helper.h"          // for gtk_widget_get_clipboard
 
 #include "MainWindow.h"  // for MainWindow
 
@@ -202,7 +205,24 @@ void PdfFloatingToolbox::copyAreaToClipboard() {
     if (!pdfPage) {
         return;
     }
-    if (auto element = PdfElemSelection::createAreaElement(*pdfPage, this->pdfElemSelection->getSelectedArea())) {
+    const auto area = this->pdfElemSelection->getSelectedArea();
+    if (auto element = PdfElemSelection::createAreaElement(*pdfPage, area)) {
+        // Fork: the area shows the PDF page itself, copied along (the picture is its snapshot), see PdfPortal
+        Control* control = this->theMainWindow->getControl();
+        Document* doc = control->getDocument();
+        doc->lock_shared();
+        const fs::path pdf = doc->getPdfFilepath();
+        doc->unlock_shared();
+        auto* rectangular = dynamic_cast<RectangularElement*>(element.get());
+        if (rectangular && !pdf.empty()) {
+            if (auto page = PdfPortalStore::extractPage(pdf, this->pdfElemSelection->getSelectionPageNr())) {
+                auto portal = std::make_shared<PdfPortal>();
+                portal->key = page->getKey();
+                portal->area = area;
+                portal->page = std::move(page);
+                rectangular->setPdfPortal(std::move(portal));
+            }
+        }
         this->theMainWindow->getControl()->getClipboardHandler()->copyElement(
                 *element, this->pdfElemSelection->getSelectedText());
     }

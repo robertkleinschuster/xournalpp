@@ -77,6 +77,7 @@ void RectangularElement::serialize(ObjectOutputStream& out) const {
     out.writeDouble(transformationMatrix.shift.y);
     out.writeDouble(naturalSize.width);
     out.writeDouble(naturalSize.height);
+    PdfPortal::serialize(out, pdfPortal);
 
     out.endObject();
 }
@@ -96,6 +97,7 @@ void RectangularElement::readSerialized(ObjectInputStream& in) {
     setTransformation(m);
     naturalSize.width = in.readDouble();
     naturalSize.height = in.readDouble();
+    pdfPortal = PdfPortal::readSerialized(in);
 
     in.endObject();
 }

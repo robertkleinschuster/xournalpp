@@ -113,13 +113,23 @@ std::filesystem::path companionPdf(const std::filesystem::path& xopp);
 bool isCompanionPdf(const std::filesystem::path& path);
 
 /**
+ * The hidden portal file of a document, ".VO8.portals.pdf" for "VO8.xopp": the PDF pages that its copied PDF areas
+ * show (see PdfPortalStore). It is renamed, moved and deleted with the document; the project explorer does not show
+ * it.
+ */
+std::filesystem::path portalsPdf(const std::filesystem::path& xopp);
+/// Whether the file is a portal file (".<name>.portals.pdf")
+bool isPortalsPdf(const std::filesystem::path& path);
+
+/**
  * Whether the document owns its background PDF, i.e. it is renamed, moved and deleted with it: the PDF is next to it
  * and named like it, or it is the document's companion PDF (or a combined PDF of an earlier version, named
  * "VO8 (combined).pdf").
  */
 bool ownsSourcePdf(const std::filesystem::path& xopp, const std::filesystem::path& pdf);
 
-/// The existing files of a document's group: the document, the background PDF it owns and its exported PDF
+/// The existing files of a document's group: the document, the background PDF it owns, its exported PDF and its
+/// portal file
 std::vector<std::filesystem::path> groupFiles(const std::filesystem::path& xopp, const Settings& settings);
 
 /// The name of a target of the group that exists already or is the target of two moves, if any

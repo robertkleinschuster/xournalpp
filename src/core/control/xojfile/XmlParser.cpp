@@ -486,10 +486,27 @@ void XmlParser::parseTextTag(const XmlParserHelper::AttributeMap& attributeMap) 
 
 void XmlParser::parseTextText(std::string_view text) { this->builder.setTextContents(std::string{text}); }
 
+/// Fork: the PDF area an image or teximage shows (PdfPortal), from attributes upstream ignores
+static void parsePdfPortal(const XmlParserHelper::AttributeMap& attributeMap, DocumentBuilderInterface& builder) {
+    const auto key = XmlParserHelper::getAttrib<std::string_view>(xoj::xml_attrs::PORTAL_STR, attributeMap);
+    const auto area = XmlParserHelper::getAttrib<std::string_view>(xoj::xml_attrs::PORTAL_AREA_STR, attributeMap);
+    if (!key || !area || key->empty()) {
+        return;
+    }
+    auto it = area->data();
+    auto end = area->data() + area->size();
+    double x{}, y{}, width{}, height{};
+    if (parseDouble(it, end, x) && parseDouble(it, end, y) && parseDouble(it, end, width) &&
+        parseDouble(it, end, height) && width > 0 && height > 0) {
+        builder.setPdfPortal(std::string(*key), {x, y, width, height});
+    }
+}
+
 void XmlParser::parseImageTag(const XmlParserHelper::AttributeMap& attributeMap) {
     if (const auto matrix = getMatrix(attributeMap); matrix) {
         // File format version >= 5. Single attribute with the transformation matrix
         this->builder.addImage(matrix.value());
+        parsePdfPortal(attributeMap, this->builder);
         return;
     }
 
@@ -502,6 +519,7 @@ void XmlParser::parseImageTag(const XmlParserHelper::AttributeMap& attributeMap)
     auto size = getNaturalSize(attributeMap);
 
     this->builder.addImageLegacy(left, top, right, bottom, size);
+    parsePdfPortal(attributeMap, this->builder);
 }
 
 void XmlParser::parseImageText(std::string_view text) {
@@ -517,6 +535,7 @@ void XmlParser::parseTexImageTag(const XmlParserHelper::AttributeMap& attributeM
     if (const auto matrix = getMatrix(attributeMap); matrix) {
         // File format version >= 5. Single attribute with the transformation matrix
         this->builder.addTexImage(matrix.value(), std::string(text));
+        parsePdfPortal(attributeMap, this->builder);
         return;
     }
 
@@ -528,6 +547,7 @@ void XmlParser::parseTexImageTag(const XmlParserHelper::AttributeMap& attributeM
 
     auto size = getNaturalSize(attributeMap);
     this->builder.addTexImageLegacy(left, top, right, bottom, std::string{text}, size);
+    parsePdfPortal(attributeMap, this->builder);
 }
 
 void XmlParser::parseTexImageText(std::string_view text) {

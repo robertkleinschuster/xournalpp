@@ -11,15 +11,17 @@
 
 #pragma once
 
+#include <map>     // for map
 #include <memory>  // for unique_ptr
 #include <optional>
 #include <string>  // for string
 #include <vector>  // for vector
 
-#include "control/xml/XmlNode.h"    // for XmlNode
-#include "model/BackgroundImage.h"  // for BackgroundImage
-#include "model/PageRef.h"          // for PageRef
-#include "util/Color.h"             // for Color
+#include "control/xml/XmlNode.h"       // for XmlNode
+#include "model/BackgroundImage.h"     // for BackgroundImage
+#include "model/PageRef.h"             // for PageRef
+#include "model/RectangularElement.h"  // for RectangularElement
+#include "util/Color.h"                // for Color
 
 #include "filesystem.h"  // for path
 
@@ -72,6 +74,10 @@ protected:
     virtual void writeSolidBackground(XmlNode* background, ConstPageRef p);
     virtual void writeAudio(XmlNode* node, const AudioContent& audio);
     virtual void writeBackgroundName(XmlNode* background, ConstPageRef p);
+    /// Fork: the PDF area an image shows (see PdfPortal); its page goes into the portal file
+    void writePdfPortal(XmlNode* image, const RectangularElement& element);
+    /// Fork: whether the format has PDF areas and their portal file (not the .xoj export)
+    virtual bool savesPdfPortals() const { return true; }
 
 protected:
     std::unique_ptr<XmlNode> root{};
@@ -86,4 +92,8 @@ protected:
         int newId;
     };
     std::vector<ImageInfo> backgroundImages{};
+
+    /// Fork: the pages of the portals for the portal file, and whether some portals miss their page
+    std::map<std::string, std::shared_ptr<const PdfPortalPage>> portalPages;
+    bool missingPortalPages = false;
 };

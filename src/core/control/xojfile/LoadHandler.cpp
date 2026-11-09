@@ -24,6 +24,7 @@
 #include <zip.h>         // for zip_file_t, zip_fopen,...
 #include <zipconf.h>     // for zip_int64_t, zip_uint64_t
 
+#include "control/AnnotationFiles.h"    // for portalsPdf
 #include "control/xojfile/XmlParser.h"  // for XmlParser
 #include "model/BackgroundImage.h"      // for BackgroundImage
 #include "model/Document.h"             // for Document
@@ -37,6 +38,7 @@
 #include "model/TexImage.h"             // for TexImage
 #include "model/Text.h"                 // for Text
 #include "model/XojPage.h"              // for XojPage
+#include "pdf/base/PdfPortalStore.h"    // for PdfPortalStore
 #include "util/Assert.h"                // for xoj_assert
 #include "util/Color.h"                 // for Color
 #include "util/GzInputStream.h"         // for GzInputStream
@@ -424,8 +426,10 @@ void LoadHandler::finalizeImage() {
     if (!this->image->hasData()) {
         g_warning("LoadHandler: Ignoring image with no data");
         this->image.reset();
+        this->pdfPortal.reset();
         return;
     }
+    applyPdfPortal(*this->image);
 
     if (currentElementFrameLegacy) {
         // To compute the transformation matrix, we need the natural size of the image
@@ -444,6 +448,34 @@ void LoadHandler::finalizeImage() {
     }
 
     this->layer->addElement(std::move(this->image));
+}
+
+void LoadHandler::setPdfPortal(std::string key, xoj::util::Rectangle<double> area) {
+    this->pdfPortal = std::make_shared<PdfPortal>();
+    this->pdfPortal->key = std::move(key);
+    this->pdfPortal->area = area;
+}
+
+void LoadHandler::applyPdfPortal(RectangularElement& element) {
+    if (!this->pdfPortal) {
+        return;
+    }
+    if (!this->portalFilePages) {
+        const auto file = AnnotationFiles::portalsPdf(this->xournalFilepath);
+        std::error_code error;
+        try {
+            this->portalFilePages =
+                    fs::exists(file, error) ? PdfPortalStore::readPages(file) : std::map<std::string, std::string>{};
+        } catch (const std::runtime_error& e) {
+            // The areas show their snapshots, and saving keeps the file
+            g_warning("Cannot read the PDF pages of copied areas from %s: %s", Util::toUtf8(file).c_str(), e.what());
+            this->portalFilePages.emplace();
+        }
+    }
+    if (auto it = this->portalFilePages->find(this->pdfPortal->key); it != this->portalFilePages->end()) {
+        this->pdfPortal->page = PdfPortalPage::get(it->first, it->second);
+    }
+    element.setPdfPortal(std::move(this->pdfPortal));
 }
 
 void LoadHandler::addTexImageLegacy(double left, double top, double right, double bottom, std::string text,
@@ -481,6 +513,7 @@ void LoadHandler::setTexImageAttachment(const fs::path& filename) {
 
 void LoadHandler::finalizeTexImage() {
     xoj_assert(this->teximage);
+    applyPdfPortal(*this->teximage);
 
     if (currentElementFrameLegacy) {
         auto [width, height] =

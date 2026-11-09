@@ -429,6 +429,9 @@ auto AnnotationFiles::groupForRename(const fs::path& oldXopp, const fs::path& ne
                                                sourceName.substr(prefix + oldStem.size()));
         group.moves.emplace_back(source, *group.newSource);
     }
+    if (const auto portals = portalsPdf(oldXopp); fs::exists(portals, error)) {
+        group.moves.emplace_back(portals, portalsPdf(newXopp));
+    }
     const auto exported = exportPathForFile(oldXopp, settings);
     const auto exportName = Util::toUtf8(exported.filename());
     if (!exported.empty() && exportName.rfind(oldStem, 0) == 0) {
@@ -454,6 +457,9 @@ auto AnnotationFiles::groupForMove(const fs::path& xopp, const fs::path& dir, co
             group.newSource = source;  // stays, but its path relative to the document changes
         }
     }
+    if (const auto portals = portalsPdf(xopp); fs::exists(portals, error)) {
+        group.moves.emplace_back(portals, portalsPdf(group.newXopp));
+    }
     if (const auto exported = exportPathForFile(xopp, settings); !exported.empty() && fs::exists(exported, error)) {
         group.moves.emplace_back(exported, dir / exported.filename());
     }
@@ -462,6 +468,16 @@ auto AnnotationFiles::groupForMove(const fs::path& xopp, const fs::path& dir, co
 
 namespace {
 constexpr std::string_view COMPANION_SUFFIX = ".pages";
+constexpr std::string_view PORTALS_SUFFIX = ".portals.pdf";
+}  // namespace
+
+auto AnnotationFiles::portalsPdf(const fs::path& xopp) -> fs::path {
+    return xopp.parent_path() / Util::fromUtf8("." + Util::toUtf8(xopp.stem()) + std::string(PORTALS_SUFFIX));
+}
+
+auto AnnotationFiles::isPortalsPdf(const fs::path& path) -> bool {
+    const auto name = Util::toUtf8(path.filename());
+    return name.size() > PORTALS_SUFFIX.size() + 1 && name.front() == '.' && name.ends_with(PORTALS_SUFFIX);
 }
 
 auto AnnotationFiles::companionPdf(const fs::path& xopp) -> fs::path {
@@ -498,6 +514,9 @@ auto AnnotationFiles::groupFiles(const fs::path& xopp, const Settings& settings)
     }
     if (const auto exported = exportPathForFile(xopp, settings); !exported.empty() && fs::exists(exported, error)) {
         files.push_back(exported);
+    }
+    if (const auto portals = portalsPdf(xopp); fs::exists(portals, error)) {
+        files.push_back(portals);
     }
     return files;
 }

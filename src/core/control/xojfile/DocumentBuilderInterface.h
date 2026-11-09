@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "util/Color.h"
+#include "util/Rectangle.h"
 
 #include "filesystem.h"
 
@@ -68,6 +69,8 @@ public:
     virtual void setImageData(std::string data) = 0;
     virtual void setImageAttachment(const fs::path& filename) = 0;
     virtual void finalizeImage() = 0;
+    /// Fork: the PDF area the current image or teximage shows (see PdfPortal)
+    virtual void setPdfPortal(std::string key, xoj::util::Rectangle<double> area) {}
     virtual void addTexImageLegacy(double left, double top, double right, double bottom, std::string text,
                                    std::optional<xoj::util::Size<double>> size) = 0;
     virtual void addTexImage(xoj::util::Matrix matrix, std::string text) = 0;

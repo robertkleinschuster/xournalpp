@@ -12,6 +12,7 @@
 #pragma once
 
 #include <cstddef>        // for size_t
+#include <map>            // for map
 #include <memory>         // for unique_ptr
 #include <optional>       // for optional
 #include <string>         // for string
@@ -25,6 +26,8 @@
 #include "model/Document.h"                            // for Document
 #include "model/DocumentHandler.h"                     // for DocumentHandler
 #include "model/PageRef.h"                             // for PageRef
+#include "model/PdfPortal.h"                           // for PdfPortal
+#include "model/RectangularElement.h"                  // for RectangularElement
 #include "model/Stroke.h"                              // for Stroke, StrokeTool,...
 #include "util/Color.h"                                // for Color
 #include "util/Rectangle.h"                            // for Rectangle
@@ -112,6 +115,7 @@ private:
     void setImageData(std::string data) override;
     void setImageAttachment(const fs::path& filename) override;
     void finalizeImage() override;
+    void setPdfPortal(std::string key, xoj::util::Rectangle<double> area) override;
     void addTexImageLegacy(double left, double top, double right, double bottom, std::string text,
                            std::optional<xoj::util::Size<double>> size) override;
     void addTexImage(xoj::util::Matrix matrix, std::string text) override;
@@ -207,6 +211,12 @@ private:
     std::unique_ptr<Stroke> stroke;
     std::unique_ptr<Text> text;
     std::unique_ptr<Image> image;
+
+    /// Fork: the PDF area of the current image or teximage, and the pages of the portal file (read when needed)
+    std::shared_ptr<PdfPortal> pdfPortal;
+    std::optional<std::map<std::string, std::string>> portalFilePages;
+    /// Gives the current image or teximage its PDF area
+    void applyPdfPortal(RectangularElement& element);
     std::unique_ptr<TexImage> teximage;
     std::unique_ptr<Link> link;
 

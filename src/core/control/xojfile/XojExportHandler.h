@@ -36,6 +36,7 @@ protected:
     void writeSolidBackground(XmlNode* background, ConstPageRef p) override;
     void writeAudio(XmlNode* node, const AudioContent& audio) override;
     void writeBackgroundName(XmlNode* background, ConstPageRef p) override;
+    bool savesPdfPortals() const override { return false; }
 
 private:
 };

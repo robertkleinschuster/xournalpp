@@ -68,6 +68,10 @@ constexpr auto BOTTOM_POS_STR = u8"bottom";  // also in teximage
 // teximage
 constexpr auto TEXT_STR = u8"text";
 
+// Fork: PDF area shown by an image or teximage (PdfPortal); upstream ignores these attributes
+constexpr auto PORTAL_STR = u8"portal";            // key of the PDF page in the portal file (PdfPortalStore)
+constexpr auto PORTAL_AREA_STR = u8"portal-area";  // x y width height on the PDF page
+
 // link
 constexpr auto URL_STR = u8"url";
 

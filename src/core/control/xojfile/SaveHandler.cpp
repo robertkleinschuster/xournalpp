@@ -1,13 +1,15 @@
 #include "SaveHandler.h"
 
-#include <cinttypes>   // for PRIx32
-#include <cstdint>     // for uint32_t
-#include <cstdio>      // for sprintf, size_t
+#include <cinttypes>  // for PRIx32
+#include <cstdint>    // for uint32_t
+#include <cstdio>     // for sprintf, size_t
+#include <stdexcept>  // for runtime_error
 
 #include <cairo.h>                  // for cairo_surface_t
 #include <gdk-pixbuf/gdk-pixbuf.h>  // for gdk_pixbuf_save
 #include <glib.h>                   // for g_free, g_strdup_printf
 
+#include "control/AnnotationFiles.h"           // for portalsPdf
 #include "control/pagetype/PageTypeHandler.h"  // for PageTypeHandler
 #include "control/xml/XmlImageNode.h"          // for XmlImageNode
 #include "control/xml/XmlNode.h"               // for XmlNode
@@ -33,6 +35,7 @@
 #include "model/TexImage.h"                    // for TexImage
 #include "model/Text.h"                        // for Text
 #include "model/XojPage.h"                     // for XojPage
+#include "pdf/base/PdfPortalStore.h"           // for PdfPortalStore
 #include "pdf/base/XojPdfDocument.h"           // for XojPdfDocument
 #include "util/OutputStream.h"                 // for GzOutputStream, Output...
 #include "util/PathUtil.h"                     // for clearExtensions, normalizeAssetPath
@@ -59,6 +62,8 @@ void SaveHandler::prepareSave(const Document* doc, const fs::path& target) {
 
     this->firstPdfPageVisited = false;
     this->attachBgId = 1;
+    this->portalPages.clear();
+    this->missingPortalPages = false;
 
     root.reset(new XmlNode(TAG_NAMES[TagType::XOURNAL]));
 
@@ -254,6 +259,7 @@ void SaveHandler::visitLayer(XmlNode* page, const Layer* l) {
             } else {
                 image->setAttrib(xoj::xml_attrs::MATRIX_STR, makeMatrixVector(*i));
             }
+            writePdfPortal(image, *i);
         } else if (e->getType() == ELEMENT_TEXIMAGE) {
             auto* i = dynamic_cast<const TexImage*>(e);
             auto* image = new XmlTexNode(TAG_NAMES[TagType::TEXIMAGE], std::string(i->getBinaryData()));
@@ -273,6 +279,7 @@ void SaveHandler::visitLayer(XmlNode* page, const Layer* l) {
             } else {
                 image->setAttrib(xoj::xml_attrs::MATRIX_STR, makeMatrixVector(*i));
             }
+            writePdfPortal(image, *i);
         } else if (e->getType() == ELEMENT_LINK) {
             auto* l = dynamic_cast<const Link*>(e);
             auto* link = new XmlTextNode(TAG_NAMES[TagType::LINK], l->getText());
@@ -406,6 +413,21 @@ void SaveHandler::writeBackgroundName(XmlNode* background, ConstPageRef p) {
     }
 }
 
+void SaveHandler::writePdfPortal(XmlNode* image, const RectangularElement& element) {
+    const auto& portal = element.getPdfPortal();
+    if (!portal || !savesPdfPortals()) {
+        return;
+    }
+    image->setAttrib(xoj::xml_attrs::PORTAL_STR, portal->key);
+    image->setAttrib(xoj::xml_attrs::PORTAL_AREA_STR,
+                     std::vector<double>{portal->area.x, portal->area.y, portal->area.width, portal->area.height});
+    if (portal->page) {
+        this->portalPages.emplace(portal->key, portal->page);
+    } else {
+        this->missingPortalPages = true;
+    }
+}
+
 void SaveHandler::saveTo(const fs::path& filepath, ProgressListener* listener) {
     // Fork: write a temporary file and replace the file only once it is complete, so a failed save (or a crash while
     // saving) keeps the previous version. The "~" suffix hides it from the project explorer and git.
@@ -436,6 +458,16 @@ void SaveHandler::saveTo(const fs::path& filepath, ProgressListener* listener) {
     if (error) {
         this->errorMessage = FS(_F("Could not replace \"{1}\": {2}") % filepath.u8string() % error.message());
         fs::remove(tempfile, error);
+        return;
+    }
+
+    // Fork: the PDF pages that copied PDF areas show. If this fails, the document shows the areas' snapshots.
+    try {
+        if (savesPdfPortals()) {
+            PdfPortalStore::write(AnnotationFiles::portalsPdf(filepath), this->portalPages, this->missingPortalPages);
+        }
+    } catch (const std::runtime_error& e) {
+        this->errorMessage = FS(_F("The PDF pages of the copied PDF areas could not be saved: {1}") % e.what());
     }
 }
 

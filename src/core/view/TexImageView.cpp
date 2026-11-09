@@ -24,6 +24,14 @@ void TexImageView::draw(const Context& ctx) const {
     cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
     texImage->getTransformation().transformCairo(cr);
 
+    // Fork: an area copied from a PDF shows the PDF page itself; the TeX image is its snapshot
+    if (const auto& portal = texImage->getPdfPortal(); portal && !ctx.fadeOutNonAudio) {
+        const auto& size = texImage->getNaturalSize();
+        if (portal->draw(cr, size.width, size.height)) {
+            return;
+        }
+    }
+
     if (PopplerDocument* pdf = texImage->getPdf(); pdf != nullptr) {
         if (poppler_document_get_n_pages(pdf) < 1) {
             g_warning("Got latex PDF without pages!: %s", texImage->getText().c_str());

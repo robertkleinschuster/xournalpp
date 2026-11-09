@@ -4,6 +4,7 @@
 
 #include "model/Image.h"  // for Image
 #include "util/Matrix.h"  // for Matrix
+#include "util/raii/CairoWrappers.h"  // for CairoSaveGuard
 #include "view/View.h"    // for Context, OPACITY_NO_AUDIO, view
 
 using namespace xoj::view;
@@ -14,6 +15,16 @@ ImageView::~ImageView() = default;
 
 void ImageView::draw(const Context& ctx) const {
     cairo_t* cr = ctx.cr;
+
+    // Fork: an area copied from a PDF shows the PDF page itself; the picture is its snapshot
+    if (const auto& portal = image->getPdfPortal(); portal && !ctx.fadeOutNonAudio) {
+        xoj::util::CairoSaveGuard guard(cr);
+        image->getTransformation().transformCairo(cr);
+        const auto& size = image->getNaturalSize();
+        if (portal->draw(cr, size.width, size.height)) {
+            return;
+        }
+    }
 
     cairo_save(cr);
 

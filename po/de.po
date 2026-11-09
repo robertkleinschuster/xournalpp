@@ -5561,3 +5561,7 @@ msgstr "Schmierzettel leeren"
 #: ../src/core/gui/ScratchpadDrawer.cpp
 msgid "Open as Document"
 msgstr "Als Dokument öffnen"
+
+#: ../src/core/control/xojfile/SaveHandler.cpp
+msgid "The PDF pages of the copied PDF areas could not be saved: {1}"
+msgstr "Die PDF-Seiten der kopierten PDF-Bereiche konnten nicht gespeichert werden: {1}"

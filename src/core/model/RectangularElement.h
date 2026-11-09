@@ -11,10 +11,13 @@
 
 #pragma once
 
+#include <memory>  // for shared_ptr
+
 #include "util/Matrix.h"
 #include "util/Size.h"
 
 #include "Element.h"
+#include "PdfPortal.h"
 
 class RectangularElement: public Element {
 protected:
@@ -46,6 +49,10 @@ public:
 
     const xoj::util::Size<double>& getNaturalSize() const;
 
+    /// Fork: the PDF area an Image or TexImage shows instead of its picture (a snapshot of it), if any
+    const std::shared_ptr<const PdfPortal>& getPdfPortal() const { return pdfPortal; }
+    void setPdfPortal(std::shared_ptr<const PdfPortal> portal) { pdfPortal = std::move(portal); }
+
 protected:
     /**
      * Matrix applied to the canvas before drawing the element - encodes various transformations
@@ -59,4 +66,6 @@ protected:
      * WARNING: In some cases, the element could go beyond or be smaller than its "natural size" (e.g. text overflowing)
      */
     mutable xoj::util::Size<double> naturalSize;
+
+    std::shared_ptr<const PdfPortal> pdfPortal;  ///< Fork: shared by clones, it is immutable
 };
