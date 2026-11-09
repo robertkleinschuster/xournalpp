@@ -25,6 +25,7 @@
 #include "gui/inputdevices/InputEvents.h"
 #include "model/PageListener.h"       // for PageListener
 #include "model/PageRef.h"            // for PageRef
+#include "pdf/base/XojPdfPage.h"      // for XojPdfRectangle
 #include "util/Rectangle.h"           // for Rectangle
 #include "util/raii/CairoWrappers.h"  // for CairoSurfaceSPtr
 #include "view/Mask.h"                // for Mask
@@ -57,6 +58,7 @@ class OverlayView;
 class ToolView;
 }  // namespace xoj::view
 
+class LinkDestination;
 class XojPageView: public LegacyRedrawable, public PageListener, public xoj::view::Repaintable {
 public:
     XojPageView(XournalView* xournal, const PageRef& page);
@@ -221,6 +223,16 @@ private:
 
 public:
     /**
+     * Fork: follows the PDF link at the point (page coordinates), if there is one: directly for a mouse click (as in
+     * PDF readers), else (touch, pen) with a popover to confirm. Returns whether there was a link.
+     */
+    bool followPdfLinkAt(double pageX, double pageY, bool directly);
+    /// Fork: the PDF link at the point (page coordinates) of the PDF page shown, if any (for the hand cursor)
+    bool hasPdfLinkAt(double pageX, double pageY);
+    /// Fork: carries out a link without asking. Returns false if it leads nowhere.
+    bool followPdfLink(const LinkDestination& dest);
+
+    /**
      * Fork: shows the popover of the PDF link at (x, y) in layout pixels, if there is one (e.g. for a tap of a finger)
      * @returns whether a link was found
      */
@@ -312,4 +324,10 @@ private:
      * The Link Editor
      */
     std::unique_ptr<LinkHandler> linkHandler;
+
+    /// Fork: the PDF link areas of the page, for the hand cursor (see hasPdfLinkAt())
+    std::vector<XojPdfRectangle> linkAreas;
+    size_t linkAreasPage = 0;
+    const void* linkAreasData = nullptr;
+    bool linkAreasValid = false;
 };

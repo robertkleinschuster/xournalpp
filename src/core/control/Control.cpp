@@ -285,7 +285,15 @@ auto Control::checkChangedDocument(Control* control) -> bool {
 }
 
 void Control::saveSettings() {
-    this->toolHandler->saveSettings();
+    if (this->toolBeforeReadOnly != TOOL_NONE &&
+        this->toolHandler->getToolbarToolType() == TOOL_SELECT_PDF_TEXT_LINEAR) {
+        // Fork: the next start has the tool for writing, not the one for reading (setReadOnly())
+        this->toolHandler->selectTool(this->toolBeforeReadOnly);
+        this->toolHandler->saveSettings();
+        this->toolHandler->selectTool(TOOL_SELECT_PDF_TEXT_LINEAR);
+    } else {
+        this->toolHandler->saveSettings();
+    }
 
     gint width = 0;
     gint height = 0;
@@ -2909,10 +2917,41 @@ auto Control::isReadOnly() const -> bool { return this->readOnly; }
 
 auto Control::isAutoSaveAllowed() const -> bool { return this->autoSaveAllowed; }
 
+auto Control::isUsableReadOnly(ToolType type) -> bool {
+    switch (type) {
+        case TOOL_HAND:
+        case TOOL_SELECT_PDF_TEXT_LINEAR:
+        case TOOL_SELECT_PDF_TEXT_RECT:
+        case TOOL_COPY_PDF_AREA:
+        case TOOL_LASER_POINTER_PEN:
+        case TOOL_LASER_POINTER_HIGHLIGHTER:
+        case TOOL_PLAY_OBJECT:
+            return true;
+        default:
+            return false;
+    }
+}
+
 void Control::setReadOnly(bool readOnly) {
+    const bool changed = this->readOnly != readOnly;
     this->readOnly = readOnly;
     if (this->actionDB) {
         this->actionDB->setReadOnly(readOnly);
+    }
+    // Reading a PDF like in a PDF reader: mouse and pen select its text and follow its links. The tool for writing
+    // comes back with editing.
+    if (changed && this->toolHandler) {
+        if (readOnly && !isUsableReadOnly(this->toolHandler->getToolbarToolType())) {
+            this->toolBeforeReadOnly = this->toolHandler->getToolbarToolType();
+            this->toolHandler->selectTool(TOOL_SELECT_PDF_TEXT_LINEAR);
+            this->toolHandler->fireToolChanged();
+        } else if (!readOnly && this->toolBeforeReadOnly != TOOL_NONE) {
+            if (this->toolHandler->getToolbarToolType() == TOOL_SELECT_PDF_TEXT_LINEAR) {
+                this->toolHandler->selectTool(this->toolBeforeReadOnly);
+                this->toolHandler->fireToolChanged();
+            }
+            this->toolBeforeReadOnly = TOOL_NONE;
+        }
     }
     if (this->win) {
         this->win->setReadOnlyBarVisible(readOnly, readOnly && existingDocumentForPdf().has_value());

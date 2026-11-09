@@ -40,6 +40,9 @@ auto PopplerGlibAction::getDestination(PopplerAction* action) -> std::shared_ptr
         }
 
         linkFromDest(*dest, pDest);
+    } else if (action->type == POPPLER_ACTION_NAMED && action->named.named_dest) {
+        // Fork: e.g. the navigation symbols of beamer slides
+        dest->setNamedAction(std::string{action->named.named_dest});
     } else {
         // Every other action is currently unsupported.
     }

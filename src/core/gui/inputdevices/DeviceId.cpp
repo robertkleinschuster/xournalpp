@@ -6,6 +6,7 @@ DeviceId::DeviceId(const GdkDevice* id): id(id) {
     if (id) {
         auto source = gdk_device_get_source(const_cast<GdkDevice*>(id));
         trackpointOrTouchpad = source == GDK_SOURCE_TRACKPOINT || source == GDK_SOURCE_TOUCHPAD;
+        pointer = trackpointOrTouchpad || source == GDK_SOURCE_MOUSE;
     }
 }
 void DeviceId::reset(const GdkDevice* id) { *this = DeviceId(id); }

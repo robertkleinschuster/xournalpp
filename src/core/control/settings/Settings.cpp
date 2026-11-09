@@ -164,9 +164,9 @@ void Settings::loadDefault() {
     // Eraser
     this->buttonConfig[BUTTON_ERASER] = std::make_unique<ButtonConfig>(TOOL_ERASER, Colors::black, TOOL_SIZE_NONE,
                                                                        DRAWING_TYPE_DEFAULT, ERASER_TYPE_NONE);
-    // Left button - Fork: the mouse (and touchpad) never draws, it selects (see MouseInputHandler::changeTool)
+    // Left button - Fork: the mouse (and touchpad) never draws, it selects objects (see MouseInputHandler::changeTool)
     this->buttonConfig[BUTTON_MOUSE_LEFT] = std::make_unique<ButtonConfig>(
-            TOOL_SELECT_RECT, Colors::black, TOOL_SIZE_NONE, DRAWING_TYPE_DEFAULT, ERASER_TYPE_NONE);
+            TOOL_SELECT_OBJECT, Colors::black, TOOL_SIZE_NONE, DRAWING_TYPE_DEFAULT, ERASER_TYPE_NONE);
     // Middle button
     this->buttonConfig[BUTTON_MOUSE_MIDDLE] = std::make_unique<ButtonConfig>(TOOL_HAND, Colors::black, TOOL_SIZE_NONE,
                                                                              DRAWING_TYPE_DEFAULT, ERASER_TYPE_NONE);
@@ -850,10 +850,11 @@ void Settings::loadButtonConfig() {
         }
     }
 
-    // Fork: the left mouse button selects instead of drawing tools (MouseInputHandler::changeTool), also with settings
-    // saved before (which kept the toolbar tool)
-    if (buttonConfig[BUTTON_MOUSE_LEFT]->action == TOOL_NONE) {
-        buttonConfig[BUTTON_MOUSE_LEFT]->action = TOOL_SELECT_RECT;
+    // Fork: the left mouse button selects objects instead of drawing tools (MouseInputHandler::changeTool), also with
+    // settings saved before: they kept the toolbar tool, or had the rectangle selection of a first version of this
+    if (const auto action = buttonConfig[BUTTON_MOUSE_LEFT]->action;
+        action == TOOL_NONE || action == TOOL_SELECT_RECT) {
+        buttonConfig[BUTTON_MOUSE_LEFT]->action = TOOL_SELECT_OBJECT;
     }
 }
 

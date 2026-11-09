@@ -42,6 +42,8 @@ public:
      * @return false if tool was not changed successfully
      */
     bool changeTool(InputEvent const& event) override;
+    /// Fork: whether a left click follows a PDF link (for the hand cursor)
+    bool followsLinks() const;
     void onBlock() override;
 
 private:

@@ -357,6 +357,8 @@ public:
      */
     bool isReadOnly() const;
     void setReadOnly(bool readOnly);
+    /// Fork: whether the tool can be used on a read-only document (it reads, selects or copies)
+    static bool isUsableReadOnly(ToolType type);
     /// Fork: false after loading a file that upstream warns not to overwrite, until the user saves it
     bool isAutoSaveAllowed() const;
     void enableEditing();
@@ -644,6 +646,7 @@ private:
     std::unique_ptr<AudioController> audioController;
     bool audioEnabled = false;
     bool readOnly = false;
+    ToolType toolBeforeReadOnly = TOOL_NONE;  ///< Fork: the toolbar tool replaced while read-only
     bool autoSaveAllowed = true;
     /// Fork: the view of the document opened at startup, applied once the window is shown on its screen
     std::unique_ptr<MetadataEntry> pendingViewPosition;

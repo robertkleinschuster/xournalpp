@@ -36,9 +36,13 @@ public:
     };
     /// A link to some unknown PDF action.
     struct UnknownType {};
+    /// Fork: a named PDF action, e.g. "NextPage" (beamer's navigation symbols)
+    struct NamedType {
+        std::string name;
+    };
 
     /// Represents a possible PDF link action.
-    using Type = std::variant<UnknownType, LinkType>;
+    using Type = std::variant<UnknownType, LinkType, NamedType>;
 
 public:
     size_t getPdfPage() const;
@@ -68,6 +72,10 @@ public:
 
     /// \return Changes this link to refer to the given URI.
     void setURI(std::string uri);
+
+    /// Fork: the named action of the link, e.g. "NextPage", if it has one
+    std::optional<std::string> getNamedAction() const;
+    void setNamedAction(std::string name);
 
 private:
     size_t page;

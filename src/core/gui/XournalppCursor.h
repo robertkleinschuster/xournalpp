@@ -33,6 +33,8 @@ public:
     void setInvisible(bool invisible);
     void setInsidePage(bool insidePage);
     void setIsLinkHighlighted(bool higlighted);
+    /// Fork: the mouse is over a PDF link (a click follows it): a hand, whatever the tool
+    void setOverPdfLink(bool over);
     void activateDrawDirCursor(bool enable, bool shift = false, bool ctrl = false);
     void setInputDeviceClass(InputDeviceClass inputDevice);
     void setRotationAngle(double angle);
@@ -61,6 +63,7 @@ private:
     bool mouseDown = false;
     bool invisible = false;
     bool linkHighlighted = false;
+    bool overPdfLink = false;
 
     // One shot drawDir custom cursor -drawn instead of pen/stylus then cleared.
     bool drawDirActive = false;

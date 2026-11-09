@@ -205,6 +205,14 @@ void XournalppCursor::setIsLinkHighlighted(bool highlighted) {
     updateCursor();
 }
 
+void XournalppCursor::setOverPdfLink(bool over) {
+    if (this->overPdfLink == over) {
+        return;
+    }
+    this->overPdfLink = over;
+    updateCursor();
+}
+
 void XournalppCursor::setInvisible(bool invisible) {
     if (this->invisible == invisible) {
         return;
@@ -237,7 +245,14 @@ void XournalppCursor::updateCursor() {
         ToolType type = handler->getToolType();
 
 
-        if (type == TOOL_HAND) {
+        const bool shapeTool = type == TOOL_DRAW_RECT || type == TOOL_DRAW_ELLIPSE || type == TOOL_DRAW_ARROW ||
+                               type == TOOL_DRAW_DOUBLE_ARROW || type == TOOL_DRAW_COORDINATE_SYSTEM ||
+                               type == TOOL_DRAW_SPLINE;
+        if (this->overPdfLink && !this->mouseDown && this->insidePage) {
+            setCursor(CRSR_HAND2);
+        } else if (shapeTool && this->inputDevice == INPUT_DEVICE_MOUSE && !this->mouseDown) {
+            setCursor(CRSR_ARROW);  // Fork: the mouse selects objects instead of drawing (MouseInputHandler)
+        } else if (type == TOOL_HAND) {
             if (this->mouseDown) {
                 setCursor(CRSR_GRABBING);
             } else {

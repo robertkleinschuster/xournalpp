@@ -90,6 +90,15 @@ void LinkDestination::setURI(std::string uri) { this->contents = LinkType{std::m
 
 auto LinkDestination::isURI() const -> bool { return std::holds_alternative<LinkDestination::LinkType>(contents); }
 
+void LinkDestination::setNamedAction(std::string name) { this->contents = NamedType{std::move(name)}; }
+
+auto LinkDestination::getNamedAction() const -> std::optional<std::string> {
+    if (auto* t = std::get_if<LinkDestination::NamedType>(&contents)) {
+        return t->name;
+    }
+    return std::nullopt;
+}
+
 auto LinkDestination::getURI() const -> std::optional<std::string> {
     if (auto* t = std::get_if<LinkDestination::LinkType>(&contents)) {
         return t->uri;

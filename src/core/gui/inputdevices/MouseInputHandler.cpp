@@ -8,6 +8,7 @@
 #include "control/settings/ButtonConfig.h"     // for ButtonConfig
 #include "control/settings/Settings.h"         // for Settings
 #include "control/settings/SettingsEnums.h"    // for Button, BUTTON_MOUSE_M...
+#include "gui/PageView.h"                      // for XojPageView
 #include "gui/XournalView.h"                   // for XournalView
 #include "gui/XournalppCursor.h"               // for XournalppCursor
 #include "gui/inputdevices/InputEvents.h"      // for InputEvent, BUTTON_PRE...
@@ -59,6 +60,16 @@ auto MouseInputHandler::handleImpl(InputEvent const& event) -> bool {
         this->actionMotion(event);
         XournalppCursor* cursor = xournal->view->getCursor();
         cursor->setInvisible(false);
+        // Fork: over a PDF link, a click follows it (with a PDF or selection tool, or read-only)
+        bool overLink = false;
+        if (pressedButton == BUTTON_NONE && followsLinks()) {
+            if (XojPageView* page = getPageAtCurrentPosition(event)) {
+                const auto pos = getInputDataRelativeToCurrentPage(page, event);
+                const double zoom = xournal->view->getZoom();
+                overLink = page->hasPdfLinkAt(pos.x / zoom, pos.y / zoom);
+            }
+        }
+        cursor->setOverPdfLink(overLink);
         cursor->updateCursor();
     }
 
@@ -215,6 +226,14 @@ auto MouseInputHandler::changeTool(InputEvent const& event) -> bool {
     }
 
     return true;
+}
+
+auto MouseInputHandler::followsLinks() const -> bool {
+    // The tool a left click uses (see changeTool()): PDF tools follow links, the selection does where it selects
+    // nothing
+    const ToolType type = this->inputContext->getToolHandler()->getToolbarToolType();
+    return inksPage(type) || xoj::tool::isPdfSelectionTool(type) || type == TOOL_SELECT_RECT ||
+           type == TOOL_SELECT_REGION || type == TOOL_SELECT_OBJECT;
 }
 
 void MouseInputHandler::onBlock() {}

@@ -25,6 +25,7 @@
 #include "control/Tool.h"                           // for Tool
 #include "control/ToolEnums.h"                      // for DRAWING_TYPE_SPLINE
 #include "control/ToolHandler.h"                    // for ToolHandler
+#include "control/actions/ActionDatabase.h"         // for ActionDatabase
 #include "control/jobs/XournalScheduler.h"          // for XournalScheduler
 #include "control/layer/LayerController.h"          // for LayerControl
 #include "control/settings/Settings.h"              // for Settings
@@ -229,19 +230,11 @@ static auto blockedWhileReadOnly(Control* control) -> bool {
     if (!control->isReadOnly()) {
         return false;
     }
-    switch (control->getToolHandler()->getToolType()) {
-        case TOOL_HAND:
-        case TOOL_SELECT_PDF_TEXT_LINEAR:
-        case TOOL_SELECT_PDF_TEXT_RECT:
-        case TOOL_COPY_PDF_AREA:
-        case TOOL_LASER_POINTER_PEN:
-        case TOOL_LASER_POINTER_HIGHLIGHTER:
-        case TOOL_PLAY_OBJECT:
-            return false;
-        default:
-            control->notifyReadOnly();
-            return true;
+    if (Control::isUsableReadOnly(control->getToolHandler()->getToolType())) {
+        return false;
     }
+    control->notifyReadOnly();
+    return true;
 }
 
 auto XojPageView::onButtonPressEvent(const PositionInputData& pos) -> bool {
@@ -423,8 +416,9 @@ auto XojPageView::onButtonPressEvent(const PositionInputData& pos) -> bool {
             SelectObject select(this);
             if (pos.isShiftDown() && xournal->getSelection()) {
                 select.atAggregate(x, y);
-            } else {
-                select.at(x, y);
+            } else if (!select.at(x, y)) {
+                // Fork: a click that selects nothing follows a PDF link there (the mouse's default tool)
+                followPdfLinkAt(x, y, pos.deviceId.isPointer());
             }
         } else if (h->getToolType() == TOOL_PLAY_OBJECT) {
             PlayObject play(this);
@@ -765,8 +759,10 @@ auto XojPageView::onButtonReleaseEvent(const PositionInputData& pos) -> bool {
     }
 
     auto* pdfToolbox = control->getWindow()->getPdfToolbox();
+    bool pdfSelected = false;  // Fork: then the release is not a click on a link
     if (auto* selection = pdfToolbox->getSelection()) {
         if (!selection->isFinalized() && selection->finalizeSelectionAndRepaint(pdfToolbox->selectionStyle)) {
+            pdfSelected = true;
             if (control->getToolHandler()->getToolType() == TOOL_COPY_PDF_AREA) {
                 // Fork: the mode copies the area right away
                 pdfToolbox->copyFinishedArea();
@@ -778,18 +774,10 @@ auto XojPageView::onButtonReleaseEvent(const PositionInputData& pos) -> bool {
     }
 
     ToolType toolType = control->getToolHandler()->getActiveTool()->getToolType();
-    if (xoj::tool::isPdfSelectionTool(toolType)) {
+    if (xoj::tool::isPdfSelectionTool(toolType) && !pdfSelected) {
+        // A click: follow a link there (Fork: not after selecting text that ends on a link)
         const double zoom = xournal->getZoom();
-        // Attempt PDF selection
-        auto& pdfDoc = this->xournal->getDocument()->getPdfDocument();
-        if (this->getPage()->getPdfPageNr() != npos) {
-            auto page = pdfDoc.getPage(this->getPage()->getPdfPageNr());
-
-            const double pageX = pos.x / zoom;
-            const double pageY = pos.y / zoom;
-
-            displayLinkPopover(page, pageX, pageY);
-        }
+        followPdfLinkAt(pos.x / zoom, pos.y / zoom, pos.deviceId.isPointer());
     }
 
     if (this->selector) {
@@ -819,10 +807,8 @@ auto XojPageView::onButtonReleaseEvent(const PositionInputData& pos) -> bool {
             }
             // Fork: a click that selects nothing follows a PDF link there (the mouse selects instead of drawing, so
             // it is not using a PDF tool, which shows links otherwise)
-            if (!selected && this->page->getPdfPageNr() != npos) {
-                if (auto pdfPage = xournal->getDocument()->getPdfDocument().getPage(this->page->getPdfPageNr())) {
-                    displayLinkPopover(pdfPage, pos.x / zoom, pos.y / zoom);
-                }
+            if (!selected) {
+                followPdfLinkAt(pos.x / zoom, pos.y / zoom, pos.deviceId.isPointer());
             }
         }
         this->selector.reset();
@@ -1063,6 +1049,113 @@ auto XojPageView::showPdfLinkAt(int x, int y) -> bool {
     return displayLinkPopover(pdfPage, (x - origin.x) / zoom, (y - origin.y) / zoom);
 }
 
+/// Fork: the action a named PDF link (e.g. beamer's navigation symbols) stands for
+static auto actionForNamedLink(const std::string& name) -> std::optional<Action> {
+    if (name == "NextPage") {
+        return Action::GOTO_NEXT;
+    } else if (name == "PrevPage") {
+        return Action::GOTO_PREVIOUS;
+    } else if (name == "FirstPage") {
+        return Action::GOTO_FIRST;
+    } else if (name == "LastPage") {
+        return Action::GOTO_LAST;
+    } else if (name == "GoBack") {
+        return Action::NAVIGATE_BACK;
+    } else if (name == "GoForward") {
+        return Action::NAVIGATE_FORWARD;
+    } else if (name == "Find") {
+        return Action::SEARCH;
+    }
+    return std::nullopt;
+}
+
+/// Fork: whether following the link does something
+static auto leadsSomewhere(const LinkDestination& dest) -> bool {
+    if (dest.getURI()) {
+        return true;
+    }
+    if (auto name = dest.getNamedAction()) {
+        return actionForNamedLink(*name).has_value();
+    }
+    return dest.getPdfPage() != npos;
+}
+
+auto XojPageView::followPdfLink(const LinkDestination& dest) -> bool {
+    Control* control = xournal->getControl();
+    if (auto uri = dest.getURI()) {
+        GError* error = nullptr;
+        if (!gtk_show_uri_on_window(control->getGtkWindow(), uri->c_str(), GDK_CURRENT_TIME, &error)) {
+            g_warning("Cannot open the link %s: %s", uri->c_str(), error ? error->message : "");
+            if (error) {
+                g_error_free(error);
+            }
+            return false;
+        }
+        return true;
+    }
+    if (auto name = dest.getNamedAction()) {
+        auto action = actionForNamedLink(*name);
+        if (action && control->getActionDatabase()) {
+            control->getActionDatabase()->fireActivateAction(*action);
+        }
+        return action.has_value();
+    }
+    if (dest.getPdfPage() == npos) {
+        return false;
+    }
+    control->getScrollHandler()->scrollToLinkDest(dest);  // records the jump for "Back"
+    return true;
+}
+
+auto XojPageView::hasPdfLinkAt(double pageX, double pageY) -> bool {
+    const size_t pdfPageNr = this->page->getPdfPageNr();
+    if (pdfPageNr == npos) {
+        return false;
+    }
+    // getLinks() reads them from the PDF every time: keep them for the mouse moving over the page
+    const auto& pdfDoc = xournal->getDocument()->getPdfDocument();
+    auto pdfPage = pdfDoc.getPage(pdfPageNr);
+    if (!pdfPage) {
+        return false;
+    }
+    const void* identity = pdfDoc.getData().get();
+    if (pdfPageNr != linkAreasPage || identity != linkAreasData || !linkAreasValid) {
+        linkAreas.clear();
+        for (auto&& [rect, action]: pdfPage->getLinks()) {
+            if (leadsSomewhere(*action->getDestination())) {
+                linkAreas.push_back(rect);
+            }
+        }
+        linkAreasPage = pdfPageNr;
+        linkAreasData = identity;
+        linkAreasValid = true;
+    }
+    return std::any_of(linkAreas.begin(), linkAreas.end(), [&](const XojPdfRectangle& r) {
+        return r.x1 <= pageX && pageX <= r.x2 && r.y1 <= pageY && pageY <= r.y2;
+    });
+}
+
+auto XojPageView::followPdfLinkAt(double pageX, double pageY, bool directly) -> bool {
+    if (this->page->getPdfPageNr() == npos) {
+        return false;
+    }
+    auto pdfPage = xournal->getDocument()->getPdfDocument().getPage(this->page->getPdfPageNr());
+    if (!pdfPage) {
+        return false;
+    }
+    if (!directly) {
+        return displayLinkPopover(pdfPage, pageX, pageY);
+    }
+    for (auto&& [rect, action]: pdfPage->getLinks()) {
+        if (rect.x1 <= pageX && pageX <= rect.x2 && rect.y1 <= pageY && pageY <= rect.y2) {
+            if (followPdfLink(*action->getDestination())) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 bool XojPageView::displayLinkPopover(std::shared_ptr<XojPdfPage> page, double pageX, double pageY) {
     // Search for selected link
     const auto links = page->getLinks();
@@ -1073,23 +1166,25 @@ bool XojPageView::displayLinkPopover(std::shared_ptr<XojPdfPage> page, double pa
         if (!(rect.x1 <= pageX && pageX <= rect.x2 && rect.y1 <= pageY && pageY <= rect.y2)) {
             continue;
         }
+        if (!leadsSomewhere(*dest)) {
+            continue;  // Fork: e.g. a link to another file: no dead button
+        }
+
+        if (dest->getNamedAction()) {
+            // Fork: navigation symbols act at once, like the navigation buttons of the window
+            followPdfLink(*dest);
+            return true;
+        }
 
         GtkWidget* box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
         GtkWidget* popover = makePopover(rect, box);
 
         if (auto uriOpt = dest->getURI()) {
-            const std::string& uri = uriOpt.value();
-            char* uriLabel = g_markup_escape_text(uri.c_str(), -1);
-
-            auto labelMarkup = serdes_stream<std::stringstream>();
-            labelMarkup << "<a href=" << std::quoted(uri) << ">" << uriLabel << "</a>";
-
-            std::string linkMarkup = labelMarkup.str();
-
-            g_free(uriLabel);
-
+            // Fork: escaped also in the attribute (a "&" in the query made the label empty)
+            gchar* linkMarkup = g_markup_printf_escaped("<a href=\"%s\">%s</a>", uriOpt->c_str(), uriOpt->c_str());
             GtkWidget* label = gtk_label_new(nullptr);
-            gtk_label_set_markup(GTK_LABEL(label), linkMarkup.c_str());
+            gtk_label_set_markup(GTK_LABEL(label), linkMarkup);
+            g_free(linkMarkup);
             gtk_box_append(GTK_BOX(box), label);
         } else {
             size_t pdfPage = dest->getPdfPage();
@@ -1135,6 +1230,16 @@ GtkWidget* XojPageView::makePopover(const XojPdfRectangle& rect, GtkWidget* chil
 
     GtkWidget* popover = gtk_popover_new(this->getXournal()->getWidget());
     gtk_popover_set_child(GTK_POPOVER(popover), child);
+    // Fork: one popover per click; without this they piled up on the canvas
+    g_signal_connect(popover, "closed", G_CALLBACK(+[](GtkPopover* p, gpointer) {
+                         g_idle_add(
+                                 +[](gpointer w) -> gboolean {
+                                     gtk_widget_destroy(GTK_WIDGET(w));
+                                     return G_SOURCE_REMOVE;
+                                 },
+                                 p);
+                     }),
+                     nullptr);
 
     auto p = getPixelPosition();
     auto q = this->getXournal()->getScrollHandling()->getPosition();

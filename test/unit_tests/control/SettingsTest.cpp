@@ -11,6 +11,7 @@
 
 #include <gtest/gtest.h>
 
+#include "control/settings/ButtonConfig.h"
 #include "control/settings/Settings.h"
 
 TEST(SettingsTest, testLoadDoesNotThrowForNonExistingFilePath) {
@@ -98,4 +99,10 @@ TEST(SettingsTest, testTypicalPenPressure) {
     loaded.load();
     EXPECT_NEAR(loaded.getTypicalPenPressure(), 0.47, 1e-6);
     fs::remove(outPath);
+}
+
+// Fork: the mouse never draws; by default it selects objects (MouseInputHandler::changeTool)
+TEST(SettingsTest, mouseSelectsObjectsByDefault) {
+    Settings settings{"non-existing-file-path"};
+    EXPECT_EQ(settings.getButtonConfig(BUTTON_MOUSE_LEFT)->getAction(), TOOL_SELECT_OBJECT);
 }
