@@ -23,10 +23,6 @@
 #include "util/XojMsgBox.h"                 // for XojMsgBox
 #include "util/i18n.h"                      // for _
 
-#ifdef _WIN32
-#include <windows.h>
-#endif
-
 namespace {
 
 void showError(Control* control, const std::string& message, const std::string& detail = {}) {
@@ -35,18 +31,7 @@ void showError(Control* control, const std::string& message, const std::string& 
 
 /// The companion PDF is also hidden in the Windows Explorer (Git does not keep the attribute, the name still hides
 /// it in the project explorer)
-void setHidden(const fs::path& path, bool hidden) {
-#ifdef _WIN32
-    const DWORD attributes = GetFileAttributesW(path.c_str());
-    if (attributes != INVALID_FILE_ATTRIBUTES) {
-        SetFileAttributesW(path.c_str(),
-                           hidden ? attributes | FILE_ATTRIBUTE_HIDDEN : attributes & ~DWORD(FILE_ATTRIBUTE_HIDDEN));
-    }
-#else
-    (void)path;
-    (void)hidden;
-#endif
-}
+void setHidden(const fs::path& path, bool hidden) { Util::setHiddenFile(path, hidden); }
 
 auto writeFile(const fs::path& path, const std::string& data) -> bool {
     std::ofstream out(path, std::ios::binary | std::ios::trunc);

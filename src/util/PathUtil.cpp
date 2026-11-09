@@ -580,3 +580,16 @@ auto Util::listFilesSorted(fs::path directory) -> std::vector<fs::path> {
     std::sort(filePaths.begin(), filePaths.end());
     return filePaths;
 }
+
+void Util::setHiddenFile(const fs::path& path, bool hidden) {
+#ifdef _WIN32
+    const DWORD attributes = GetFileAttributesW(path.c_str());
+    if (attributes != INVALID_FILE_ATTRIBUTES) {
+        SetFileAttributesW(path.c_str(),
+                           hidden ? attributes | FILE_ATTRIBUTE_HIDDEN : attributes & ~DWORD(FILE_ATTRIBUTE_HIDDEN));
+    }
+#else
+    (void)path;
+    (void)hidden;
+#endif
+}

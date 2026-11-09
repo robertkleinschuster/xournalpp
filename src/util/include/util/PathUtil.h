@@ -177,4 +177,8 @@ fs::path getCustomPaletteDirectoryPath();
  * @return files in directory
  */
 std::vector<fs::path> listFilesSorted(fs::path directory);
+
+/// Fork: sets or clears the hidden attribute of a file on Windows (no-op elsewhere, where a leading dot hides it).
+/// Windows does not replace hidden files, so clear it before replacing one.
+void setHiddenFile(const fs::path& path, bool hidden);
 }  // namespace Util
