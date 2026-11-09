@@ -17,7 +17,8 @@
 
 #include "SidebarPreviewBase.h"  // for SidebarPreviewBase
 
-static constexpr int MAX_MINIATURE_SIZE = 500;  ///< in pixels - avoid things going very wrong when pages are huge
+/// in pixels - avoid things going very wrong when pages are huge (Fork: miniatures scale with the sidebar width)
+static constexpr int MAX_MINIATURE_SIZE = 2000;
 
 SidebarPreviewBaseEntry::SidebarPreviewBaseEntry(SidebarPreviewBase* sidebar, const PageRef& page):
         sidebar(sidebar), page(page), button(gtk_button_new(), xoj::util::adopt) {

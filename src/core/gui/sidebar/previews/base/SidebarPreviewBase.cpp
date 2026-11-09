@@ -1,7 +1,8 @@
 #include "SidebarPreviewBase.h"
 
-#include <cstdlib>  // for abs, size_t
-#include <mutex>    // for lock_guard
+#include <algorithm>  // for clamp, max
+#include <cstdlib>    // for abs, size_t
+#include <mutex>      // for lock_guard
 
 #include <glib-object.h>  // for g_object_ref, G_CALLBACK, g_sig...
 #include <glib.h>         // for g_idle_add
@@ -9,11 +10,13 @@
 #include "control/Control.h"   // for Control
 #include "control/PdfCache.h"  // for PdfCache
 #include "control/jobs/XournalScheduler.h"
-#include "gui/Builder.h"       // for Builder
-#include "gui/MainWindow.h"    // for MainWindow
-#include "model/Document.h"    // for Document
-#include "util/Util.h"         // for npos
-#include "util/glib_casts.h"   // for wrap_for_once_v
+#include "gui/Builder.h"      // for Builder
+#include "gui/MainWindow.h"   // for MainWindow
+#include "gui/Shadow.h"       // for Shadow
+#include "model/Document.h"   // for Document
+#include "model/XojPage.h"    // for XojPage
+#include "util/Util.h"        // for npos
+#include "util/glib_casts.h"  // for wrap_for_once_v
 #include "util/gtk4_helper.h"
 
 #include "SidebarLayout.h"            // for SidebarLayout
@@ -71,11 +74,31 @@ void SidebarPreviewBase::enableSidebar() {
 void SidebarPreviewBase::disableSidebar() { enabled = false; }
 
 void SidebarPreviewBase::newWidth(double width) {
-    static constexpr double TRIGGER = 20.;
+    static constexpr double TRIGGER = 8.;
 
     if (std::abs(lastWidth - width) > TRIGGER) {
-        this->layout();
         lastWidth = width;
+        // Fork: one column whose miniatures are as wide as the sidebar (wider sidebar, larger miniatures)
+        double widest = 0;
+        Document* doc = this->control->getDocument();
+        doc->lock_shared();
+        for (size_t i = 0; i < doc->getPageCount(); i++) {
+            widest = std::max(widest, doc->getPage(i)->getWidth());
+        }
+        doc->unlock_shared();
+        // The shadow around a miniature, and room for a scrollbar
+        const double padding = Shadow::getShadowBottomRightSize() + Shadow::getShadowTopLeftSize() + 4 + 16;
+        if (widest > 0 && width > padding) {
+            const double newZoom = std::clamp((width - padding) / widest, 0.05, 2.0);
+            if (std::abs(newZoom - this->zoom) > 1e-3) {
+                this->zoom = newZoom;
+                for (auto& preview: this->previews) {
+                    preview->updateSize();
+                    preview->repaint();
+                }
+            }
+        }
+        this->layout();
     }
 }
 
