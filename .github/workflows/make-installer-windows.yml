@@ -95,6 +95,30 @@ jobs:
             mkdir portable_content/
             mv dist "portable_content/xournalpp-$FULL_VERSION_STRING-windows-portable-$ARCH"
           fi
+      - name: 'Smoke test the package without MSYS2'
+        if: ${{ inputs.fork_installer }}
+        working-directory: ${{github.workspace}}/build
+        shell: pwsh
+        run: |
+          # Run the packaged program with only Windows on PATH, like on a machine without MSYS2:
+          # a DLL or data file missing from the package makes it fail here instead of on the user's machine.
+          $exe = Get-ChildItem -Recurse -Filter xournalpp.exe -Path dist, portable_content -ErrorAction SilentlyContinue |
+              Where-Object { $_.Directory.Name -eq 'bin' } | Select-Object -First 1
+          if (-not $exe) { throw 'Packaged xournalpp.exe not found' }
+          $scratch = Join-Path $env:RUNNER_TEMP 'smoke'
+          New-Item -ItemType Directory -Force $scratch | Out-Null
+          $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot;$env:SystemRoot\System32\WindowsPowerShell\v1.0"
+          Remove-Item Env:MSYSTEM -ErrorAction SilentlyContinue
+          $env:XDG_CONFIG_HOME = "$scratch\config"; $env:XDG_DATA_HOME = "$scratch\data"; $env:XDG_CACHE_HOME = "$scratch\cache"
+          $log = "$scratch\stderr.txt"
+          $p = Start-Process -FilePath $exe.FullName -PassThru -Wait -NoNewWindow -RedirectStandardError $log `
+              -ArgumentList "--create-pdf=`"$scratch\out.pdf`"", "`"${{github.workspace}}\test\files\benchmark\typed-text.xopp`""
+          Get-Content $log
+          if ($p.ExitCode -ne 0) { throw "Export failed with exit code $($p.ExitCode)" }
+          if (-not (Test-Path "$scratch\out.pdf")) { throw 'No PDF was written' }
+          if (Select-String -Path $log -Pattern 'Fontconfig error|Gtk-WARNING|Could not load|cannot open shared' -Quiet) {
+              throw 'The packaged program reported missing files'
+          }
       - name: 'Publish package'
         id: publish
         uses: actions/upload-artifact@v6
