@@ -46,6 +46,8 @@
 - Run windows-setup/build-local.ps1 for an incremental build, package, and side-by-side installation.
 - Use -SkipInstall if the fork is running; install-fork.ps1 refuses to overwrite files locked by a running process.
 - The manually triggered CI workflow is .github/workflows/fork-windows-build.yml.
+- Releases: pushing a tag `xournal-studio-v*` (or running the workflow with `release_tag`) builds the installer and a portable ZIP and publishes both as a GitHub release. Before publishing, the packaged program exports a PDF with only Windows on PATH (smoke test in make-installer-windows.yml).
+- The installer must run on a plain Windows 11 without MSYS2: package.sh copies the imports of every bundled .exe/.dll from MSYS2 until nothing is missing, bundles `etc/fonts` (fontconfig finds no fonts without it), and fails via check-dependencies.sh if a DLL is neither bundled nor part of Windows (Visual C++ runtime DLLs count as missing).
 
 ## Repository cautions
 

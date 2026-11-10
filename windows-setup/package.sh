@@ -88,6 +88,12 @@ cp -r "$prefix"/share/glib-2.0 "$setup_dir"/share/
 echo "copy poppler shared"
 cp -r "$prefix"/share/poppler "$setup_dir"/share/
 
+echo "copy fontconfig configuration"
+# Fork: fontconfig looks for ../etc/fonts next to its DLL; without it, it has no font directories outside MSYS2
+# ("Cannot load default config file"). The configuration points it at the Windows font folders.
+mkdir -p "$setup_dir"/etc
+cp -rL "$prefix"/etc/fonts "$setup_dir"/etc/
+
 echo "copy gtksourceview shared"
 cp -r "$prefix"/share/gtksourceview-4 "$setup_dir"/share
 
@@ -114,6 +120,30 @@ cp -r "$prefix"/share/lua/5.5/LuaGObject/ "$setup_dir"/share/lua/5.5
 echo "copy qpdf"
 cp "$prefix"/bin/libqpdf*.dll "$setup_dir"/bin
 cp "$prefix"/lib/libqpdf* "$setup_dir"/lib
+
+echo "copy dependencies of all bundled modules"
+# Fork: ldd above only covers xournalpp.exe and the loop above only the pixbuf loaders. The wrapper, the Lua module,
+# the gspawn/gdbus helpers and their libraries have their own imports: follow the imports of every bundled .exe/.dll
+# until all MSYS2 libraries are in bin/. Windows system DLLs are not in $prefix/bin and stay out.
+declare -A scanned_modules
+while true; do
+    copied_any=0
+    while IFS= read -r -d '' module; do
+        [[ -n ${scanned_modules[$module]+x} ]] && continue
+        scanned_modules[$module]=1
+        while IFS= read -r dependency; do
+            if [[ ! -e "$setup_dir/bin/$dependency" && -f "$prefix/bin/$dependency" ]]; then
+                echo "  $dependency (for ${module#"$setup_dir"/})"
+                cp "$prefix/bin/$dependency" "$setup_dir/bin/" || exit 1
+                copied_any=1
+            fi
+        done < <(objdump -p "$module" | sed -n 's/^[[:space:]]*DLL Name: //p' | tr -d '\r')
+    done < <(find "$setup_dir" -type f \( -iname '*.exe' -o -iname '*.dll' \) -print0)
+    [[ $copied_any -eq 0 ]] && break
+done
+
+echo "check that the package runs on a plain Windows installation"
+bash "$script_dir/check-dependencies.sh" "$setup_dir" || exit 1
 
 echo "create installer"
 version=$(cat "$build_dir/VERSION" | sed '1!d')
