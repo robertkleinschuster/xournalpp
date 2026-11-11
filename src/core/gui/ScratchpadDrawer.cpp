@@ -120,7 +120,7 @@ ScratchpadDrawer::~ScratchpadDrawer() {
         g_signal_handlers_disconnect_by_data(overlay, this);
         g_object_remove_weak_pointer(G_OBJECT(overlay), reinterpret_cast<gpointer*>(&overlay));
     }
-    for (GtkWidget** widget: {&tab, &panel, &area}) {
+    for (GtkWidget** widget: {&tab, &clip, &panel, &area}) {
         if (*widget) {
             g_signal_handlers_disconnect_by_data(*widget, this);
             g_object_remove_weak_pointer(G_OBJECT(*widget), reinterpret_cast<gpointer*>(widget));
@@ -275,10 +275,22 @@ void ScratchpadDrawer::buildWidgets(GtkOverlay* gtkOverlay) {
                      this);
     gtk_box_pack_start(GTK_BOX(panel), area, true, true, 0);
 
-    for (GtkWidget** widget: {&tab, &panel, &area}) {
+    // GtkOverlay gives each overlay child a window in the window of its parent, without clipping it to the canvas: a
+    // panel allocated above the canvas covered the read-only bar there and took all its clicks, also while closed
+    // (the overlay keeps the window of a child that is not child-visible). The layout's own window clips the panel to
+    // the visible part of the sheet; scrolling it shows the panel's lower edge without laying the panel out again.
+    clip = gtk_layout_new(nullptr, nullptr);
+    gtk_layout_put(GTK_LAYOUT(clip), panel, 0, 0);
+    g_signal_connect_after(clip, "size-allocate", G_CALLBACK(+[](GtkWidget* w, GdkRectangle*, gpointer d) {
+                               gtk_adjustment_set_value(gtk_scrollable_get_vadjustment(GTK_SCROLLABLE(w)),
+                                                        static_cast<ScratchpadDrawer*>(d)->sheetOffset);
+                           }),
+                           this);
+
+    for (GtkWidget** widget: {&tab, &clip, &panel, &area}) {
         g_object_add_weak_pointer(G_OBJECT(*widget), reinterpret_cast<gpointer*>(widget));
     }
-    gtk_overlay_add_overlay(gtkOverlay, panel);
+    gtk_overlay_add_overlay(gtkOverlay, clip);
     gtk_overlay_add_overlay(gtkOverlay, tab);
     g_signal_connect(gtkOverlay, "get-child-position",
                      G_CALLBACK(+[](GtkOverlay*, GtkWidget* child, GdkRectangle* allocation, gpointer d) -> gboolean {
@@ -286,8 +298,9 @@ void ScratchpadDrawer::buildWidgets(GtkOverlay* gtkOverlay) {
                      }),
                      this);
     gtk_widget_show_all(panel);
+    gtk_widget_set_no_show_all(clip, true);  // hidden while closed: an overlay child's window stays while it is shown
     gtk_widget_show(tab);
-    gtk_widget_set_child_visible(panel, false);
+    gtk_widget_set_no_show_all(tab, true);  // stays hidden while the scratchpad is the open document
     updateButtons();
 }
 
@@ -313,7 +326,7 @@ auto ScratchpadDrawer::openHeight() const -> double {
 }
 
 auto ScratchpadDrawer::childPosition(GtkWidget* child, GdkRectangle* allocation) -> gboolean {
-    if (child != panel && child != tab) {
+    if (child != clip && child != tab) {
         return FALSE;
     }
     const int width = gtk_widget_get_allocated_width(overlay);
@@ -323,11 +336,18 @@ auto ScratchpadDrawer::childPosition(GtkWidget* child, GdkRectangle* allocation)
     // Moving, it may overshoot the full height a little (spring, rubber band)
     shown = std::min(shown, maxHeight() + (animation || dragging ? RUBBER_BAND : 0));
     const int visible = static_cast<int>(std::round(shown));
-    if (child == panel) {
-        // Allocated at its full height with its lower edge at the visible height, so the paper does not reflow while
-        // sliding down from the top; the overlay clips it
+    if (child == clip) {
+        // The panel keeps its full height with its lower edge at the visible height, so the paper does not reflow
+        // while sliding down from the top; the clip window shows only the visible part, within the canvas
         const int full = std::max(visible, static_cast<int>(openHeight()));
-        *allocation = {0, visible - full, width, full};
+        *allocation = {0, 0, width, visible};
+        if (width != sheetWidth || full != sheetHeight) {
+            sheetWidth = width;
+            sheetHeight = full;
+            gtk_widget_set_size_request(panel, width, full);
+            gtk_layout_set_size(GTK_LAYOUT(clip), static_cast<guint>(width), static_cast<guint>(full));
+        }
+        sheetOffset = full - visible;
     } else {
         int tabWidth = 0, tabHeight = 0;
         gtk_widget_get_preferred_width(tab, nullptr, &tabWidth);
@@ -343,8 +363,8 @@ void ScratchpadDrawer::setShown(double value) {
         scrollSequence = nullptr;  // its end is not delivered to a hidden sheet
         momentum->forgetMovement();
     }
-    if (panel) {
-        gtk_widget_set_child_visible(panel, shown > 0.5);
+    if (clip && gtk_widget_get_visible(clip) != (shown > 0.5)) {
+        gtk_widget_set_visible(clip, shown > 0.5);
     }
     if (overlay) {
         gtk_widget_queue_allocate(overlay);
@@ -690,7 +710,7 @@ void ScratchpadDrawer::documentChanged(DocumentChangeType type) {
     }
     hidden = nowHidden;
     if (tab) {
-        gtk_widget_set_child_visible(tab, !hidden);
+        gtk_widget_set_visible(tab, !hidden);  // not child-visible: the overlay would keep its window, taking input
     }
 }
 

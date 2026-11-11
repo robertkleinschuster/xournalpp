@@ -122,6 +122,8 @@ private:
     Control* control;
     GtkWidget* overlay = nullptr;
     GtkWidget* tab = nullptr;
+    /// Holds the panel in its own window, which clips it to the visible part of the sheet (see childPosition)
+    GtkWidget* clip = nullptr;
     GtkWidget* panel = nullptr;
     GtkWidget* area = nullptr;
     GtkWidget* penButton = nullptr;
@@ -134,6 +136,9 @@ private:
     bool open = false;
     bool hidden = false;     ///< the scratchpad is open as the document
     double shown = 0;        ///< visible height of the sheet in pixels
+    int sheetWidth = 0;      ///< size the panel is laid out at
+    int sheetHeight = 0;
+    int sheetOffset = 0;  ///< how far the panel is scrolled up in the clip window, so its lower edge shows
     double fraction = 0.45;  ///< of the canvas height when open
     bool dragging = false;
     double dragStartRootY = 0;
