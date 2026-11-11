@@ -138,7 +138,7 @@ private:
     double shown = 0;        ///< visible height of the sheet in pixels
     int sheetWidth = 0;      ///< size the panel is laid out at
     int sheetHeight = 0;
-    int sheetOffset = 0;  ///< how far the panel is scrolled up in the clip window, so its lower edge shows
+    int sheetOffset = 0;     ///< how far the panel is scrolled up in the clip window, so its lower edge shows
     double fraction = 0.45;  ///< of the canvas height when open
     bool dragging = false;
     double dragStartRootY = 0;
