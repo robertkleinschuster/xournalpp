@@ -22,5 +22,7 @@ if (WIN32)
     target_link_libraries(xournalpp-core PUBLIC hid)
     # Fork: 1 ms timer resolution while the pen is in range (gui/InputSafety.cpp), so frames are not delayed
     target_link_libraries(xournalpp-core PUBLIC winmm)
+    # Fork: ink drawn by the compositor while writing (gui/DelegatedInk.cpp)
+    target_link_libraries(xournalpp-core PUBLIC dcomp d3d11 dxgi)
 endif ()
 add_library(xoj::core ALIAS xournalpp-core)

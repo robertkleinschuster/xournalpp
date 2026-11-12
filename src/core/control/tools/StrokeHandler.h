@@ -22,6 +22,7 @@
 #include "SnapToGridInputHandler.h"  // for SnapToGridInputHandler
 
 class Control;
+class DelegatedInk;
 class Layer;
 class PositionInputData;
 class Stroke;
@@ -105,4 +106,13 @@ private:
     friend class StrokeStabilizer::Active;
 
     static constexpr double MAX_WIDTH_VARIATION = 0.3;
+
+    /// Fork: the compositor draws the stroke ahead of the application's frames (gui/DelegatedInk); nullptr if not
+    DelegatedInk* ink = nullptr;
+    double inkOriginX = 0;  ///< the page's origin in pixels of the window's client area
+    double inkOriginY = 0;
+    double inkScale = 1;  ///< page coordinates to client pixels
+    void startInk(double zoom);
+    void addInkPoint(const Point& point);
+    void endInk();
 };

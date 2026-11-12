@@ -13,6 +13,7 @@
 #include "control/Control.h"                // for Control
 #include "control/settings/Settings.h"      // for Settings
 #include "control/tools/EditSelection.h"    // for EditSelection
+#include "gui/DelegatedInk.h"               // for DelegatedInk
 #include "gui/Layout.h"                     // for Layout
 #include "gui/LegacyRedrawable.h"           // for Redrawable
 #include "gui/PageView.h"                   // for XojPageView
@@ -411,6 +412,11 @@ static auto gtk_xournal_draw(GtkWidget* widget, cairo_t* cr) -> gboolean {
 
     if (recolor) {
         recolor->recolorCurrentCairoRegion(cr);
+    }
+
+    // Fork: this frame has the stroke written so far; the compositor's ink trail can go (gui/DelegatedInk)
+    if (DelegatedInk* ink = DelegatedInk::forWindow(nullptr)) {
+        ink->frameDrawn();
     }
 
     return true;

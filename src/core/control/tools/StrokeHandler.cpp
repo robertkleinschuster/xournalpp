@@ -9,17 +9,21 @@
 
 #include <gdk/gdk.h>  // for GdkEventKey
 
-#include "control/Control.h"                                // for Control
-#include "control/ToolEnums.h"                              // for DRAWING_TYPE_ST...
-#include "control/ToolHandler.h"                            // for ToolHandler
-#include "control/layer/LayerController.h"                  // for LayerController
-#include "control/settings/Settings.h"                      // for Settings
-#include "control/settings/SettingsEnums.h"                 // for EmptyLastPageAppendType
-#include "control/shaperecognizer/ShapeRecognizer.h"        // for ShapeRecognizer
-#include "control/tools/InputHandler.h"                     // for InputHandler::P...
-#include "control/tools/SnapToGridInputHandler.h"           // for SnapToGridInput...
-#include "gui/inputdevices/PositionInputData.h"             // for PositionInputData
-#include "model/Document.h"                                 // for Document
+#include "control/Control.h"                          // for Control
+#include "control/ToolEnums.h"                        // for DRAWING_TYPE_ST...
+#include "control/ToolHandler.h"                      // for ToolHandler
+#include "control/layer/LayerController.h"            // for LayerController
+#include "control/settings/Settings.h"                // for Settings
+#include "control/settings/SettingsEnums.h"           // for EmptyLastPageAppendType
+#include "control/shaperecognizer/ShapeRecognizer.h"  // for ShapeRecognizer
+#include "control/tools/InputHandler.h"               // for InputHandler::P...
+#include "control/tools/SnapToGridInputHandler.h"     // for SnapToGridInput...
+#include "gui/DelegatedInk.h"                         // for DelegatedInk
+#include "gui/Layout.h"                               // for Layout
+#include "gui/MainWindow.h"                           // for MainWindow
+#include "gui/XournalView.h"                          // for XournalView
+#include "gui/inputdevices/PositionInputData.h"       // for PositionInputData
+#include "model/Document.h"                           // for Document
 #include "model/Element.h"
 #include "model/Layer.h"                                    // for Layer
 #include "model/LineStyle.h"                                // for LineStyle
@@ -32,6 +36,7 @@
 #include "util/DispatchPool.h"                              // for DispatchPool
 #include "util/Range.h"                                     // for Range
 #include "util/Rectangle.h"                                 // for Rectangle, util
+#include "util/Util.h"                                      // for npos
 #include "view/overlays/StrokeToolFilledHighlighterView.h"  // for StrokeToolFilledHighlighterView
 #include "view/overlays/StrokeToolFilledView.h"             // for StrokeToolFilledView
 #include "view/overlays/StrokeToolView.h"                   // for StrokeToolView
@@ -48,7 +53,7 @@ StrokeHandler::StrokeHandler(Control* control, const PageRef& page):
     snappingHandler.setPageRef(page);
 }
 
-StrokeHandler::~StrokeHandler() = default;
+StrokeHandler::~StrokeHandler() { endInk(); }
 
 auto StrokeHandler::onKeyPressEvent(const KeyEvent&) -> bool { return false; }
 auto StrokeHandler::onKeyReleaseEvent(const KeyEvent&) -> bool { return false; }
@@ -125,10 +130,12 @@ void StrokeHandler::drawSegmentTo(const Point& point) {
 
     this->stroke->addPoint(this->hasPressure ? point : Point(point.x, point.y));
     this->viewPool->dispatch(xoj::view::StrokeToolView::ADD_POINT_REQUEST, this->stroke->getPointVector().back());
+    addInkPoint(this->stroke->getPointVector().back());
     return;
 }
 
 void StrokeHandler::onSequenceCancelEvent() {
+    endInk();
     if (this->stroke) {
         this->viewPool->dispatchAndClear(xoj::view::StrokeToolView::CANCELLATION_REQUEST,
                                          Range(this->stroke->getBoundingBox()));
@@ -169,6 +176,7 @@ void StrokeHandler::onButtonReleaseEvent(const PositionInputData& pos, double zo
         return;
     }
     finalizeStroke(pos.pressure);
+    endInk();
 
     // Fork: learn the share of the width that handwriting typically has (see InputHandler::createShapeStroke). Only
     // longer strokes count; dots and the first point's pressure ramp would distort it.
@@ -282,6 +290,65 @@ void StrokeHandler::onButtonPressEvent(const PositionInputData& pos, double zoom
     stroke->addPoint(Point(this->buttonDownPoint.x, this->buttonDownPoint.y, width));
 
     stabilizer->initialize(this, zoom, pos);
+    startInk(zoom);
+}
+
+void StrokeHandler::startInk(double zoom) {
+    // Opaque, solid, unfilled ink only: the compositor's trail is a plain line of the stroke's color
+    const Stroke& s = *this->stroke;
+    if (s.getToolType() != StrokeTool::PEN || s.getFill() != -1 || s.getLineStyle().hasDashes()) {
+        return;
+    }
+    MainWindow* win = control->getWindow();
+    if (!win || !win->getXournal()) {
+        return;
+    }
+    GtkWidget* toplevel = win->getWindow();
+    this->ink = DelegatedInk::forWindow(toplevel);
+    if (!this->ink) {
+        return;
+    }
+    // Page coordinates to pixels of the window's client area, fixed for the stroke (the view does not scroll while
+    // writing)
+    XournalView* view = win->getXournal();
+    Document* doc = control->getDocument();
+    doc->lock_shared();
+    const size_t pageIndex = doc->indexOf(this->page);
+    doc->unlock_shared();
+    if (pageIndex == npos) {
+        this->ink = nullptr;
+        return;
+    }
+    Layout* layout = view->getLayout();
+    const auto pagePos = layout->getPixelCoordinatesOfEntry(pageIndex);
+    const auto visible = layout->getVisibleRect();
+    int widgetX = 0, widgetY = 0;
+    gtk_widget_translate_coordinates(view->getWidget(), toplevel, 0, 0, &widgetX, &widgetY);
+    const double scale = gtk_widget_get_scale_factor(toplevel);
+    this->inkOriginX = (widgetX + pagePos.x - visible.x) * scale;
+    this->inkOriginY = (widgetY + pagePos.y - visible.y) * scale;
+    this->inkScale = zoom * scale;
+
+    const Color color = s.getColor();
+    this->ink->startTrail(color.red / 255.f, color.green / 255.f, color.blue / 255.f, 1.f);
+    addInkPoint(s.getPointVector().back());
+}
+
+void StrokeHandler::addInkPoint(const Point& point) {
+    if (!this->ink) {
+        return;
+    }
+    const double width = point.z == Point::NO_PRESSURE ? this->stroke->getWidth() : point.z;
+    this->ink->addPoint(static_cast<float>(this->inkOriginX + point.x * this->inkScale),
+                        static_cast<float>(this->inkOriginY + point.y * this->inkScale),
+                        static_cast<float>(width * this->inkScale / 2));
+}
+
+void StrokeHandler::endInk() {
+    if (this->ink) {
+        this->ink->endTrail();
+        this->ink = nullptr;
+    }
 }
 
 void StrokeHandler::onButtonDoublePressEvent(const PositionInputData&, double) {
