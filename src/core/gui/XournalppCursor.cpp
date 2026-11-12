@@ -258,7 +258,8 @@ void XournalppCursor::updateCursor() {
             } else {
                 setCursor(CRSR_GRAB);
             }
-        } else if (!this->insidePage) {
+        } else if (!this->insidePage && !this->selectionType) {
+            // Fork: a selection's handles may lie over the background beside the page; they keep their cursor there
             setCursor(CRSR_DEFAULT);
         } else if (this->selectionType) {
             switch (this->selectionType) {
