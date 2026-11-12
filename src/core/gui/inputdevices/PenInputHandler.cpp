@@ -99,8 +99,17 @@ auto PenInputHandler::actionStart(InputEvent const& event) -> bool {
 
     ToolHandler* toolHandler = this->inputContext->getToolHandler();
 
+    // Fork: a selection's handles (e.g. its delete button) may lie beside the page, over the background; a press on
+    // them acts on the selection, not as hand tool
+    bool onSelectionHandle = false;
+    if (GtkXournal* widget = this->inputContext->getXournal(); currentPage == nullptr && widget->selection) {
+        const auto pos = this->getInputDataRelativeToCurrentPage(widget->selection->getView(), event);
+        onSelectionHandle = widget->selection->getSelectionTypeForPos(pos.x, pos.y, widget->view->getZoom()) !=
+                            CURSOR_SELECTION_NONE;
+    }
+
     // If the input starts outside a page, we make it act as hand tool instead.
-    if (currentPage == nullptr && toolHandler->pointActiveToolToToolType(TOOL_HAND)) {
+    if (currentPage == nullptr && !onSelectionHandle && toolHandler->pointActiveToolToToolType(TOOL_HAND)) {
         this->inputStartedOutsidePageArea = true;
         toolHandler->fireToolChanged();
     }
