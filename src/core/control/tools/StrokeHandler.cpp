@@ -67,6 +67,10 @@ auto StrokeHandler::onMotionNotifyEvent(const PositionInputData& pos, double zoo
     }
 
     stabilizer->processEvent(pos);
+    // Fork: a stabilizer's last point trails the pen; the view draws on to the pen tip until the next point
+    if (this->stroke) {
+        this->viewPool->dispatch(xoj::view::StrokeToolView::TAIL_REQUEST, Point(pos.x / zoom, pos.y / zoom));
+    }
     return true;
 }
 

@@ -76,6 +76,41 @@ void StrokeToolView::draw(cairo_t* cr) const {
     }
 
     this->mask.blitTo(cr);
+
+    if (this->tail && drawsTail()) {
+        // From the last point of the stroke to the pen tip, with the stroke's current width
+        const Point& last = pts.back();
+        cairo_set_line_width(cr, last.z == Point::NO_PRESSURE ? this->strokeWidth : last.z);
+        cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+        cairo_move_to(cr, last.x, last.y);
+        cairo_line_to(cr, this->tail->x, this->tail->y);
+        cairo_stroke(cr);
+    }
+}
+
+auto StrokeToolView::drawsTail() const -> bool {
+    return this->cairoOp == CAIRO_OPERATOR_OVER && !this->lineStyle.hasDashes() && !this->hasFilling();
+}
+
+auto StrokeToolView::computeTailRange() const -> Range {
+    if (!this->tail || this->pointBuffer.empty()) {
+        return Range();
+    }
+    return this->getRepaintRange(this->pointBuffer.back(), *this->tail);
+}
+
+void StrokeToolView::on(StrokeToolView::TailRequest, const Point& penTip) {
+    if (!drawsTail()) {
+        return;
+    }
+    // Repaint where the old tail was (it is not part of the stroke) and where the new one goes
+    Range dirty = this->tailRange;
+    this->tail = penTip;
+    this->tailRange = computeTailRange();
+    dirty = dirty.isValid() ? dirty.unite(this->tailRange) : this->tailRange;
+    if (dirty.isValid()) {
+        this->parent->flagDirtyRegion(dirty);
+    }
 }
 
 void StrokeToolView::on(StrokeToolView::AddPointRequest, const Point& p) {
@@ -99,7 +134,7 @@ void StrokeToolView::on(StrokeToolView::ThickenFirstPointRequest, double newWidt
 
 void StrokeToolView::deleteOn(StrokeToolView::CancellationRequest, const Range& rg) {
     this->pointBuffer.clear();
-    this->parent->drawAndDeleteToolView(this, rg);
+    this->parent->drawAndDeleteToolView(this, this->tailRange.isValid() ? rg.unite(this->tailRange) : rg);
 }
 
 void StrokeToolView::on(StrokeToolView::StrokeReplacementRequest, const Stroke& newStroke) {
@@ -117,7 +152,8 @@ void StrokeToolView::on(StrokeToolView::StrokeReplacementRequest, const Stroke& 
 }
 
 void StrokeToolView::deleteOn(StrokeToolView::FinalizationRequest, const Range& rg) {
-    this->parent->drawAndDeleteToolView(this, rg);
+    // The tail may reach beyond the finished stroke: repaint it away too
+    this->parent->drawAndDeleteToolView(this, this->tailRange.isValid() ? rg.unite(this->tailRange) : rg);
 }
 
 auto StrokeToolView::getRepaintRange(const Point& lastPoint, const Point& addedPoint) const -> Range {
