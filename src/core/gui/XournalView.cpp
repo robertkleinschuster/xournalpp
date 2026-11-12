@@ -625,6 +625,7 @@ void XournalView::ensureRectIsVisible(int x, int y, int width, int height) {
 
 void XournalView::zoomChanged() {
     ZoomControl* zoom = control->getZoomControl();
+    this->getLayout()->noteZoomChange();  // Fork: the zoom may leave the page off-center (Layout::keepCentered)
     this->getLayout()->recomputeCenteringPadding();
 
     if (zoom->isZoomPresentationMode()) {

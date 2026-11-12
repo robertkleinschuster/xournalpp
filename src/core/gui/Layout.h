@@ -46,6 +46,8 @@ public:
 
     Layout(XournalView* view, ScrollHandling* scrollHandling);
     ~Layout();
+    /// Fork: the zoom changed; the view may stay where the zoom put it (keepCentered())
+    void noteZoomChange() { lastZoomChange = g_get_monotonic_time(); }
     Layout(const Layout&) = delete;
     Layout& operator=(const Layout&) = delete;
 
@@ -210,14 +212,12 @@ private:
     /// Used to have only one call when zooming in/out
     enum class DelayStatus { NO_DELAY, DELAY, MUST_RUN_AFTER } delayUpdate = DelayStatus::NO_DELAY;
 
-    // Fork: the current page snaps to the middle of the view when horizontal scrolling comes to rest close to it
-    void snapToCenterSoon();
-    void snapToCenterIfClose();
-    static constexpr guint SNAP_DELAY_MS = 250;         ///< rest this long before snapping
-    static constexpr double SNAP_SHARE = 0.1;           ///< snap within this share of the view width ...
-    static constexpr double SNAP_MIN_PX = 40;           ///< ... but at least this far
-    static constexpr double SNAP_DURATION_US = 150000;  ///< glide duration
-    guint snapTimer = 0;
+    // Fork: zoomed out, the page stays in the middle of the view (see keepCentered() in Layout.cpp)
+    void keepCentered();
+    static constexpr double LOCK_PX = 40;               ///< sideways scrolling up to this is undone at once
+    static constexpr gint64 ZOOM_SETTLE_US = 400000;    ///< changes this soon after a zoom belong to the zoom
+    static constexpr double SNAP_DURATION_US = 200000;  ///< glide to the middle
+    gint64 lastZoomChange = 0;
     guint snapAnimation = 0;
     double snapFrom = 0;
     double snapTo = 0;

@@ -55,35 +55,24 @@ static inline void afterMove(Layout* layout, GtkWidget* w) {
 }
 
 Layout::~Layout() {
-    for (guint source: {snapTimer, snapAnimation}) {
-        if (source) {
-            g_source_remove(source);
-        }
-    }
-}
-
-void Layout::snapToCenterSoon() {
-    if (snapAnimation) {  // the user scrolls on: stop gliding
+    if (snapAnimation) {
         g_source_remove(snapAnimation);
-        snapAnimation = 0;
     }
-    if (snapTimer) {
-        g_source_remove(snapTimer);
-    }
-    snapTimer = g_timeout_add(
-            SNAP_DELAY_MS,
-            +[](gpointer data) -> gboolean {
-                auto* self = static_cast<Layout*>(data);
-                self->snapTimer = 0;
-                self->snapToCenterIfClose();
-                return G_SOURCE_REMOVE;
-            },
-            this);
 }
 
-void Layout::snapToCenterIfClose() {
-    if (view->getControl()->getSettings()->isPresentationMode()) {
+/*
+ * Fork: zoomed in (the page wider than the view), the page moves freely sideways, up to its edges in the middle of the
+ * view (see recomputeCenteringPaddingUnsafe()), so the hand rests on the screen when writing at an edge. Zoomed out
+ * (the page fits the view's width), it stays in the middle: no sideways scrolling, nothing that could catch the hand
+ * while writing. Only zooming out keeps the page where it was, to not jump; the next scrolling then glides it to the
+ * middle.
+ */
+void Layout::keepCentered() {
+    if (snapping || snapAnimation || view->getControl()->getSettings()->isPresentationMode()) {
         return;
+    }
+    if (g_get_monotonic_time() - lastZoomChange < ZOOM_SETTLE_US) {
+        return;  // the zoom moved the view: leave it there
     }
     const size_t page = view->getCurrentPage();
     XojPageView* pageView = view->getViewFor(page);
@@ -92,13 +81,23 @@ void Layout::snapToCenterIfClose() {
     }
     GtkAdjustment* h = scrollHandling->getHorizontal();
     const double viewWidth = gtk_adjustment_get_page_size(h);
+    if (pageView->getDisplayWidth() > viewWidth) {
+        return;  // zoomed in: free
+    }
     const double value = gtk_adjustment_get_value(h);
     const double pageCenter = getPixelCoordinatesOfEntry(page).x + pageView->getDisplayWidth() / 2.0;
     const double offset = pageCenter - (value + viewWidth / 2.0);
-    if (std::abs(offset) < 1 || std::abs(offset) > std::max(SNAP_MIN_PX, SNAP_SHARE * viewWidth)) {
+    if (std::abs(offset) < 1) {
         return;
     }
-    // Glide there (ease-out), so the page visibly settles instead of jumping
+    if (std::abs(offset) <= LOCK_PX) {
+        // Sideways scrolling of a centered page: undo it at once, the page does not move
+        snapping = true;
+        gtk_adjustment_set_value(h, value + offset);
+        snapping = false;
+        return;
+    }
+    // Still where zooming out left it: glide to the middle (ease-out) instead of jumping
     snapFrom = value;
     snapTo = value + offset;
     snapStart = g_get_monotonic_time();
@@ -123,9 +122,7 @@ void Layout::snapToCenterIfClose() {
 }
 
 void Layout::horizontalScrollChanged(GtkAdjustment*, Layout* layout) {
-    if (!layout->snapping) {
-        layout->snapToCenterSoon();
-    }
+    layout->keepCentered();
     if (layout->delayUpdate == DelayStatus::NO_DELAY) {
         afterMove(layout, layout->view->getWidget());
     } else {
@@ -135,6 +132,7 @@ void Layout::horizontalScrollChanged(GtkAdjustment*, Layout* layout) {
 
 void Layout::verticalScrollChanged(GtkAdjustment*, Layout* layout) {
     layout->maybeAddLastPage(layout);
+    layout->keepCentered();
     if (layout->delayUpdate == DelayStatus::NO_DELAY) {
         afterMove(layout, layout->view->getWidget());
     } else {
