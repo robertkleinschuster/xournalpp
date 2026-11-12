@@ -6,6 +6,7 @@
 #include <cstring>
 #include <filesystem>
 #include <functional>
+#include <future>  // for promise
 #include <map>
 #include <memory>
 #include <optional>
@@ -117,14 +118,6 @@ auto escape(const std::string& value) -> std::string {
 auto isIgnored(const fs::path& path) -> bool {
     return path.filename() == ".git" || AnnotationFiles::isRecoveryCopy(path) ||
            AnnotationFiles::isCompanionPdf(path) || AnnotationFiles::isPortalsPdf(path);
-}
-
-/// Keeps Xournal++ recovery copies out of the sync, in any folder of the repository
-const std::vector<std::string> GIT_PATHSPEC = {"--", ".", ":(exclude,glob)**/.*.autosave.xopp", ":(exclude,glob)**/*~"};
-
-auto withPathspec(std::vector<std::string> args) -> std::vector<std::string> {
-    args.insert(args.end(), GIT_PATHSPEC.begin(), GIT_PATHSPEC.end());
-    return args;
 }
 
 /// Files that a tap must not start: programs, scripts and shortcuts to them (the project folder is synced via git)
@@ -799,17 +792,18 @@ private:
         if (gitToplevel.empty()) {
             return;
         }
-        ProjectGit::run(gitToplevel, {"restore", "--source=HEAD", "--staged", "--worktree", "--", Util::toUtf8(path)},
-                        lifetime, [this, path](auto restored) {
-                            if (!restored.success) {
-                                showError(_("The entry could not be restored."), restored.error);
-                                return;
-                            }
-                            refreshGit([this, path] {
-                                refresh(true);
-                                showEntry(path);
-                            });
-                        });
+        ProjectGit::inBackground<ProjectGit::Result>(
+                lifetime, [top = gitToplevel, path] { return ProjectGit::restore(top, {path}); },
+                [this, path](ProjectGit::Result restored) {
+                    if (!restored.ok()) {
+                        showError(_("The entry could not be restored."), restored.message);
+                        return;
+                    }
+                    refreshGit([this, path] {
+                        refresh(true);
+                        showEntry(path);
+                    });
+                });
     }
 
     void expandIter(GtkTreeIter* iter) {
@@ -1162,7 +1156,7 @@ private:
 
     /// Reads the repository root and status of the project folder in the background
     void refreshGit(std::function<void()> done = {}) {
-        if (projectRoot.empty() || !ProjectGit::isAvailable()) {
+        if (projectRoot.empty()) {
             setGitRepo(false);
             if (done) {
                 done();
@@ -1176,35 +1170,28 @@ private:
         }
         gitBusy = true;
         const auto root = projectRoot;
-        ProjectGit::run(root, {"rev-parse", "--show-toplevel"}, lifetime, [this, root, done](auto result) {
-            if (root != projectRoot || !result.success) {
-                finishGitRefresh(root == projectRoot && !result.success ? std::optional<bool>(false) : std::nullopt,
-                                 done);
-                return;
-            }
-            std::error_code error;
-            const auto top = fs::weakly_canonical(Util::fromUtf8(trim(result.output).c_str()), error);
-            // Only the project folder (cwd and pathspec "."), which may be part of a larger repository. Porcelain
-            // paths are still relative to the repository root. --no-optional-locks keeps status from taking the
-            // index lock, which would make a concurrent commit fail.
-            ProjectGit::run(root,
-                            withPathspec({"--no-optional-locks", "status", "--porcelain=v1", "-z", "--branch",
-                                          "--untracked-files=all"}),
-                            lifetime, [this, root, top, done](auto status) {
-                                if (root == projectRoot && status.success) {
-                                    gitToplevel = top;
-                                    auto previousDeleted = std::move(gitStatus.deleted);
-                                    gitStatus = ProjectGit::parseStatus(status.output, top);
-                                    const bool deletedChanged = previousDeleted != gitStatus.deleted;
-                                    finishGitRefresh(true, done);
-                                    if (deletedChanged && !searching) {
-                                        refresh(true);  // show or remove the rows of deleted entries
-                                    }
-                                } else {
-                                    finishGitRefresh(std::nullopt, done);
-                                }
-                            });
-        });
+        // Only the project folder, which may be part of a larger repository (see ProjectGit::status)
+        ProjectGit::inBackground<ProjectGit::RepoStatus>(
+                lifetime, [root] { return ProjectGit::status(root); },
+                [this, root, done](ProjectGit::RepoStatus result) {
+                    if (root != projectRoot) {
+                        finishGitRefresh(std::nullopt, done);
+                        return;
+                    }
+                    if (!result.isRepo) {
+                        // Not a repository, or it could not be read this time (keep the last state then)
+                        finishGitRefresh(result.error.empty() ? std::optional<bool>(false) : std::nullopt, done);
+                        return;
+                    }
+                    gitToplevel = result.toplevel;
+                    auto previousDeleted = std::move(gitStatus.deleted);
+                    gitStatus = std::move(result.status);
+                    const bool deletedChanged = previousDeleted != gitStatus.deleted;
+                    finishGitRefresh(true, done);
+                    if (deletedChanged && !searching) {
+                        refresh(true);  // show or remove the rows of deleted entries
+                    }
+                });
     }
 
     void finishGitRefresh(std::optional<bool> repo, const std::function<void()>& done) {
@@ -1227,17 +1214,17 @@ private:
             return;
         }
         fetchRunning = true;
-        ProjectGit::run(
-                gitToplevel, {"-c", "credential.interactive=false", "fetch", "--quiet"}, lifetime,
-                [this](auto) {
+        // Only stored credentials: a background fetch never asks
+        ProjectGit::inBackground<ProjectGit::Result>(
+                lifetime, [top = gitToplevel] { return ProjectGit::fetch(top); },
+                [this](ProjectGit::Result) {
                     fetchRunning = false;
                     if (std::exchange(syncAfterFetch, false)) {
                         beginSync();
                     } else {
                         refreshGit();
                     }
-                },
-                120);  // e.g. ssh waiting for a passphrase nobody can enter
+                });
     }
 
     void startSync() {
@@ -1300,23 +1287,114 @@ private:
                 return;
             }
             // Only the project folder: other changes in a larger repository are not part of this project
-            ProjectGit::run(projectRoot, withPathspec({"add", "-A"}), lifetime, [this](auto added) {
-                if (!added.success) {
-                    finishSync(_("Your changes could not be committed."), added.error);
-                    return;
-                }
-                // Only the project folder ("--" "." from it): changes staged elsewhere in a larger repository stay
-                ProjectGit::run(projectRoot, {"commit", "-m", commitMessage(), "--", "."}, lifetime,
-                                [this](auto committed) {
-                                    if (!committed.success) {
-                                        finishSync(_("Your changes could not be committed."),
-                                                   committed.error.empty() ? committed.output : committed.error);
-                                        return;
-                                    }
-                                    syncPull();
-                                });
-            });
+            ProjectGit::inBackground<ProjectGit::Result>(
+                    lifetime,
+                    [root = projectRoot, message = commitMessage()] { return ProjectGit::commitAll(root, message); },
+                    [this](ProjectGit::Result committed) {
+                        if (!committed.ok()) {
+                            finishSync(committed.outcome == ProjectGit::Outcome::NotSupported ?
+                                               _("This repository uses Git LFS, which the sync does not support. "
+                                                 "Please sync it with git.") :
+                                               _("Your changes could not be committed."),
+                                       committed.message);
+                            return;
+                        }
+                        syncPull();
+                    });
         });
+    }
+
+    /**
+     * Asks for credentials when the remote rejects the stored ones (or has none): called by ProjectGit on its worker
+     * thread, shows the dialog on the main thread and waits for it
+     */
+    auto credentialPrompt() -> ProjectGit::CredentialPrompt {
+        std::weak_ptr<void> alive = lifetime;
+        GtkWindow* window = parent;
+        return [alive, window](const std::string& url, const std::optional<ProjectGit::Credentials>& previous)
+                       -> std::optional<ProjectGit::Credentials> {
+            struct Request {
+                std::string url;
+                std::optional<ProjectGit::Credentials> previous;
+                std::weak_ptr<void> alive;
+                GtkWindow* window;
+                std::promise<std::optional<ProjectGit::Credentials>> answer;
+            };
+            auto* request = new Request{url, previous, alive, window, {}};
+            auto answer = request->answer.get_future();
+            g_idle_add(
+                    +[](gpointer data) -> gboolean {
+                        std::unique_ptr<Request> r(static_cast<Request*>(data));
+                        r->answer.set_value(r->alive.expired() ? std::nullopt :
+                                                                 askCredentials(r->window, r->url, r->previous));
+                        return G_SOURCE_REMOVE;
+                    },
+                    request);
+            return answer.get();
+        };
+    }
+
+    static auto askCredentials(GtkWindow* window, const std::string& url,
+                               const std::optional<ProjectGit::Credentials>& previous)
+            -> std::optional<ProjectGit::Credentials> {
+        // "https://user@github.com/owner/repo.git" -> user, github.com
+        std::string host = url.substr(url.find("://") == std::string::npos ? 0 : url.find("://") + 3);
+        host = host.substr(0, host.find('/'));
+        std::string urlUser;
+        if (const auto at = host.rfind('@'); at != std::string::npos) {
+            urlUser = host.substr(0, std::min(at, host.find(':')));
+            host = host.substr(at + 1);
+        }
+        auto* dialog = gtk_dialog_new_with_buttons(FS(_F("Sign in to {1}") % host).c_str(), window,
+                                                   GtkDialogFlags(GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT),
+                                                   _("Cancel"), GTK_RESPONSE_CANCEL, _("Sign In"), GTK_RESPONSE_ACCEPT,
+                                                   nullptr);
+        gtk_dialog_set_default_response(GTK_DIALOG(dialog), GTK_RESPONSE_ACCEPT);
+        auto* box = gtk_dialog_get_content_area(GTK_DIALOG(dialog));
+        gtk_container_set_border_width(GTK_CONTAINER(box), 12);
+        gtk_box_set_spacing(GTK_BOX(box), 8);
+
+        auto* intro = gtk_label_new(previous ? _("Signing in with these credentials failed. Please check them.") :
+                                               _("The sync needs your credentials for the remote repository."));
+        gtk_label_set_xalign(GTK_LABEL(intro), 0);
+        gtk_label_set_line_wrap(GTK_LABEL(intro), true);
+        gtk_box_pack_start(GTK_BOX(box), intro, false, false, 0);
+        if (host == "github.com") {
+            auto* hint = gtk_label_new(nullptr);
+            const auto markup = escape(_("GitHub needs a personal access token instead of your password.")) +
+                                " <a href=\"https://github.com/settings/tokens\">" + escape(_("Create a token")) +
+                                "</a>";
+            gtk_label_set_markup(GTK_LABEL(hint), markup.c_str());
+            gtk_label_set_xalign(GTK_LABEL(hint), 0);
+            gtk_label_set_line_wrap(GTK_LABEL(hint), true);
+            gtk_box_pack_start(GTK_BOX(box), hint, false, false, 0);
+        }
+
+        auto* user = gtk_entry_new();
+        gtk_entry_set_placeholder_text(GTK_ENTRY(user), _("User name"));
+        gtk_entry_set_text(GTK_ENTRY(user), previous ? previous->username.c_str() : urlUser.c_str());
+        auto* password = gtk_entry_new();
+        gtk_entry_set_placeholder_text(GTK_ENTRY(password), _("Password or access token"));
+        gtk_entry_set_visibility(GTK_ENTRY(password), false);
+        gtk_entry_set_input_purpose(GTK_ENTRY(password), GTK_INPUT_PURPOSE_PASSWORD);
+        gtk_entry_set_activates_default(GTK_ENTRY(password), true);
+        auto* remember = gtk_check_button_new_with_label(_("Remember in the Windows credential manager"));
+        gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(remember), true);
+        gtk_box_pack_start(GTK_BOX(box), user, false, false, 0);
+        gtk_box_pack_start(GTK_BOX(box), password, false, false, 0);
+        gtk_box_pack_start(GTK_BOX(box), remember, false, false, 0);
+        gtk_widget_set_size_request(dialog, 420, -1);
+        gtk_widget_show_all(dialog);
+        gtk_widget_grab_focus(gtk_entry_get_text_length(GTK_ENTRY(user)) > 0 ? password : user);
+
+        std::optional<ProjectGit::Credentials> result;
+        if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT) {
+            result = ProjectGit::Credentials{
+                    gtk_entry_get_text(GTK_ENTRY(user)), gtk_entry_get_text(GTK_ENTRY(password)),
+                    static_cast<bool>(gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(remember)))};
+        }
+        gtk_widget_destroy(dialog);
+        return result;
     }
 
     auto commitMessage() const -> std::string {
@@ -1335,26 +1413,34 @@ private:
         }
         const auto documentPath = control->getDocument()->getFilepath();
         const auto before = documentPath.empty() ? std::nullopt : AnnotationFiles::fileStamp(documentPath);
-        ProjectGit::run(gitToplevel, {"pull", "--rebase"}, lifetime, [this, documentPath, before](auto pulled) {
-            if (!pulled.success) {
-                // A conflict needs a git tool; other failures (no network, no access) only need to be reported
-                const bool conflict = pulled.output.find("CONFLICT") != std::string::npos ||
-                                      pulled.error.find("CONFLICT") != std::string::npos ||
-                                      pulled.error.find("could not apply") != std::string::npos;
-                // Leave the repository as before the pull (if a rebase started at all); the local commit is kept
-                ProjectGit::run(gitToplevel, {"rebase", "--abort"}, lifetime, [this, pulled, conflict](auto) {
-                    finishSync(conflict ? _("Remote changes could not be merged with yours. Your changes are "
-                                            "committed locally, but not uploaded. Please resolve the conflict with a "
-                                            "git tool.") :
-                                          _("Remote changes could not be downloaded or applied. Your changes are "
-                                            "committed locally, but not uploaded."),
-                               pulled.error);
+        // On a conflict the repository is left as before the pull; the local commit is kept
+        ProjectGit::inBackground<ProjectGit::Result>(
+                lifetime,
+                [top = gitToplevel, prompt = credentialPrompt()] { return ProjectGit::pullRebase(top, prompt); },
+                [this, documentPath, before](ProjectGit::Result pulled) {
+                    if (!pulled.ok()) {
+                        finishSync(pullFailureMessage(pulled.outcome), pulled.message);
+                        return;
+                    }
+                    reloadIfChanged(documentPath, before);
+                    syncPush();
                 });
-                return;
-            }
-            reloadIfChanged(documentPath, before);
-            syncPush();
-        });
+    }
+
+    static auto pullFailureMessage(ProjectGit::Outcome outcome) -> const char* {
+        switch (outcome) {
+            case ProjectGit::Outcome::Conflict:
+                return _("Remote changes could not be merged with yours. Your changes are committed locally, but not "
+                         "uploaded. Please resolve the conflict with a git tool.");
+            case ProjectGit::Outcome::AuthFailed:
+                return _("Signing in to the remote repository failed. Your changes are committed locally, but not "
+                         "uploaded.");
+            case ProjectGit::Outcome::NotSupported:
+                return _("This repository uses Git LFS, which the sync does not support. Please sync it with git.");
+            default:
+                return _("Remote changes could not be downloaded or applied. Your changes are committed locally, but "
+                         "not uploaded.");
+        }
     }
 
     /// Reloads the open document if the pull changed it on disk (it has no unsaved changes at this point)
@@ -1386,23 +1472,19 @@ private:
     }
 
     void syncPush() {
-        if (gitStatus.hasUpstream) {
-            ProjectGit::run(gitToplevel, {"push"}, lifetime, [this](auto pushed) {
-                finishSync(pushed.success ? nullptr : _("Your changes could not be uploaded."), pushed.error);
-            });
-            return;
-        }
-        // Without an upstream branch, publish to the first remote if there is one
-        ProjectGit::run(gitToplevel, {"remote"}, lifetime, [this](auto remotes) {
-            const auto remote = trim(remotes.output.substr(0, remotes.output.find('\n')));
-            if (!remotes.success || remote.empty()) {
-                finishSync(nullptr, {});
-                return;
-            }
-            ProjectGit::run(gitToplevel, {"push", "-u", remote, "HEAD"}, lifetime, [this](auto pushed) {
-                finishSync(pushed.success ? nullptr : _("Your changes could not be uploaded."), pushed.error);
-            });
-        });
+        // To the upstream branch; without one, publish to the first remote if there is one
+        ProjectGit::inBackground<ProjectGit::Result>(
+                lifetime, [top = gitToplevel, prompt = credentialPrompt()] { return ProjectGit::push(top, prompt); },
+                [this](ProjectGit::Result pushed) {
+                    const char* message = nullptr;
+                    if (pushed.outcome == ProjectGit::Outcome::AuthFailed) {
+                        message = _("Signing in to the remote repository failed. Your changes are committed locally, "
+                                    "but not uploaded.");
+                    } else if (!pushed.ok()) {
+                        message = _("Your changes could not be uploaded.");
+                    }
+                    finishSync(message, pushed.message);
+                });
     }
 
     void finishSync(const char* message, const std::string& details) {
@@ -2742,20 +2824,18 @@ private:
             return;
         }
 
-        std::vector<std::string> args = {"restore", "--source=HEAD", "--staged", "--worktree", "--"};
-        for (const auto& file: files) {
-            args.push_back(Util::toUtf8(file));
-        }
-        auto restore = [this, args](std::function<void()> done) {
-            ProjectGit::run(gitToplevel, args, lifetime, [this, done](auto result) {
-                if (!result.success) {
-                    showError(_("The changes could not be discarded."), result.error);
-                }
-                refreshGit([this, done] {
-                    refresh(true);
-                    done();
-                });
-            });
+        auto restore = [this, files](std::function<void()> done) {
+            ProjectGit::inBackground<ProjectGit::Result>(
+                    lifetime, [top = gitToplevel, files] { return ProjectGit::restore(top, files); },
+                    [this, done](ProjectGit::Result result) {
+                        if (!result.ok()) {
+                            showError(_("The changes could not be discarded."), result.message);
+                        }
+                        refreshGit([this, done] {
+                            refresh(true);
+                            done();
+                        });
+                    });
         };
         if (!affectsOpenDocument(files)) {
             restore([] {});

@@ -161,6 +161,8 @@ pkg_check_modules(ExternalModules REQUIRED IMPORTED_TARGET ${pkg-module-spec})
 find_package(ZLIB REQUIRED)
 # Fork: libdeflate compresses saved documents about three times faster than zlib, and slightly smaller
 pkg_check_modules(libdeflate IMPORTED_TARGET "libdeflate >= 1.0")
+# Fork: git support for the project explorer without a git installation (gui/sidebar/ProjectGit.cpp)
+pkg_check_modules(libgit2 REQUIRED IMPORTED_TARGET "libgit2 >= 1.7")
 find_package(Threads REQUIRED)
 
 option(ENABLE_AUDIO "Compile with Audio recording/playing support" ON)
@@ -275,6 +277,7 @@ target_link_libraries(external_modules INTERFACE
         $<$<TARGET_EXISTS:cpptrace::cpptrace>:cpptrace::cpptrace>
         $<$<TARGET_EXISTS:qpdf::libqpdf>:qpdf::libqpdf>
         $<$<TARGET_EXISTS:PkgConfig::libdeflate>:PkgConfig::libdeflate>
+        PkgConfig::libgit2
         ZLIB::ZLIB
         Threads::Threads
         )

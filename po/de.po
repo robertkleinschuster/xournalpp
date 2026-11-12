@@ -5565,3 +5565,47 @@ msgstr "Als Dokument öffnen"
 #: ../src/core/control/xojfile/SaveHandler.cpp
 msgid "The PDF pages of the copied PDF areas could not be saved: {1}"
 msgstr "Die PDF-Seiten der kopierten PDF-Bereiche konnten nicht gespeichert werden: {1}"
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "This repository uses Git LFS, which the sync does not support. Please sync it with git."
+msgstr "Dieses Repository verwendet Git LFS, das der Sync nicht unterstützt. Bitte synchronisiere es mit git."
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "Signing in to the remote repository failed. Your changes are committed locally, but not uploaded."
+msgstr "Die Anmeldung beim Remote-Repository ist fehlgeschlagen. Deine Änderungen sind lokal committet, aber nicht hochgeladen."
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "Sign in to {1}"
+msgstr "Bei {1} anmelden"
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "Sign In"
+msgstr "Anmelden"
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "Signing in with these credentials failed. Please check them."
+msgstr "Die Anmeldung mit diesen Zugangsdaten ist fehlgeschlagen. Bitte überprüfe sie."
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "The sync needs your credentials for the remote repository."
+msgstr "Der Sync benötigt deine Zugangsdaten für das Remote-Repository."
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "GitHub needs a personal access token instead of your password."
+msgstr "GitHub benötigt statt deines Passworts ein persönliches Zugriffstoken."
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "Create a token"
+msgstr "Token erstellen"
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "User name"
+msgstr "Benutzername"
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "Password or access token"
+msgstr "Passwort oder Zugriffstoken"
+
+#: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
+msgid "Remember in the Windows credential manager"
+msgstr "In der Windows-Anmeldeinformationsverwaltung speichern"

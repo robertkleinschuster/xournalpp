@@ -38,6 +38,7 @@ runs:
           mingw-w64-${{inputs.msys_package_env}}-nsis
           mingw-w64-${{inputs.msys_package_env}}-libdeflate
           mingw-w64-${{inputs.msys_package_env}}-librsvg
+          mingw-w64-${{inputs.msys_package_env}}-libgit2-winhttp
     - shell: msys2 {0}
       run: |
         # install LuaGObject via luarocks as long as there is no MinGW package
