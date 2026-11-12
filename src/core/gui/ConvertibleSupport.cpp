@@ -137,7 +137,8 @@ auto isTabletMode() -> bool { return GetSystemMetrics(SM_CONVERTIBLESLATEMODE) =
 /// In tablet mode, the controls used most get a larger area to hit with a finger (icons and text keep their size):
 /// toolbar buttons, sidebar tabs, menu and popover entries (also the explorer's context menu) and tree rows
 constexpr const char* TABLET_CSS = R"css(
-toolbar button {
+toolbar button,
+#mainMenuButton {
     min-width: 32px;
     min-height: 44px;
 }

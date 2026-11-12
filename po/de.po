@@ -5609,3 +5609,7 @@ msgstr "Passwort oder Zugriffstoken"
 #: ../src/core/gui/sidebar/ProjectExplorerSidebar.cpp
 msgid "Remember in the Windows credential manager"
 msgstr "In der Windows-Anmeldeinformationsverwaltung speichern"
+
+#: ../src/core/gui/MainWindow.cpp
+msgid "Menu"
+msgstr "Menü"

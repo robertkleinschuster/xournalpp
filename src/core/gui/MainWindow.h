@@ -54,10 +54,10 @@ public:
 public:
     GMenuModel* getMenuModel() const;
     /**
-     * Fork: shows the menu bar in the title bar (a GTK header bar, which follows the dark theme) instead of below it,
-     * saving a row. Must be called before the window is shown.
+     * Fork: instead of a menu bar row, a button at the left of the top toolbar row opens the whole menu; the window
+     * keeps the native title bar. Must be called before the window is shown. F10 opens it too.
      */
-    void moveMenubarToTitleBar();
+    void addMenuButton();
 
     void show(GtkWindow* parent) override;
 
@@ -193,7 +193,7 @@ private:
     ToolbarData* selectedToolbar = nullptr;
 
     std::unique_ptr<Menubar> menubar;
-    GtkWidget* titleBarMenubar = nullptr;  ///< Fork: the menu bar in the title bar, if moved there
+    GtkWidget* menuButton = nullptr;  ///< Fork: opens the menu, at the left of the top toolbar row (see addMenuButton)
 
     bool maximized = false;
     bool darkMode = false;

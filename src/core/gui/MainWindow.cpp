@@ -189,17 +189,61 @@ void MainWindow::populate(GladeSearchpath* gladeSearchPath) {
 
 GMenuModel* MainWindow::getMenuModel() const { return menubar->getModel(); }
 
-void MainWindow::moveMenubarToTitleBar() {
-    GtkWidget* header = gtk_header_bar_new();
-    gtk_header_bar_set_show_close_button(GTK_HEADER_BAR(header), true);
-    gtk_header_bar_set_decoration_layout(GTK_HEADER_BAR(header), "icon:minimize,maximize,close");
-    titleBarMenubar = gtk_menu_bar_new_from_model(getMenuModel());
-    gtk_header_bar_pack_start(GTK_HEADER_BAR(header), titleBarMenubar);
-    gtk_widget_show_all(header);
-    gtk_window_set_titlebar(GTK_WINDOW(this->window), header);
-    // The window's own menu bar below the title bar stays hidden; setMenubarVisible() toggles this one instead
+void MainWindow::addMenuButton() {
+    // Fork: the native Windows title bar (snap layouts, system menu), and instead of a menu bar row one button at the
+    // left of the top toolbar row that opens the whole menu. A popover: pen and finger reach every entry, also in
+    // tablet mode and in portrait, where a menu bar next to the tools would push them into the overflow menu.
+    menuButton = gtk_menu_button_new();
+    gtk_widget_set_name(menuButton, "mainMenuButton");
+    gtk_button_set_relief(GTK_BUTTON(menuButton), GTK_RELIEF_NONE);
+    gtk_widget_set_can_focus(menuButton, false);
+    gtk_widget_set_tooltip_text(menuButton, _("Menu"));
+    gtk_button_set_image(GTK_BUTTON(menuButton),
+                         gtk_image_new_from_icon_name("open-menu-symbolic", GTK_ICON_SIZE_LARGE_TOOLBAR));
+    gtk_menu_button_set_use_popover(GTK_MENU_BUTTON(menuButton), true);
+    gtk_menu_button_set_menu_model(GTK_MENU_BUTTON(menuButton), getMenuModel());
+    // Each level as wide as its own entries, not as wide as the widest submenu
+    if (GtkPopover* popover = gtk_menu_button_get_popover(GTK_MENU_BUTTON(menuButton))) {
+        if (GtkWidget* stack = gtk_bin_get_child(GTK_BIN(popover)); stack && GTK_IS_STACK(stack)) {
+            gtk_stack_set_hhomogeneous(GTK_STACK(stack), false);
+            gtk_stack_set_vhomogeneous(GTK_STACK(stack), false);
+        }
+    }
+
+    // The button and the top toolbar share a row; the toolbar itself is rebuilt by the toolbar editor, so the button
+    // stays outside of it
+    GtkWidget* toolbar = get("tbTop1");
+    GtkWidget* box = gtk_widget_get_parent(toolbar);
+    int position = 0;
+    gtk_container_child_get(GTK_CONTAINER(box), toolbar, "position", &position, nullptr);
+    g_object_ref(toolbar);
+    gtk_container_remove(GTK_CONTAINER(box), toolbar);
+    GtkWidget* row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_style_context_add_class(gtk_widget_get_style_context(row), "toolbar");  // the toolbar's background
+    gtk_box_pack_start(GTK_BOX(row), menuButton, false, false, 2);
+    gtk_box_pack_start(GTK_BOX(row), toolbar, true, true, 0);
+    g_object_unref(toolbar);
+    gtk_box_pack_start(GTK_BOX(box), row, false, true, 0);
+    gtk_box_reorder_child(GTK_BOX(box), row, position);
+    gtk_widget_show(row);
+    gtk_widget_show_all(menuButton);
+
+    // F10 opens the menu, as it opened the menu bar
+    g_signal_connect(
+            this->window, "key-press-event",
+            G_CALLBACK(+[](GtkWidget*, GdkEventKey* event, gpointer button) -> gboolean {
+                const auto modifiers = event->state & gtk_accelerator_get_default_mod_mask();
+                if (event->keyval != GDK_KEY_F10 || modifiers != 0 || !gtk_widget_is_visible(GTK_WIDGET(button))) {
+                    return false;
+                }
+                gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(button), true);
+                return true;
+            }),
+            menuButton);
+
+    // The window's own menu bar stays hidden; setMenubarVisible() toggles the button instead
     gtk_application_window_set_show_menubar(GTK_APPLICATION_WINDOW(this->window), false);
-    gtk_widget_set_visible(titleBarMenubar, control->getSettings()->isMenubarVisible());
+    gtk_widget_set_visible(menuButton, control->getSettings()->isMenubarVisible());
 }
 
 MainWindow::~MainWindow() {
@@ -830,8 +874,8 @@ void MainWindow::setToolbarVisible(bool visible) {
 }
 
 void MainWindow::setMenubarVisible(bool visible) {
-    if (titleBarMenubar) {
-        gtk_widget_set_visible(titleBarMenubar, visible);
+    if (menuButton) {
+        gtk_widget_set_visible(menuButton, visible);
         return;
     }
     gtk_application_window_set_show_menubar(GTK_APPLICATION_WINDOW(this->getWindow()), visible);

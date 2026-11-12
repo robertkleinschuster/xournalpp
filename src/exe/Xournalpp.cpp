@@ -39,7 +39,7 @@ auto main(int argc, char* argv[]) -> int {
 #ifdef _WIN32
     // Switch to the FontConfig backend for Pango - See #3371
     _putenv_s("PANGOCAIRO_BACKEND", "fc");
-    // Fork: with the header bar (client-side decorations) GDK makes the main window a layered window, which hands the
+    // Fork: with client-side decorations (a header bar) GDK makes a window a layered window, which hands the
     // whole window surface to the compositor after every paint, also for a few pixels of new ink. Without it only
     // the changed area is presented, which shortens the delay between pen and ink.
     if (!std::getenv("GDK_WIN32_LAYERED")) {
