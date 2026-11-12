@@ -22,6 +22,7 @@
 #include "gui/FloatingToolbox.h"     // for FloatingToolbox
 #include "gui/GladeGui.h"            // for GladeGui
 #include "gui/PdfFloatingToolbox.h"  // for PdfFloatingToolbox
+#include "gui/PenEventFlush.h"
 #include "gui/PenFeedbackFix.h"
 #include "gui/PowerEvents.h"  // for PowerEvents
 #include "gui/SearchBar.h"    // for SearchBar
@@ -96,6 +97,7 @@ MainWindow::MainWindow(GladeSearchpath* gladeSearchPath, Control* control, GtkAp
     g_signal_connect(this->window, "delete-event", xoj::util::wrap_for_g_callback_v<deleteEventCallback>,
                      this->control);
     PenFeedbackFix::apply(this->window);         // Fork: no Windows pen flicks or press-and-hold while writing
+    PenEventFlush::install(this->window);        // Fork: deliver the newest pen position at once, not with the next
     DarkTitleBars::install();                    // Fork: dialogs get dark Windows title bars like the main window
     PowerEvents::install(this->window);          // Fork: lid, screen and suspend (before its listeners)
     ConvertibleSupport::install(this, control);  // Fork: tablet mode, portrait and touch keyboard
