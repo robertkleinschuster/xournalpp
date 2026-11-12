@@ -29,6 +29,7 @@
 #include "gui/MainWindow.h"
 #include "gui/ScratchpadDrawer.h"
 #include "gui/sidebar/AbstractSidebarPage.h"
+#include "gui/sidebar/DirectoryTreeWatcher.h"
 #include "gui/sidebar/ProjectGit.h"
 #include "gui/sidebar/Sidebar.h"  // for Sidebar
 #include "model/Document.h"
@@ -153,6 +154,46 @@ auto hasVisibleEntries(const fs::path& dir) -> bool {
     return false;
 }
 
+/// The same key for a folder however its path was spelled (the project root may use "/", listed paths "\")
+auto folderKey(const fs::path& dir) -> std::string {
+    return Util::toUtf8(fs::path(dir).make_preferred().lexically_normal());
+}
+
+/// The names of the entries the tree can show directly in dir (folders end with "/"), sorted: tells whether a folder's
+/// listing changed since it was shown
+auto formatListing(std::vector<std::string> names) -> std::string {
+    std::sort(names.begin(), names.end());
+    std::string listing;
+    for (const auto& name: names) {
+        listing += name;
+        listing += '\n';
+    }
+    return listing;
+}
+
+/// Name in a listing: folders end with "/"
+auto listingName(const fs::path& path, bool directory) -> std::string {
+    return Util::toUtf8(path.filename()) + (directory ? "/" : "");
+}
+
+auto listingOf(const fs::path& dir) -> std::string {
+    std::vector<std::string> names;
+    std::error_code error;
+    for (fs::directory_iterator it(dir, error), end; !error && it != end; it.increment(error)) {
+        if (isIgnored(it->path())) {
+            continue;
+        }
+        // The same entries populate() shows: folders and regular files
+        std::error_code typeError;
+        if (it->is_directory(typeError)) {
+            names.push_back(listingName(it->path(), true));
+        } else if (it->is_regular_file(typeError)) {
+            names.push_back(listingName(it->path(), false));
+        }
+    }
+    return formatListing(std::move(names));
+}
+
 auto kindFor(const fs::path& path, bool directory) -> Kind {
     if (directory) {
         return KIND_DIRECTORY;
@@ -258,7 +299,7 @@ public:
             auto onActive = +[](GObject* window, GParamSpec*, gpointer data) {
                 if (gtk_window_is_active(GTK_WINDOW(window))) {
                     auto* self = static_cast<ProjectExplorerSidebar*>(data);
-                    self->checkForMissedChanges();
+                    self->checkForMissedChanges(true);
                     self->catchUpGit();
                 }
             };
@@ -591,10 +632,16 @@ private:
                                           Util::toUtf8(path).c_str(), COL_KIND, kind, COL_SENSITIVE,
                                           kind != KIND_FILE || TaskFiles::isTaskFile(path) || opensInDefaultApp(path),
                                           COL_FOREGROUND, gitColorFor(path, kind), -1);
-        if (kind == KIND_DIRECTORY && lazy && (hasVisibleEntries(path) || !deletedEntriesIn(path).empty())) {
-            GtkTreeIter placeholder;
-            gtk_tree_store_insert_with_values(store, &placeholder, &iter, -1, COL_NAME, "", COL_KIND, KIND_PLACEHOLDER,
-                                              COL_SENSITIVE, false, -1);
+        if (kind == KIND_DIRECTORY && lazy) {
+            if (hasVisibleEntries(path) || !deletedEntriesIn(path).empty()) {
+                GtkTreeIter placeholder;
+                gtk_tree_store_insert_with_values(store, &placeholder, &iter, -1, COL_NAME, "", COL_KIND,
+                                                  KIND_PLACEHOLDER, COL_SENSITIVE, false, -1);
+            } else {
+                // Fork: an empty folder is never populated; watch it so a file saved into it gives it an expander
+                watch(path);
+                shownListings[folderKey(path)] = listingOf(path);
+            }
         }
         return iter;
     }
@@ -613,8 +660,11 @@ private:
             return;
         }
         const auto dir = Util::fromUtf8(pathAt(iter).c_str());
+        // Watch before listing: a file created while the folder is read is reported, not lost in between
+        watch(dir);
         std::vector<fs::path> directories;
         std::vector<fs::path> files;
+        std::vector<std::string> names;
         std::error_code error;
         for (fs::directory_iterator it(dir, error), end; !error && it != end; it.increment(error)) {
             if (isIgnored(it->path())) {
@@ -623,10 +673,15 @@ private:
             std::error_code itemError;
             if (it->is_directory(itemError)) {
                 directories.push_back(it->path());
+                names.push_back(listingName(it->path(), true));
             } else if (it->is_regular_file(itemError)) {
                 files.push_back(it->path());
+                names.push_back(listingName(it->path(), false));
             }
         }
+        // What the tree shows of this folder, from this very listing (not read again later, which could already
+        // contain a file the tree lacks and so hide its change)
+        shownListings[folderKey(dir)] = formatListing(std::move(names));
         for (const auto& path: directories) {
             const auto name = Util::toUtf8(path.filename());
             appendNode(iter, path, name, KIND_DIRECTORY, escape(name), true);
@@ -681,7 +736,6 @@ private:
             appendDeletedNode(iter, path, directory);
         }
         gtk_tree_store_remove(store, &placeholder);
-        watch(dir);
     }
 
     // --- Deleted entries ---
@@ -771,6 +825,7 @@ private:
         searching = !query.empty();
         updatingTree = true;
         clearMonitors();
+        ensureTreeWatcher();  // before listing, so nothing created meanwhile is missed
         gtk_tree_store_clear(store);
         updateView();
         if (!projectRoot.empty()) {
@@ -788,32 +843,16 @@ private:
             }
         }
         updatingTree = false;
-        shownListing = listingSignature();
     }
 
-    /// The entries of all watched (i.e. shown) folders, to tell whether a monitor event changed what the tree shows
-    auto listingSignature() const -> std::string {
-        std::string signature;
-        for (const auto& entry: monitors) {
-            const auto& folder = entry.first;
-            std::vector<std::string> names;
-            std::error_code error;
-            for (fs::directory_iterator it(Util::fromUtf8(folder.c_str()), error), end; !error && it != end;
-                 it.increment(error)) {
-                if (!isIgnored(it->path())) {
-                    std::error_code typeError;
-                    names.push_back(Util::toUtf8(it->path().filename()) + (it->is_directory(typeError) ? "/" : ""));
-                }
-            }
-            std::sort(names.begin(), names.end());
-            signature += folder;
-            signature += '\n';
-            for (const auto& name: names) {
-                signature += name;
-                signature += '\n';
+    /// Whether a shown folder's entries differ from what the tree shows (see shownListings)
+    auto listingChanged() const -> bool {
+        for (const auto& [folder, listing]: shownListings) {
+            if (listingOf(Util::fromUtf8(folder.c_str())) != listing) {
+                return true;
             }
         }
-        return signature;
+        return false;
     }
 
     struct SearchMatch {
@@ -959,7 +998,7 @@ private:
                     self->refreshSource = 0;
                     // Fork: saving replaces the document file (via "<name>.xopp~"), which the monitors report as
                     // changes; only rebuild the tree if the shown entries actually changed
-                    if (!self->searching && self->listingSignature() == self->shownListing) {
+                    if (!self->searching && !self->listingChanged()) {
                         return G_SOURCE_REMOVE;
                     }
                     self->refresh(true);
@@ -1387,7 +1426,64 @@ private:
 
     // --- File system monitoring ---
 
+    /// Keeps one recursive watch on the project folder (see DirectoryTreeWatcher), across rebuilds of the tree
+    void ensureTreeWatcher() {
+        if (projectRoot.empty()) {
+            treeWatcher.reset();
+            return;
+        }
+        if (treeWatcher && treeWatcher->getRoot() == projectRoot && treeWatcher->isActive()) {
+            return;
+        }
+        treeWatcher.reset();
+        auto watcher = std::make_unique<DirectoryTreeWatcher>(
+                projectRoot, [this](const std::vector<DirectoryTreeWatcher::Change>& changes, bool overflow) {
+                    onTreeChanges(changes, overflow);
+                });
+        if (watcher->isActive()) {
+            treeWatcher = std::move(watcher);
+        }
+    }
+
+    void onTreeChanges(const std::vector<DirectoryTreeWatcher::Change>& changes, bool overflow) {
+        if (overflow) {
+            // Changes were dropped: compare the shown folders. If the watch ended (e.g. the folder was renamed), the
+            // rebuild watches again, or falls back to monitoring the shown folders.
+            if (treeWatcher && !treeWatcher->isActive()) {
+                refresh(true);
+            } else {
+                scheduleRefresh();
+            }
+            scheduleGitRefresh();
+            return;
+        }
+        bool listingMayChange = false;
+        bool contentChanged = false;
+        for (const auto& change: changes) {
+            // Inside .git, and the backups Xournal++ writes while saving, nothing is shown in the tree
+            const auto relative = change.path.lexically_relative(projectRoot);
+            if ((!relative.empty() && *relative.begin() == ".git") ||
+                AnnotationFiles::isRecoveryCopy(change.path.filename())) {
+                continue;
+            }
+            contentChanged = true;
+            // Only folders the tree shows the entries of matter; the rest is listed when expanded
+            if (change.nameChanged && shownListings.count(folderKey(change.path.parent_path()))) {
+                listingMayChange = true;
+            }
+        }
+        if (listingMayChange && !searching) {
+            scheduleRefresh();
+        }
+        if (contentChanged) {
+            scheduleGitRefresh();
+        }
+    }
+
     void watch(const fs::path& dir) {
+        if (treeWatcher) {
+            return;  // the recursive watch covers it
+        }
         const auto key = Util::toUtf8(dir);
         if (monitors.count(key)) {
             return;
@@ -1398,71 +1494,59 @@ private:
         if (!monitor) {
             return;
         }
-        g_signal_connect(monitor, "changed",
-                         G_CALLBACK(+[](GFileMonitor*, GFile* file, GFile*, GFileMonitorEvent event, gpointer data) {
-                             auto* self = static_cast<ProjectExplorerSidebar*>(data);
-                             gchar* name = g_file_get_basename(file);
-                             // Neither .git nor the backups Xournal++ writes while saving are shown in the tree
-                             const bool ignored = name && (std::strcmp(name, ".git") == 0 ||
-                                                           AnnotationFiles::isRecoveryCopy(Util::fromUtf8(name)));
-                             g_free(name);
-                             if (ignored) {
-                                 // Still changes the folder's modification time: do not take it for a missed change
-                                 self->rememberFolderTime(file);
-                                 return;
-                             }
-                             switch (event) {
-                                 case G_FILE_MONITOR_EVENT_CREATED:
-                                 case G_FILE_MONITOR_EVENT_DELETED:
-                                 case G_FILE_MONITOR_EVENT_MOVED_IN:
-                                 case G_FILE_MONITOR_EVENT_MOVED_OUT:
-                                 case G_FILE_MONITOR_EVENT_RENAMED:
-                                     self->scheduleRefresh();
-                                     self->scheduleGitRefresh();
-                                     break;
-                                 case G_FILE_MONITOR_EVENT_CHANGES_DONE_HINT:
-                                     self->scheduleGitRefresh();
-                                     break;
-                                 default:
-                                     break;
-                             }
-                         }),
-                         this);
+        g_signal_connect(
+                monitor, "changed",
+                G_CALLBACK(+[](GFileMonitor*, GFile* file, GFile* other, GFileMonitorEvent event, gpointer data) {
+                    auto* self = static_cast<ProjectExplorerSidebar*>(data);
+                    // Neither .git nor the backups Xournal++ writes while saving are shown in the tree
+                    auto ignoredName = [](GFile* f) {
+                        gchar* name = f ? g_file_get_basename(f) : nullptr;
+                        const bool ignored = name && (std::strcmp(name, ".git") == 0 ||
+                                                      AnnotationFiles::isRecoveryCopy(Util::fromUtf8(name)));
+                        g_free(name);
+                        return ignored;
+                    };
+                    // A rename reports the old name in file and the new one in other: "name~" renamed to
+                    // "name.pdf" (how many programs save) is a new entry
+                    if (ignoredName(file) && (event != G_FILE_MONITOR_EVENT_RENAMED || !other || ignoredName(other))) {
+                        return;
+                    }
+                    switch (event) {
+                        case G_FILE_MONITOR_EVENT_CREATED:
+                        case G_FILE_MONITOR_EVENT_DELETED:
+                        case G_FILE_MONITOR_EVENT_MOVED_IN:
+                        case G_FILE_MONITOR_EVENT_MOVED_OUT:
+                        case G_FILE_MONITOR_EVENT_RENAMED:
+                            self->scheduleRefresh();
+                            self->scheduleGitRefresh();
+                            break;
+                        case G_FILE_MONITOR_EVENT_CHANGES_DONE_HINT:
+                            self->scheduleGitRefresh();
+                            break;
+                        default:
+                            break;
+                    }
+                }),
+                this);
         monitors.emplace(key, monitor);
-        std::error_code error;
-        folderTimes[key] = fs::last_write_time(dir, error);
     }
 
-    void rememberFolderTime(GFile* changed) {
-        GFile* folder = g_file_get_parent(changed);
-        if (!folder) {
-            return;
-        }
-        gchar* path = g_file_get_path(folder);
-        g_object_unref(folder);
-        if (path) {
-            if (auto found = folderTimes.find(path); found != folderTimes.end()) {
-                std::error_code error;
-                found->second = fs::last_write_time(Util::fromUtf8(path), error);
-            }
-            g_free(path);
-        }
-    }
-
-    /// File monitors can miss changes, e.g. on network or cloud folders: when the window is activated again, refresh
-    /// if a shown folder was modified meanwhile. Comparing the folder times is cheap, unlike rebuilding the tree.
-    void checkForMissedChanges() {
+    /**
+     * File monitors can miss changes: on network or cloud folders, and on Windows when a burst of changes (unzipping,
+     * a download's temporary files) overflows the monitor's buffer. Compare the shown folders with their listings
+     * when the window is activated and every few seconds while it is active (only names are read, the tree is only
+     * rebuilt on a difference). A search's results are not watched: search again on activation.
+     */
+    void checkForMissedChanges(bool activated) {
         if (projectRoot.empty()) {
             return;
         }
-        for (const auto& [key, time]: folderTimes) {
-            std::error_code error;
-            if (fs::last_write_time(Util::fromUtf8(key.c_str()), error) != time || error) {
-                scheduleRefresh();
-                break;
-            }
+        if (searching ? activated : listingChanged()) {
+            scheduleRefresh();
         }
-        scheduleGitRefresh();  // e.g. commits made outside
+        if (activated) {
+            scheduleGitRefresh();  // e.g. commits made outside
+        }
     }
 
     void clearMonitors() {
@@ -1472,7 +1556,7 @@ private:
             g_object_unref(monitor);
         }
         monitors.clear();
-        folderTimes.clear();
+        shownListings.clear();
     }
 
     // --- Selection and navigation ---
@@ -2798,7 +2882,6 @@ private:
     bool gitBusy = false;
     bool gitRefreshPending = false;
     bool syncing = false;
-    std::string shownListing;  ///< listingSignature() of the tree as last built
     bool fetchRunning = false;
     bool syncAfterFetch = false;
     fs::path gitToplevel;
@@ -2842,9 +2925,12 @@ private:
     GIcon* tasksIcon{};  ///< todo.txt files  ///< deleted entries
     guint saveSource = 0;
     std::map<std::string, GFileMonitor*> monitors;
-    std::map<std::string, fs::file_time_type> folderTimes;  ///< modification times of the watched folders
-    GtkWindow* focusWindow{};                               ///< weak pointer, see checkForMissedChanges()
+    /// The entries (listingOf()) the tree shows of each populated or empty folder, from the listing it was built from
+    std::map<std::string, std::string> shownListings;
+    GtkWindow* focusWindow{};  ///< weak pointer, see checkForMissedChanges()
     guint refreshSource = 0;
+    /// Watches the whole project folder where possible (Windows); otherwise monitors per shown folder
+    std::unique_ptr<DirectoryTreeWatcher> treeWatcher;
     /// Whether another sidebar tab was shown since the tree was built (the file monitors keep it current otherwise)
     bool refreshOnEnable = false;
     guint scrollSource = 0;
