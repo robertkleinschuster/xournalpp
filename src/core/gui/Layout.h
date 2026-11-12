@@ -184,6 +184,9 @@ public:
         std::vector<double> stretchableVerticalPixelsAfterRow;       ///< Stretchable - multiply by zoom to get pixels
         int paddingLeft;                                             ///< in pixels
         int paddingRight;                                            ///< in pixels
+        /// Fork: paddingLeft/Right without the room that lets a zoomed page edge reach the middle of the view
+        int basePaddingLeft = 0;
+        int basePaddingRight = 0;
         int paddingTop;                                              ///< in pixels
         int paddingBottom;                                           ///< in pixels
 

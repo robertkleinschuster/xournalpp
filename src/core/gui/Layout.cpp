@@ -362,12 +362,24 @@ void Layout::computePrecalculated() {
         pc.paddingLeft += settings->getAddHorizontalSpaceAmountLeft();
         pc.paddingRight += settings->getAddHorizontalSpaceAmountRight();
     }
+    pc.basePaddingLeft = pc.paddingLeft;
+    pc.basePaddingRight = pc.paddingRight;
 
     recomputeCenteringPaddingUnsafe(gtk_widget_get_allocated_width(view->getWidget()),
                                     gtk_widget_get_allocated_height(view->getWidget()));
 }
 
 void Layout::recomputeCenteringPaddingUnsafe(int allocWidth, int allocHeight) {
+    // Fork: zoomed in so far that the pages are wider than the view, each page edge may be scrolled to the middle of
+    // the view: writing at the right edge of the page, the hand then rests on the screen instead of beside it.
+    // Here and not in computePrecalculated(), so that it follows the view's width (resizing, rotation).
+    pc.paddingLeft = pc.basePaddingLeft;
+    pc.paddingRight = pc.basePaddingRight;
+    if (getMinimalPixelWidthUnsafe() > allocWidth) {
+        pc.paddingLeft = std::max(pc.paddingLeft, allocWidth / 2);
+        pc.paddingRight = std::max(pc.paddingRight, allocWidth / 2);
+    }
+
     if (int w = getMinimalPixelWidthUnsafe(); w < allocWidth) {
         // We have more space than needed: add padding to center the content
         pc.horizontalCenteringPadding = (allocWidth - w) / 2;
@@ -395,6 +407,11 @@ void Layout::recomputeCenteringPadding(int allocWidth, int allocHeight) {
     g.unlock();
     gtk_adjustment_set_upper(scrollHandling->getHorizontal(), width);
     gtk_adjustment_set_upper(scrollHandling->getVertical(), height);
+    // Fork: set_upper keeps a value that no longer fits (e.g. the room beside a zoomed page went away); clamp it, or
+    // the view stays scrolled past the content
+    for (GtkAdjustment* adjustment: {scrollHandling->getHorizontal(), scrollHandling->getVertical()}) {
+        gtk_adjustment_set_value(adjustment, gtk_adjustment_get_value(adjustment));
+    }
 }
 
 void Layout::recalculate() {
