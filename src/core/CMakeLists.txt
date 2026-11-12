@@ -20,5 +20,7 @@ target_include_directories(xournalpp-core PUBLIC ${xournalpp_include_dirs})
 if (WIN32)
     # Fork: two-finger touchpad gestures from raw touchpad input (control/zoom/TouchpadGestures.cpp)
     target_link_libraries(xournalpp-core PUBLIC hid)
+    # Fork: 1 ms timer resolution while the pen is in range (gui/InputSafety.cpp), so frames are not delayed
+    target_link_libraries(xournalpp-core PUBLIC winmm)
 endif ()
 add_library(xoj::core ALIAS xournalpp-core)

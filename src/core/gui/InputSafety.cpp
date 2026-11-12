@@ -6,6 +6,10 @@
 #include <cstdio>
 #include <string>
 
+#include <windows.h>  // for timeBeginPeriod
+
+#include <timeapi.h>  // after windows.h
+
 #include "gui/InputModality.h"  // for modalityOf
 #include "util/PathUtil.h"
 
@@ -153,6 +157,23 @@ auto isPenOrTouch(GdkEvent* event) -> bool { return xoj::input::modalityOf(event
 /// The device of the last pointer input, and whether the pen hovers over the screen
 xoj::input::Modality lastModality = xoj::input::Modality::Mouse;
 bool penInRange = false;
+gint64 lastPenTime = 0;  ///< monotonic time of the last pen event
+
+/**
+ * Windows wakes timers in steps of 15.6 ms by default, which delays GTK's frames (and so the ink) by up to a frame.
+ * While the pen is near the screen the process asks for 1 ms steps; that costs a little power, so only then.
+ */
+void setFineTimer(bool fine) {
+    static bool active = false;
+    if (fine != active) {
+        active = fine;
+        if (fine) {
+            timeBeginPeriod(1);
+        } else {
+            timeEndPeriod(1);
+        }
+    }
+}
 
 void trackModality(GdkEvent* event) {
     switch (event->type) {
@@ -161,13 +182,24 @@ void trackModality(GdkEvent* event) {
         case GDK_TOUCH_BEGIN:
         case GDK_TOUCH_UPDATE:
             lastModality = xoj::input::modalityOf(event);
+            if (lastModality == xoj::input::Modality::Pen) {
+                setFineTimer(true);  // also if the proximity event was missed
+                lastPenTime = g_get_monotonic_time();
+            }
             break;
         case GDK_PROXIMITY_IN:
             penInRange = true;
             lastModality = xoj::input::Modality::Pen;
+            setFineTimer(true);
             break;
         case GDK_PROXIMITY_OUT:
             penInRange = false;
+            setFineTimer(false);
+            break;
+        case GDK_FOCUS_CHANGE:
+            if (!event->focus_change.in) {
+                setFineTimer(false);  // writing in another window
+            }
             break;
         default:
             break;
@@ -250,6 +282,11 @@ void releaseStalePointerGrab(GdkEvent* event) {
 
 }  // namespace
 
+auto InputSafety::penActiveWithin(gint64 durationUs) -> bool {
+    // Hovering moves count too; not penInRange alone: a missed proximity-out would keep it set
+    return lastPenTime != 0 && g_get_monotonic_time() - lastPenTime < durationUs;
+}
+
 void InputSafety::note(const char* text) {
     if (FILE* log = openLog()) {
         std::fprintf(log, "%10.3f   %s\n", static_cast<double>(g_get_monotonic_time()) / 1e6, text);
@@ -297,5 +334,6 @@ auto InputSafety::handleEvent(GdkEvent* event) -> bool {
 
 auto InputSafety::handleEvent(GdkEvent*) -> bool { return false; }
 void InputSafety::note(const char*) {}
+auto InputSafety::penActiveWithin(gint64) -> bool { return false; }
 
 #endif

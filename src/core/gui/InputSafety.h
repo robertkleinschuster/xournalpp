@@ -31,4 +31,8 @@ bool handleEvent(GdkEvent* event);
 /// Adds a line to the diagnostic log, if it is enabled
 void note(const char* text);
 
+/// Fork: whether the pen touched or hovered over the window during the last durationUs microseconds (Windows only),
+/// so background work can wait instead of competing with handwriting
+bool penActiveWithin(gint64 durationUs);
+
 }  // namespace InputSafety

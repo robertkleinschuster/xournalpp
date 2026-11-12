@@ -44,6 +44,7 @@
 #include "control/xojfile/LoadHandler.h"                         // for Load...
 #include "control/zoom/ZoomControl.h"                            // for Zoom...
 #include "gui/FloatingToolbox.h"                                 // for Floa...
+#include "gui/InputSafety.h"                                     // for penActiveWithin
 #include "gui/MainWindow.h"                                      // for Main...
 #include "gui/PageView.h"                                        // for XojP...
 #include "gui/PdfFloatingToolbox.h"                              // for PdfF...
@@ -265,6 +266,11 @@ void Control::deleteLastAutosaveFile() {
 }
 
 auto Control::checkChangedDocument(Control* control) -> bool {
+    // Fork: the preview renders hold the document lock, which the end of a stroke waits for: render them in a pause
+    // of the pen, not between two strokes
+    if (InputSafety::penActiveWithin(1500 * 1000)) {
+        return true;
+    }
     if (!control->doc->try_lock_shared()) {
         // call again later
         return true;
