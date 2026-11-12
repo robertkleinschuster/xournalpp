@@ -10,14 +10,11 @@
  */
 #pragma once
 
-#include <optional>
 #include <vector>
 
 #include <cairo.h>
 
-#include "model/Point.h"
 #include "util/DispatchPool.h"
-#include "util/Range.h"
 #include "view/Mask.h"
 
 #include "BaseStrokeToolView.h"
@@ -46,14 +43,6 @@ public:
     static constexpr struct AddPointRequest {
     } ADD_POINT_REQUEST = {};
     virtual void on(AddPointRequest, const Point& p);
-
-    /**
-     * Fork: where the pen tip is, which a stroke stabilizer's last point lags behind. A segment from the last point to
-     * it is drawn on top until the next frame, so the ink reaches the pen without the stroke changing.
-     */
-    static constexpr struct TailRequest {
-    } TAIL_REQUEST = {};
-    void on(TailRequest, const Point& penTip);
 
     static constexpr struct ThickenFirstPointRequest {
     } THICKEN_FIRST_POINT_REQUEST = {};
@@ -89,8 +78,6 @@ protected:
 
     // Nothing in the base class
     virtual void drawFilling(cairo_t*, const std::vector<Point>&) const {}
-    /// Fork: whether drawFilling() draws anything
-    virtual auto hasFilling() const -> bool { return false; }
 
 protected:
     const StrokeHandler* strokeHandler;
@@ -117,14 +104,5 @@ protected:
      * Upon calls to draw(), the buffer is flushed and the corresponding part of stroke is added to the mask.
      */
     mutable Mask mask;
-
-    /// Fork: the pen tip (see TailRequest); the segment to it is drawn while the last point lags behind
-    std::optional<Point> tail;
-    /// The area the tail was flagged dirty for, to repaint it when the tail moves or goes
-    Range tailRange;
-    auto computeTailRange() const -> Range;
-    /// Whether the tail can be drawn on top: an opaque, solid, unfilled stroke (overlapping a highlighter's
-    /// multiplied ink or dashes would show)
-    auto drawsTail() const -> bool;
 };
 };  // namespace xoj::view

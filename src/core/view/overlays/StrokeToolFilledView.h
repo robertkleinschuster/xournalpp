@@ -33,7 +33,6 @@ public:
     virtual ~StrokeToolFilledView() noexcept;
 
     void drawFilling(cairo_t* cr, const std::vector<Point>& pts) const override;
-    auto hasFilling() const -> bool override { return true; }
 
     void on(AddPointRequest, const Point& p) override;
     void on(StrokeReplacementRequest, const Stroke& newStroke) override;
