@@ -45,6 +45,9 @@ public:
     static constexpr int PAGE_GAP = 48;
 
     Layout(XournalView* view, ScrollHandling* scrollHandling);
+    ~Layout();
+    Layout(const Layout&) = delete;
+    Layout& operator=(const Layout&) = delete;
 
 public:
     // Todo(Fabian): move to ScrollHandling also it must not depend on Layout
@@ -206,4 +209,18 @@ private:
 
     /// Used to have only one call when zooming in/out
     enum class DelayStatus { NO_DELAY, DELAY, MUST_RUN_AFTER } delayUpdate = DelayStatus::NO_DELAY;
+
+    // Fork: the current page snaps to the middle of the view when horizontal scrolling comes to rest close to it
+    void snapToCenterSoon();
+    void snapToCenterIfClose();
+    static constexpr guint SNAP_DELAY_MS = 250;         ///< rest this long before snapping
+    static constexpr double SNAP_SHARE = 0.1;           ///< snap within this share of the view width ...
+    static constexpr double SNAP_MIN_PX = 40;           ///< ... but at least this far
+    static constexpr double SNAP_DURATION_US = 150000;  ///< glide duration
+    guint snapTimer = 0;
+    guint snapAnimation = 0;
+    double snapFrom = 0;
+    double snapTo = 0;
+    gint64 snapStart = 0;
+    bool snapping = false;  ///< the value changes are the snap's own
 };

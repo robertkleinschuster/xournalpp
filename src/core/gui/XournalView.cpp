@@ -462,6 +462,15 @@ void XournalView::scrollTo(size_t pageNo, XojPdfRectangle rect) {
     }
 
     layout->ensureRectIsVisible(x, y, width, height);
+    // Fork: there is always room beside the pages (Layout::recomputeCenteringPaddingUnsafe), so a whole page that fits
+    // the view's width is shown in its middle rather than wherever making it visible left it
+    if (rect.x2 == -1 || rect.y2 == -1) {
+        GtkAdjustment* h = this->scrollHandling->getHorizontal();
+        const double viewWidth = gtk_adjustment_get_page_size(h);
+        if (width <= viewWidth) {
+            gtk_adjustment_set_value(h, x + width / 2.0 - viewWidth / 2.0);
+        }
+    }
 
     // Select the page
     control->firePageSelected(pageNo);

@@ -54,7 +54,78 @@ static inline void afterMove(Layout* layout, GtkWidget* w) {
     gtk_widget_queue_draw(w);
 }
 
+Layout::~Layout() {
+    for (guint source: {snapTimer, snapAnimation}) {
+        if (source) {
+            g_source_remove(source);
+        }
+    }
+}
+
+void Layout::snapToCenterSoon() {
+    if (snapAnimation) {  // the user scrolls on: stop gliding
+        g_source_remove(snapAnimation);
+        snapAnimation = 0;
+    }
+    if (snapTimer) {
+        g_source_remove(snapTimer);
+    }
+    snapTimer = g_timeout_add(
+            SNAP_DELAY_MS,
+            +[](gpointer data) -> gboolean {
+                auto* self = static_cast<Layout*>(data);
+                self->snapTimer = 0;
+                self->snapToCenterIfClose();
+                return G_SOURCE_REMOVE;
+            },
+            this);
+}
+
+void Layout::snapToCenterIfClose() {
+    if (view->getControl()->getSettings()->isPresentationMode()) {
+        return;
+    }
+    const size_t page = view->getCurrentPage();
+    XojPageView* pageView = view->getViewFor(page);
+    if (!pageView) {
+        return;
+    }
+    GtkAdjustment* h = scrollHandling->getHorizontal();
+    const double viewWidth = gtk_adjustment_get_page_size(h);
+    const double value = gtk_adjustment_get_value(h);
+    const double pageCenter = getPixelCoordinatesOfEntry(page).x + pageView->getDisplayWidth() / 2.0;
+    const double offset = pageCenter - (value + viewWidth / 2.0);
+    if (std::abs(offset) < 1 || std::abs(offset) > std::max(SNAP_MIN_PX, SNAP_SHARE * viewWidth)) {
+        return;
+    }
+    // Glide there (ease-out), so the page visibly settles instead of jumping
+    snapFrom = value;
+    snapTo = value + offset;
+    snapStart = g_get_monotonic_time();
+    snapAnimation = g_timeout_add(
+            16,
+            +[](gpointer data) -> gboolean {
+                auto* self = static_cast<Layout*>(data);
+                const double t =
+                        std::min(1.0, static_cast<double>(g_get_monotonic_time() - self->snapStart) / SNAP_DURATION_US);
+                const double eased = 1 - (1 - t) * (1 - t) * (1 - t);
+                self->snapping = true;
+                gtk_adjustment_set_value(self->scrollHandling->getHorizontal(),
+                                         self->snapFrom + (self->snapTo - self->snapFrom) * eased);
+                self->snapping = false;
+                if (t >= 1.0) {
+                    self->snapAnimation = 0;
+                    return G_SOURCE_REMOVE;
+                }
+                return G_SOURCE_CONTINUE;
+            },
+            this);
+}
+
 void Layout::horizontalScrollChanged(GtkAdjustment*, Layout* layout) {
+    if (!layout->snapping) {
+        layout->snapToCenterSoon();
+    }
     if (layout->delayUpdate == DelayStatus::NO_DELAY) {
         afterMove(layout, layout->view->getWidget());
     } else {
@@ -370,15 +441,12 @@ void Layout::computePrecalculated() {
 }
 
 void Layout::recomputeCenteringPaddingUnsafe(int allocWidth, int allocHeight) {
-    // Fork: zoomed in so far that the pages are wider than the view, each page edge may be scrolled to the middle of
-    // the view: writing at the right edge of the page, the hand then rests on the screen instead of beside it.
-    // Here and not in computePrecalculated(), so that it follows the view's width (resizing, rotation).
-    pc.paddingLeft = pc.basePaddingLeft;
-    pc.paddingRight = pc.basePaddingRight;
-    if (getMinimalPixelWidthUnsafe() > allocWidth) {
-        pc.paddingLeft = std::max(pc.paddingLeft, allocWidth / 2);
-        pc.paddingRight = std::max(pc.paddingRight, allocWidth / 2);
-    }
+    // Fork: each page edge may be scrolled to the middle of the view: writing at the right edge of the page, the hand
+    // then rests on the screen instead of beside it. Always, at any zoom: room that appeared only once the pages were
+    // wider than the view made the view jump when zooming across that point. The pages snap to the middle instead
+    // (snapToCenterSoon()). Here and not in computePrecalculated(), so that it follows the view's width.
+    pc.paddingLeft = std::max(pc.basePaddingLeft, allocWidth / 2);
+    pc.paddingRight = std::max(pc.basePaddingRight, allocWidth / 2);
 
     if (int w = getMinimalPixelWidthUnsafe(); w < allocWidth) {
         // We have more space than needed: add padding to center the content
