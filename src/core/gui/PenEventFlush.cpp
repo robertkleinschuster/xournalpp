@@ -50,6 +50,13 @@ void PenEventFlush::install(GtkWidget* toplevel) {
     window = toplevel;
     g_object_add_weak_pointer(G_OBJECT(toplevel), reinterpret_cast<gpointer*>(&window));
     gdk_window_add_filter(nullptr, filter, nullptr);
+
+    // Never let Windows throttle this process (EcoQoS on battery: slower CPU, coarse timers), which delays ink
+    PROCESS_POWER_THROTTLING_STATE state{};
+    state.Version = PROCESS_POWER_THROTTLING_CURRENT_VERSION;
+    state.ControlMask = PROCESS_POWER_THROTTLING_EXECUTION_SPEED | PROCESS_POWER_THROTTLING_IGNORE_TIMER_RESOLUTION;
+    state.StateMask = 0;  // controlled and off
+    SetProcessInformation(GetCurrentProcess(), ProcessPowerThrottling, &state, sizeof(state));
 }
 
 #else
