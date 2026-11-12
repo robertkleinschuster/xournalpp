@@ -18,9 +18,9 @@
 #include "control/shaperecognizer/ShapeRecognizer.h"  // for ShapeRecognizer
 #include "control/tools/InputHandler.h"               // for InputHandler::P...
 #include "control/tools/SnapToGridInputHandler.h"     // for SnapToGridInput...
-#include "gui/DelegatedInk.h"                         // for DelegatedInk
 #include "gui/Layout.h"                               // for Layout
 #include "gui/MainWindow.h"                           // for MainWindow
+#include "gui/WetInk.h"                               // for WetInk
 #include "gui/XournalView.h"                          // for XournalView
 #include "gui/inputdevices/PositionInputData.h"       // for PositionInputData
 #include "model/Document.h"                           // for Document
@@ -290,14 +290,10 @@ void StrokeHandler::onButtonPressEvent(const PositionInputData& pos, double zoom
 }
 
 void StrokeHandler::startInk(double zoom) {
-    // Opaque, solid, unfilled ink only: the compositor's trail is a plain line of the stroke's color
+    // Opaque, solid, unfilled ink only: the layer draws a plain line of the stroke's color. It gets the stroke's own
+    // (stabilized) points, so it shows exactly the line that stays.
     const Stroke& s = *this->stroke;
     if (s.getToolType() != StrokeTool::PEN || s.getFill() != -1 || s.getLineStyle().hasDashes()) {
-        return;
-    }
-    // Not with a stroke stabilizer: the compositor connects the stroke to where the pen really is, while the stroke
-    // follows the smoothed path, so the trail would show a different line than the one that stays
-    if (dynamic_cast<StrokeStabilizer::Active*>(this->stabilizer.get())) {
         return;
     }
     MainWindow* win = control->getWindow();
@@ -305,7 +301,7 @@ void StrokeHandler::startInk(double zoom) {
         return;
     }
     GtkWidget* toplevel = win->getWindow();
-    this->ink = DelegatedInk::forWindow(toplevel);
+    this->ink = WetInk::forWindow(toplevel);
     if (!this->ink) {
         return;
     }
@@ -331,7 +327,7 @@ void StrokeHandler::startInk(double zoom) {
     this->inkScale = zoom * scale;
 
     const Color color = s.getColor();
-    this->ink->startTrail(color.red / 255.f, color.green / 255.f, color.blue / 255.f, 1.f);
+    this->ink->startStroke(color.red / 255.f, color.green / 255.f, color.blue / 255.f);
     addInkPoint(s.getPointVector().back());
 }
 
@@ -347,7 +343,7 @@ void StrokeHandler::addInkPoint(const Point& point) {
 
 void StrokeHandler::endInk() {
     if (this->ink) {
-        this->ink->endTrail();
+        this->ink->endStroke();
         this->ink = nullptr;
     }
 }
