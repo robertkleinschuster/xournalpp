@@ -2261,6 +2261,10 @@ void Control::updateWindowTitle() {
 
     title += " - Xournal Studio";
 
+    // Fork: called after every stroke; renaming the Windows window each time costs time between strokes
+    if (const char* shown = gtk_window_get_title(getGtkWindow()); shown && title == shown) {
+        return;
+    }
     gtk_window_set_title(getGtkWindow(), title.c_str());
 }
 

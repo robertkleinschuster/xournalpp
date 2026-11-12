@@ -87,12 +87,21 @@ void Menubar::populate(const GladeSearchpath* gladeSearchPath, MainWindow* win) 
 
 void Menubar::setUndoDescription(const std::string& description) {
     xoj_assert(undoRedoSection);
+    // Fork: called after every stroke, mostly with the same text
+    if (description == undoDescription) {
+        return;
+    }
+    undoDescription = description;
     g_menu_remove(undoRedoSection, 0);
     g_menu_prepend(undoRedoSection, description.c_str(), "win.undo");
 }
 
 void Menubar::setRedoDescription(const std::string& description) {
     xoj_assert(undoRedoSection);
+    if (description == redoDescription) {
+        return;
+    }
+    redoDescription = description;
     g_menu_remove(undoRedoSection, 1);
     g_menu_append(undoRedoSection, description.c_str(), "win.redo");
 }

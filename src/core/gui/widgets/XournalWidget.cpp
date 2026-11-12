@@ -292,6 +292,14 @@ void gtk_xournal_repaint_area(GtkWidget* widget, int x1, int y1, int x2, int y2)
 /// Fork: the page number as a rounded badge, centered in the gap below the page
 static void gtk_xournal_draw_page_number(GtkWidget* widget, cairo_t* cr, size_t index, size_t count, int left, int top,
                                          int width, int height, Color background) {
+    // The badge lies in the gap below the page: skip laying out its text when only the page is repainted (each frame
+    // while writing)
+    double clipX1 = 0, clipY1 = 0, clipX2 = 0, clipY2 = 0;
+    cairo_clip_extents(cr, &clipX1, &clipY1, &clipX2, &clipY2);
+    if (clipY2 <= top + height || clipY1 >= top + height + Layout::PAGE_GAP || clipX2 <= left ||
+        clipX1 >= left + width) {
+        return;
+    }
     const auto label = std::to_string(index + 1) + " / " + std::to_string(count);
     // The widget's layout uses the UI font at the screen's DPI
     PangoLayout* layout = gtk_widget_create_pango_layout(widget, label.c_str());

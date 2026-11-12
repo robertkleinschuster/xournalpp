@@ -78,4 +78,7 @@ private:
     }
 
     GMenu* undoRedoSection;  // owned by `builder`
+    /// Fork: the shown texts; replacing the entries rebuilds their menu items, so only on a change
+    std::string undoDescription;
+    std::string redoDescription;
 };
