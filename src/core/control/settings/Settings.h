@@ -1210,6 +1210,8 @@ private:
     double stabilizerDeadzoneRadius{};
     double stabilizerDrag{};
     double stabilizerMass{};
+    /// Fork: whether the untouched former default (inertia, mass 5, drag 0.4) was switched to the adaptive filter
+    bool stabilizerAdaptiveMigrated = false;
     double stabilizerSigma{};
     StrokeStabilizer::AveragingMethod stabilizerAveragingMethod{};
     StrokeStabilizer::Preprocessor stabilizerPreprocessor{};

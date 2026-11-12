@@ -282,6 +282,9 @@
       <row>
         <col id="0" translatable="yes">Inertia</col>
       </row>
+      <row>
+        <col id="0" translatable="yes">Adaptive (1€ filter, little delay)</col>
+      </row>
     </data>
   </object>
   <object class="GtkWindow" id="settingsDialog">

@@ -19,9 +19,10 @@ constexpr bool isValid(AveragingMethod am) {
     return am == AveragingMethod::NONE || am == AveragingMethod::ARITHMETIC || am == AveragingMethod::VELOCITY_GAUSSIAN;
 }
 
-enum class Preprocessor { NONE, DEADZONE, INERTIA };
+enum class Preprocessor { NONE, DEADZONE, INERTIA, ONE_EURO /* Fork */ };
 
 constexpr bool isValid(Preprocessor pp) {
-    return pp == Preprocessor::NONE || pp == Preprocessor::DEADZONE || pp == Preprocessor::INERTIA;
+    return pp == Preprocessor::NONE || pp == Preprocessor::DEADZONE || pp == Preprocessor::INERTIA ||
+           pp == Preprocessor::ONE_EURO;
 }
 }  // namespace StrokeStabilizer

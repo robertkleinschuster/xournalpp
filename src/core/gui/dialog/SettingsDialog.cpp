@@ -328,7 +328,10 @@ void SettingsDialog::showStabilizerPreprocessorOptions(StrokeStabilizer::Preproc
     bool averagingOn = static_cast<StrokeStabilizer::AveragingMethod>(
                                gtk_combo_box_get_active(GTK_COMBO_BOX(builder.get("cbStabilizerAveragingMethods")))) !=
                        StrokeStabilizer::AveragingMethod::NONE;
-    bool sensitive = showDeadzone || showInertia || averagingOn;
+    // Fork: the adaptive filter ignores the averaging method
+    const bool oneEuro = preprocessor == StrokeStabilizer::Preprocessor::ONE_EURO;
+    gtk_widget_set_sensitive(builder.get("cbStabilizerAveragingMethods"), !oneEuro);
+    bool sensitive = showDeadzone || showInertia || averagingOn || oneEuro;
     gtk_widget_set_sensitive(builder.get("cbStabilizerEnableFinalizeStroke"), sensitive);
 }
 

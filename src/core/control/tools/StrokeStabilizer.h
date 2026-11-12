@@ -341,6 +341,39 @@ private:
 };
 
 
+/**
+ * @brief Fork: adaptive smoothing (the "1€ filter", Casiez et al. 2012). Slow movements are smoothed strongly (no
+ * tremor or digitizer jitter), fast ones hardly at all, so the stroke stays close behind the pen: the cutoff frequency
+ * of a low-pass filter grows with the speed. Inertia instead lags behind by about one pen report at any speed.
+ */
+class OneEuro: virtual public Active {
+public:
+    explicit OneEuro(bool finalize): Active(finalize) {}
+    ~OneEuro() override = default;
+
+    void processEvent(const PositionInputData& pos) override;
+
+    [[maybe_unused]] auto getInfo() -> std::string override { return "Adaptive (1 euro filter) stabilizer"; }
+
+    /// Cutoff frequency at rest in Hz: smooths tremor and jitter (about 8-12 Hz) when writing slowly
+    static constexpr double MIN_CUTOFF = 5.0;
+    /// Growth of the cutoff with the speed in Hz per pixel/s: the trailing distance stays below 1/(2 pi BETA) px
+    static constexpr double BETA = 0.1;
+    /// Cutoff for the speed estimate in Hz
+    static constexpr double SPEED_CUTOFF = 10.0;
+
+protected:
+    void recordFirstEvent(const PositionInputData& pos) override;
+    inline Event getLastEvent() override { return lastEvent; }
+
+private:
+    Event filtered;
+    MathVect2 speed{0.0, 0.0};
+    guint32 lastTimestamp = 0;
+    Event lastEvent;
+};
+
+
 /*****************************
  *         AVERAGERS         *
  *****************************/

@@ -257,7 +257,8 @@ void Settings::loadDefault() {
      * Stabilizer related settings
      */
     this->stabilizerAveragingMethod = StrokeStabilizer::AveragingMethod::NONE;
-    this->stabilizerPreprocessor = StrokeStabilizer::Preprocessor::INERTIA;  // Fork: smoother handwriting
+    // Fork: adaptive smoothing: steady handwriting with little delay (inertia trailed the pen by a pen report)
+    this->stabilizerPreprocessor = StrokeStabilizer::Preprocessor::ONE_EURO;
     this->stabilizerBuffersize = 20;
     this->stabilizerSigma = 0.5;
     this->stabilizerDeadzoneRadius = 1.3;
@@ -746,6 +747,8 @@ void Settings::parseItem(xmlDocPtr doc, xmlNodePtr cur) {
         this->stabilizerDeadzoneRadius = tempg_ascii_strtod(reinterpret_cast<const char*>(value), nullptr);
     } else if (xmlStrcmp(name, reinterpret_cast<const xmlChar*>("stabilizerDrag")) == 0) {
         this->stabilizerDrag = tempg_ascii_strtod(reinterpret_cast<const char*>(value), nullptr);
+    } else if (xmlStrcmp(name, reinterpret_cast<const xmlChar*>("stabilizerAdaptiveMigrated")) == 0) {
+        this->stabilizerAdaptiveMigrated = xmlStrcmp(value, reinterpret_cast<const xmlChar*>("true")) == 0;
     } else if (xmlStrcmp(name, reinterpret_cast<const xmlChar*>("stabilizerMass")) == 0) {
         this->stabilizerMass = tempg_ascii_strtod(reinterpret_cast<const char*>(value), nullptr);
     } else if (xmlStrcmp(name, reinterpret_cast<const xmlChar*>("stabilizerCuspDetection")) == 0) {
@@ -900,6 +903,14 @@ auto Settings::load() -> bool {
     xmlFreeDoc(doc);
 
     loadButtonConfig();
+
+    // Fork: settings saved with the former default (inertia, mass 5, drag 0.4, never changed) get the adaptive filter,
+    // which smooths as much with little delay; once, so choosing inertia again later stays
+    if (!this->stabilizerAdaptiveMigrated && this->stabilizerPreprocessor == StrokeStabilizer::Preprocessor::INERTIA &&
+        this->stabilizerMass == 5.0 && this->stabilizerDrag == 0.4) {
+        this->stabilizerPreprocessor = StrokeStabilizer::Preprocessor::ONE_EURO;
+    }
+    this->stabilizerAdaptiveMigrated = true;
     loadDeviceClasses();
 
     // This must be done before the color palette to ensure the color names are translated properly
@@ -1234,6 +1245,7 @@ void Settings::save() {
     SAVE_DOUBLE_PROP(stabilizerDeadzoneRadius);
     SAVE_DOUBLE_PROP(stabilizerDrag);
     SAVE_DOUBLE_PROP(stabilizerMass);
+    saveProperty("stabilizerAdaptiveMigrated", "true", root);  // Fork
     SAVE_BOOL_PROP(stabilizerCuspDetection);
     SAVE_BOOL_PROP(stabilizerFinalizeStroke);
 

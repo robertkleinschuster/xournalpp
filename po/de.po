@@ -5613,3 +5613,7 @@ msgstr "In der Windows-Anmeldeinformationsverwaltung speichern"
 #: ../src/core/gui/MainWindow.cpp
 msgid "Menu"
 msgstr "Menü"
+
+#: ../ui/settings.glade
+msgid "Adaptive (1€ filter, little delay)"
+msgstr "Adaptiv (1€-Filter, wenig Verzögerung)"

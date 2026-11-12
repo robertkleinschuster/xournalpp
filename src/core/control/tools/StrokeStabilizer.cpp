@@ -21,6 +21,11 @@ auto StrokeStabilizer::get(Settings* settings) -> std::unique_ptr<StrokeStabiliz
     AveragingMethod averagingMethod = settings->getStabilizerAveragingMethod();
     Preprocessor preprocessor = settings->getStabilizerPreprocessor();
 
+    // Fork: the adaptive filter is complete on its own (an average on top would add the lag it avoids)
+    if (preprocessor == Preprocessor::ONE_EURO) {
+        return std::make_unique<StrokeStabilizer::OneEuro>(settings->getStabilizerFinalizeStroke());
+    }
+
     if (averagingMethod == AveragingMethod::ARITHMETIC) {
         if (preprocessor == Preprocessor::DEADZONE) {
             return std::make_unique<StrokeStabilizer::ArithmeticDeadzone>(
@@ -285,6 +290,36 @@ void StrokeStabilizer::Inertia::rebalanceStrokePressures() {
          */
         stroke->setSecondToLastPressure((stroke->getPoint(pointCount - 2).z + stroke->getPoint(pointCount - 3).z) / 2);
     }
+}
+
+
+/**
+ * StrokeStabilizer::OneEuro
+ */
+void StrokeStabilizer::OneEuro::recordFirstEvent(const PositionInputData& pos) {
+    lastEvent = Event(pos);
+    filtered = lastEvent;
+    speed = {0.0, 0.0};
+    lastTimestamp = pos.timestamp;
+}
+
+void StrokeStabilizer::OneEuro::processEvent(const PositionInputData& pos) {
+    lastEvent = Event(pos);
+    // Event times have millisecond resolution and the pen's history can share one: never less than 1 ms
+    const double dt = std::max(1.0, static_cast<double>(pos.timestamp - lastTimestamp)) / 1000.0;
+    lastTimestamp = pos.timestamp;
+    auto alpha = [dt](double cutoff) { return 1.0 / (1.0 + 1.0 / (2.0 * M_PI * cutoff * dt)); };
+
+    // Smoothed speed (pixels per second) sets how much the position is smoothed
+    const double speedAlpha = alpha(SPEED_CUTOFF);
+    speed.dx += speedAlpha * ((lastEvent.x - filtered.x) / dt - speed.dx);
+    speed.dy += speedAlpha * ((lastEvent.y - filtered.y) / dt - speed.dy);
+    const double cutoff = MIN_CUTOFF + BETA * std::hypot(speed.dx, speed.dy);
+
+    const double a = alpha(cutoff);
+    filtered = Event(filtered.x + a * (lastEvent.x - filtered.x), filtered.y + a * (lastEvent.y - filtered.y),
+                     lastEvent.pressure);
+    averageAndPaint(filtered, pos.timestamp);
 }
 
 
