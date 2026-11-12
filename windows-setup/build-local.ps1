@@ -1,7 +1,9 @@
 param(
     [string]$MsysRoot = 'C:\msys64',
     [string]$InstallDirectory = (Join-Path $env:LOCALAPPDATA 'Programs\Xournal Studio'),
-    [switch]$SkipInstall
+    [switch]$SkipInstall,
+    # Also build the NSIS installer and check the package for other machines (slow; CI does this for releases)
+    [switch]$Installer
 )
 
 $ErrorActionPreference = 'Stop'
@@ -24,14 +26,19 @@ if ($LASTEXITCODE -ne 0) { throw 'Xournal++ build failed' }
 
 $repoMsys = '/' + $repo.Substring(0, 1).ToLowerInvariant() + $repo.Substring(2).Replace('\', '/')
 $buildMsys = "$repoMsys/build"
-$packageCommand = "cd '$buildMsys' && XOURNALPP_FORK_BUILD=1 ../windows-setup/package.sh"
+$localInstall = if ($Installer) { '0' } else { '1' }
+$packageCommand = "cd '$buildMsys' && XOURNALPP_FORK_BUILD=1 XOURNALPP_LOCAL_INSTALL=$localInstall ../windows-setup/package.sh"
+$packageStart = Get-Date
 & $bash --login -c $packageCommand
 if ($LASTEXITCODE -ne 0) { throw 'Portable package build failed' }
-Write-Output "Xournal Studio installer: $(Join-Path $build 'xournal-studio-setup.exe')"
+Write-Output ("Package built in {0:N0} s" -f ((Get-Date) - $packageStart).TotalSeconds)
+if ($Installer) {
+    Write-Output "Xournal Studio installer: $(Join-Path $build 'xournal-studio-setup.exe')"
+}
 
 if (-not $SkipInstall) {
     & (Join-Path $PSScriptRoot 'install-fork.ps1') -BuildDirectory $build -InstallDirectory $InstallDirectory
     if ($LASTEXITCODE -ne 0) { throw 'Fork installation failed' }
 } else {
-    Write-Output "Package created at $(Join-Path $build 'xournalpp-setup.exe'); installation skipped."
+    Write-Output "Package created at $(Join-Path $build 'dist'); installation skipped."
 }

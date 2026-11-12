@@ -45,7 +45,7 @@
 ## Windows build
 
 - The local MSYS2/UCRT64 build is configured in build/.
-- Run windows-setup/build-local.ps1 for an incremental build, package, and side-by-side installation.
+- Run windows-setup/build-local.ps1 for an incremental build, package, and side-by-side installation (about 2.5 min): it skips the NSIS installer and the check for other machines (`XOURNALPP_LOCAL_INSTALL=1`); `-Installer` builds both. package.sh no longer runs ldd (it ran xournalpp.exe under a debugger); the libraries come from the objdump closure. install-fork.ps1 copies with robocopy (16 threads).
 - Use -SkipInstall if the fork is running; install-fork.ps1 refuses to overwrite files locked by a running process.
 - The manually triggered CI workflow is .github/workflows/fork-windows-build.yml.
 - Releases: pushing a tag `xournal-studio-v*` (or running the workflow with `release_tag`) builds the installer and a portable ZIP and publishes both as a GitHub release. Before publishing, the packaged program exports a PDF with only Windows on PATH (smoke test in make-installer-windows.yml).

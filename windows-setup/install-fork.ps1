@@ -30,7 +30,13 @@ if ($runningFork) {
 }
 
 New-Item -ItemType Directory -Path $install -Force | Out-Null
-Get-ChildItem -LiteralPath $portable -Force | Copy-Item -Destination $install -Recurse -Force
+# robocopy copies with several threads and skips files that did not change (Copy-Item copied thousands of files one by
+# one); exit codes below 8 mean success
+& robocopy $portable $install /E /MT:16 /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null
+if ($LASTEXITCODE -ge 8) {
+    throw "Copying the files failed (robocopy exit code $LASTEXITCODE)"
+}
+$global:LASTEXITCODE = 0
 
 $startMenu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Xournal Studio'
 New-Item -ItemType Directory -Path $startMenu -Force | Out-Null

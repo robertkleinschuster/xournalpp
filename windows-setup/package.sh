@@ -33,10 +33,8 @@ mkdir "$setup_dir"/lib
 echo "copy installed files"
 (cd $build_dir && cmake --install . --prefix "$setup_dir")
 
-echo "copy libraries"
-ldd "$build_dir/xournalpp.exe" | grep "${prefix}.*\.dll" -o | sort -u | xargs -I{} cp "{}" "$setup_dir"/bin/
-# CI workaround: copy libcrypto and libssl in case they are not already copied.
-ldd "$build_dir/xournalpp.exe" | grep -E 'lib(ssl|crypto)[^\.]*\.dll' -o | sort -u | xargs -I{} cp "${prefix}/bin/{}" "$setup_dir"/bin/
+# Fork: the libraries are copied below ("copy dependencies of all bundled modules"), from the imports of every bundled
+# module. ldd ran xournalpp.exe under a debugger to list them: slow, and it starts the program.
 
 echo "Installing GTK/Glib translations"
 # Copy system locale files
@@ -141,6 +139,12 @@ while true; do
     done < <(find "$setup_dir" -type f \( -iname '*.exe' -o -iname '*.dll' \) -print0)
     [[ $copied_any -eq 0 ]] && break
 done
+
+# Fork: a local installation (build-local.ps1) runs on this machine and needs neither the check nor the installer
+if [ "${XOURNALPP_LOCAL_INSTALL:-0}" = "1" ]; then
+    echo "finished (local installation: no check for other machines, no installer)"
+    exit 0
+fi
 
 echo "check that the package runs on a plain Windows installation"
 bash "$script_dir/check-dependencies.sh" "$setup_dir" || exit 1
