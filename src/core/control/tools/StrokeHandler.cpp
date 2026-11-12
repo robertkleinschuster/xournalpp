@@ -295,6 +295,11 @@ void StrokeHandler::startInk(double zoom) {
     if (s.getToolType() != StrokeTool::PEN || s.getFill() != -1 || s.getLineStyle().hasDashes()) {
         return;
     }
+    // Not with a stroke stabilizer: the compositor connects the stroke to where the pen really is, while the stroke
+    // follows the smoothed path, so the trail would show a different line than the one that stays
+    if (dynamic_cast<StrokeStabilizer::Active*>(this->stabilizer.get())) {
+        return;
+    }
     MainWindow* win = control->getWindow();
     if (!win || !win->getXournal()) {
         return;
