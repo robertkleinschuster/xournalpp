@@ -103,8 +103,18 @@ auto StylusInputHandler::handleImpl(InputEvent const& event) -> bool {
     if (event.type == LEAVE_EVENT) {
         this->inputContext->getHandRecognition()->unblock();
         this->actionLeaveWindow(event);
+    }
+    // Fork: a barrel button's tool (eraser, lasso, ...) lasts only while the pen is detected. Lifted out of range
+    // with the button still held, Windows sends no button release, so the tool stayed for the next stroke.
+    if (event.type == LEAVE_EVENT || event.type == PROXIMITY_OUT_EVENT) {
         this->modifier2 = false;
         this->modifier3 = false;
+        if (this->inputRunning && !this->deviceClassPressed) {
+            this->actionEnd(event);
+        }
+        if (!this->inputRunning) {
+            backToToolbarTool();
+        }
     }
 
     // Trigger end of action if pen tip leaves screen or mouse button is released
@@ -183,6 +193,16 @@ void StylusInputHandler::setPressedState(InputEvent const& event) {
             default:
                 break;
         }
+    }
+}
+
+void StylusInputHandler::backToToolbarTool() {
+    ToolHandler* toolHandler = this->inputContext->getToolHandler();
+    if (toolHandler->pointActiveToolToToolbarTool()) {
+        if (toolHandler->getToolType() == TOOL_TEXT) {
+            toolHandler->selectTool(TOOL_TEXT);
+        }
+        toolHandler->fireToolChanged();
     }
 }
 

@@ -33,6 +33,8 @@ public:
      * @return false if tool was not changed successfully
      */
     bool changeTool(InputEvent const& event) override;
+    /// Fork: from a barrel button's or the eraser's tool back to the toolbar tool (the pen left the screen)
+    void backToToolbarTool();
 
 private:
     /**
