@@ -51,10 +51,9 @@
 - Releases: pushing a tag `xournal-studio-v*` (or running the workflow with `release_tag`) builds the installer and a portable ZIP and publishes both as a GitHub release. Before publishing, the packaged program exports a PDF with only Windows on PATH (smoke test in make-installer-windows.yml).
 - The installer must run on a plain Windows 11 without MSYS2: package.sh copies the imports of every bundled .exe/.dll from MSYS2 until nothing is missing, bundles `etc/fonts` (fontconfig finds no fonts without it), and fails via check-dependencies.sh if a DLL is neither bundled nor part of Windows (Visual C++ runtime DLLs count as missing).
 
-## WinUI version (winui/)
+## Xournal Studio for Windows
 
-- A separate, deliberately small WinUI 3 / C# app (`winui/XournalStudio`) that reads and writes .xopp; see winui/README.md. Built iteratively: only the features in daily use, native WinUI controls (InkCanvas, InkToolbar, ScrollView), default theme, custom code kept in small classes.
-- It does not share code with the C++ app. `winui/install.ps1` installs it side by side as "Xournal Studio (WinUI)" without file associations.
+- The WinUI 3 / C# iteration that started in `winui/` is now its own project: https://github.com/robertkleinschuster/xournal-studio-windows (locally `D:\src\xournal-studio-windows`, with its own CLAUDE.md). It shares no code with this fork and keeps strictly to the upstream .xopp format.
 
 ## Repository cautions
 
