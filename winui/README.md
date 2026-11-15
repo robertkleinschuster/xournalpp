@@ -52,3 +52,8 @@ Test hooks (environment variables): `XOURNAL_STUDIO_CONFIG_DIR` (settings folder
 `XOURNAL_STUDIO_LOG` (debug log file), `XOURNAL_STUDIO_TEST_PAGE` (start at page N).
 Ink only reacts to real pointer input (`InjectSyntheticPointerInput` on the input desktop),
 not to posted window messages; rendering can be checked on a hidden desktop with `PrintWindow`.
+
+`UiTests\Run-SandboxTest.ps1 -Document <file.xopp>` runs an end-to-end test in Windows Sandbox
+(the sandbox window opens on the desktop): synthetic pen strokes, touch pan, undo/redo, eraser
+tool and pen eraser end, highlighter, pinch zoom, Ctrl+S, page insert and save on close, with a
+screenshot per step. Afterwards the GTK version exports the result to check it still reads it.
